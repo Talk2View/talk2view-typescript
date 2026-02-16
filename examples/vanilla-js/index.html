@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Talk2View — Vanilla JS Example</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 32px; }
+    #chat { max-width: 600px; margin: 0 auto; }
+    #messages { height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; max-width: 80%; }
+    .msg-user { background: #0066ff; color: white; margin-left: auto; text-align: right; }
+    .msg-assistant { background: #f0f0f0; color: #1a1a1a; }
+    form { display: flex; gap: 8px; }
+    input { flex: 1; padding: 10px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 14px; }
+    button { padding: 10px 20px; border: none; background: #0066ff; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #login { max-width: 360px; margin: 80px auto; }
+    #login input { width: 100%; margin-bottom: 12px; box-sizing: border-box; }
+    #error { color: #dc2626; margin-bottom: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<!-- Login form -->
+<div id="login">
+  <h2>Sign in to Talk2View</h2>
+  <div id="error"></div>
+  <input type="email" id="email" placeholder="Email" required>
+  <input type="password" id="password" placeholder="Password" required>
+  <button onclick="doLogin()">Sign in</button>
+</div>
+
+<!-- Chat UI (hidden until authenticated) -->
+<div id="chat" style="display:none">
+  <h2>Talk2View Chat</h2>
+  <div id="messages"></div>
+  <form onsubmit="doSend(event)">
+    <input type="text" id="input" placeholder="Type a message..." autocomplete="off">
+    <button type="submit" id="send-btn">Send</button>
+  </form>
+</div>
+
+<script type="module">
+  import { Talk2View } from '@talk2view/sdk';
+
+  const t2v = new Talk2View({
+    partnerKey: 'pk_live_your_key_here',
+    baseUrl: 'http://localhost:8000',
+  });
+
+  // Register tools
+  t2v.tools.handle('show_alert', async (args) => {
+    alert(args.message);
+    return JSON.stringify({ success: true });
+  });
+
+  // Expose to global scope for onclick handlers
+  window.doLogin = async () => {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const errorEl = document.getElementById('error');
+
+    try {
+      await t2v.auth.login(email, password);
+
+      // Register tools after login
+      await t2v.tools.register([{
+        name: 'show_alert',
+        description: 'Show an alert dialog to the user',
+        parameters: {
+          type: 'object',
+          properties: {
+            message: { type: 'string', description: 'Alert message' }
+          },
+          required: ['message'],
+        },
+      }]);
+
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('chat').style.display = 'block';
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  };
+
+  window.doSend = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('input');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    addMessage('user', msg);
+
+    const assistantEl = addMessage('assistant', '');
+    let content = '';
+
+    document.getElementById('send-btn').disabled = true;
+
+    try {
+      for await (const event of t2v.chat(msg)) {
+        if (event.type === 'text') {
+          content += event.content;
+          assistantEl.textContent = content;
+        }
+      }
+    } catch (err) {
+      assistantEl.textContent = `Error: ${err.message}`;
+    }
+
+    document.getElementById('send-btn').disabled = false;
+  };
+
+  function addMessage(role, text) {
+    const el = document.createElement('div');
+    el.className = `msg msg-${role}`;
+    el.textContent = text;
+    const container = document.getElementById('messages');
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+    return el;
+  }
+</script>
+
+</body>
+</html>

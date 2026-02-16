@@ -1,0 +1,232 @@
+/**
+ * ChatPanel — self-contained, embeddable chat panel with tool support.
+ *
+ * Drop-in chat UI that handles authentication, tool registration,
+ * streaming, and the full interrupt/resume cycle.
+ */
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { ClientTool } from '../types';
+import { ChatInput } from './ChatInput';
+import { ChatMessage } from './ChatMessage';
+import { LoginModal } from './LoginModal';
+import { useT2V } from './T2VProvider';
+import { useT2VAuth } from './useT2VAuth';
+import { useT2VChat } from './useT2VChat';
+import { useT2VTools } from './useT2VTools';
+import { T2V_COLORS, T2V_FONTS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
+
+export interface ChatPanelProps {
+  tools?: ClientTool[];
+  systemPrompt?: string;
+  signupUrl?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function ChatPanel({
+  tools = [],
+  systemPrompt,
+  signupUrl,
+  className = '',
+  style,
+}: ChatPanelProps) {
+  const { isAuthenticated } = useT2VAuth();
+  const { registerTools, registeredTools, isRegistered } = useT2VTools();
+  const { messages, isLoading, error, sendMessage, clearMessages, clearError } = useT2VChat({
+    systemPrompt,
+  });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [clearHover, setClearHover] = useState(false);
+
+  // Inject fonts and keyframes once
+  useEffect(() => {
+    injectT2VFonts();
+    injectT2VStyles();
+  }, []);
+
+  // Register tools when authenticated
+  useEffect(() => {
+    if (isAuthenticated && tools.length > 0 && !isRegistered) {
+      registerTools(tools).catch(console.error);
+    }
+  }, [isAuthenticated, tools, isRegistered, registerTools]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = useCallback(
+    (content: string) => {
+      sendMessage(content).catch(console.error);
+    },
+    [sendMessage],
+  );
+
+  const panelShell: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    backgroundColor: T2V_COLORS.light,
+    borderRadius: '12px',
+    boxShadow: '0 4px 24px rgba(1, 22, 30, 0.10)',
+    overflow: 'hidden',
+    fontFamily: T2V_FONTS.body,
+    ...style,
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+        <LoginModal signupUrl={signupUrl} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          backgroundColor: T2V_COLORS.dark,
+          color: T2V_COLORS.light,
+        }}
+      >
+        <T2VLogo size={22} variant="horizontalDark" />
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {registeredTools.length > 0 && (
+            <span
+              style={{
+                fontSize: '11px',
+                fontFamily: T2V_FONTS.heading,
+                color: T2V_COLORS.turquoise,
+                backgroundColor: 'rgba(64, 212, 182, 0.12)',
+                padding: '2px 8px',
+                borderRadius: '10px',
+              }}
+            >
+              {registeredTools.length} tools
+            </span>
+          )}
+          <button
+            onClick={clearMessages}
+            onMouseEnter={() => setClearHover(true)}
+            onMouseLeave={() => setClearHover(false)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: `1px solid ${clearHover ? T2V_COLORS.turquoise : 'rgba(248, 250, 252, 0.2)'}`,
+              backgroundColor: clearHover ? 'rgba(64, 212, 182, 0.1)' : 'transparent',
+              fontSize: '12px',
+              fontFamily: T2V_FONTS.heading,
+              cursor: 'pointer',
+              color: T2V_COLORS.light,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px',
+        }}
+      >
+        {messages.length === 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              gap: '12px',
+            }}
+          >
+            <T2VLogo size={40} />
+            <span
+              style={{
+                color: T2V_COLORS.midGray,
+                fontSize: '15px',
+                fontFamily: T2V_FONTS.heading,
+                fontWeight: 500,
+              }}
+            >
+              How can I help you?
+            </span>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <ChatMessage key={msg.id} message={msg} />
+        ))}
+
+        {isLoading && messages[messages.length - 1]?.content === '' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '10px 14px',
+              color: T2V_COLORS.midGray,
+              fontSize: '13px',
+              fontFamily: T2V_FONTS.heading,
+            }}
+          >
+            <span>Thinking</span>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                style={{
+                  display: 'inline-block',
+                  width: '4px',
+                  height: '4px',
+                  borderRadius: '50%',
+                  backgroundColor: T2V_COLORS.turquoise,
+                  animation: `t2v-dot-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div
+          onClick={clearError}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            backgroundColor: T2V_COLORS.errorBg,
+            color: T2V_COLORS.errorRed,
+            fontSize: '13px',
+            fontFamily: T2V_FONTS.heading,
+            cursor: 'pointer',
+            borderLeft: `3px solid ${T2V_COLORS.errorRed}`,
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>Error</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Input */}
+      <ChatInput onSend={handleSend} disabled={isLoading} />
+    </div>
+  );
+}
