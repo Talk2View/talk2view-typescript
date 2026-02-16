@@ -35,7 +35,7 @@ export class Talk2View {
   readonly auth: T2VAuth;
   readonly tools: T2VTools;
   private readonly client: T2VClient;
-  private readonly config: T2VConfig;
+  readonly config: T2VConfig;
   private currentSession: T2VSession | null = null;
 
   constructor(config: T2VConfig) {

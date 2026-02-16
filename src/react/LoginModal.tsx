@@ -77,7 +77,7 @@ export function LoginModal({
         fontFamily: T2V_FONTS.body,
       }}
     >
-      <T2VLogo size={48} />
+      <T2VLogo size={64} />
 
       <h2
         style={{
@@ -191,7 +191,7 @@ export function LoginModal({
               ? T2V_COLORS.lightGray
               : btnHover
                 ? T2V_COLORS.stormyTeal
-                : T2V_COLORS.honeyBronze,
+                : T2V_COLORS.accent,
             color: isLoading ? T2V_COLORS.midGray : T2V_COLORS.dark,
             fontSize: '15px',
             fontWeight: 600,

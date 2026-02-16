@@ -3,6 +3,7 @@
 export interface T2VConfig {
   partnerKey: string;
   baseUrl?: string;
+  voiceApiUrl?: string;
   model?: string;
 }
 

@@ -12,7 +12,7 @@ export const T2V_COLORS = {
   midGray: '#9F9AA4',
   lightGray: '#E5E7EB',
   turquoise: '#40D4B6',
-  honeyBronze: '#F6BD60',
+  accent: '#40D4B6',
   stormyTeal: '#037171',
   errorRed: '#DC2626',
   errorBg: '#FEF2F2',
@@ -21,8 +21,8 @@ export const T2V_COLORS = {
 /* ── Brand Fonts ───────────────────────────────────────────────── */
 
 export const T2V_FONTS = {
-  heading: "'Poppins', sans-serif",
-  body: "'Lora', serif",
+  heading: "'IBM Plex Sans', sans-serif",
+  body: "'IBM Plex Sans', sans-serif",
 } as const;
 
 /* ── Google Fonts Loader (idempotent, SSR-safe) ────────────────── */
@@ -43,7 +43,7 @@ export function injectT2VFonts(): void {
   link.id = id;
   link.rel = 'stylesheet';
   link.href =
-    'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:wght@400;500;600&display=swap';
+    'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap';
   document.head.appendChild(link);
 
   fontsInjected = true;

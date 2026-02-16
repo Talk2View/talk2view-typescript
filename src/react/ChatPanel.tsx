@@ -31,13 +31,26 @@ export function ChatPanel({
   className = '',
   style,
 }: ChatPanelProps) {
-  const { isAuthenticated } = useT2VAuth();
+  const { isAuthenticated, logout } = useT2VAuth();
   const { registerTools, registeredTools, isRegistered } = useT2VTools();
   const { messages, isLoading, error, sendMessage, clearMessages, clearError } = useT2VChat({
     systemPrompt,
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [clearHover, setClearHover] = useState(false);
+  const [logoutHover, setLogoutHover] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Thinking timer
+  useEffect(() => {
+    if (!isLoading) {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   // Inject fonts and keyframes once
   useEffect(() => {
@@ -99,20 +112,6 @@ export function ChatPanel({
       >
         <T2VLogo size={22} variant="horizontalDark" />
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {registeredTools.length > 0 && (
-            <span
-              style={{
-                fontSize: '11px',
-                fontFamily: T2V_FONTS.heading,
-                color: T2V_COLORS.turquoise,
-                backgroundColor: 'rgba(64, 212, 182, 0.12)',
-                padding: '2px 8px',
-                borderRadius: '10px',
-              }}
-            >
-              {registeredTools.length} tools
-            </span>
-          )}
           <button
             onClick={clearMessages}
             onMouseEnter={() => setClearHover(true)}
@@ -130,6 +129,24 @@ export function ChatPanel({
             }}
           >
             Clear
+          </button>
+          <button
+            onClick={() => { logout().catch(console.error); }}
+            onMouseEnter={() => setLogoutHover(true)}
+            onMouseLeave={() => setLogoutHover(false)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: `1px solid ${logoutHover ? T2V_COLORS.errorRed : 'rgba(248, 250, 252, 0.2)'}`,
+              backgroundColor: logoutHover ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+              fontSize: '12px',
+              fontFamily: T2V_FONTS.heading,
+              cursor: 'pointer',
+              color: T2V_COLORS.light,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Sign out
           </button>
         </div>
       </div>
@@ -222,6 +239,57 @@ export function ChatPanel({
         >
           <span style={{ fontWeight: 600 }}>Error</span>
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Status bar: timer (left) + tools (right) */}
+      {(isLoading || registeredTools.length > 0) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 16px',
+            borderTop: `1px solid ${T2V_COLORS.lightGray}`,
+          }}
+        >
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '11px',
+              fontFamily: T2V_FONTS.heading,
+              color: T2V_COLORS.midGray,
+              visibility: isLoading ? 'visible' : 'hidden',
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-block',
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: T2V_COLORS.turquoise,
+                animation: 't2v-blink 1.2s ease-in-out infinite',
+              }}
+            />
+            Thinking for {elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}
+          </span>
+          {registeredTools.length > 0 && (
+            <span
+              style={{
+                fontSize: '11px',
+                fontFamily: T2V_FONTS.heading,
+                color: T2V_COLORS.turquoise,
+                backgroundColor: 'rgba(64, 212, 182, 0.12)',
+                padding: '2px 8px',
+                borderRadius: '10px',
+              }}
+            >
+              {registeredTools.length} tools
+            </span>
+          )}
         </div>
       )}
 

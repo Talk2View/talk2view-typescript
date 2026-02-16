@@ -14,8 +14,9 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-basic-ssl": "^2.1.4",
+    "@vitejs/plugin-react": "^4.0.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0",
-    "@vitejs/plugin-react": "^4.0.0"
+    "vite": "^6.0.0"
   }
 }
