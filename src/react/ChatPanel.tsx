@@ -60,6 +60,8 @@ export function ChatPanel({
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [clearHover, setClearHover] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
   const [elapsed, setElapsed] = useState(0);
   const [todosExpanded, setTodosExpanded] = useState(true);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -113,6 +115,18 @@ export function ChatPanel({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [profileOpen]);
+
+  // Close tools popover on outside click
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setToolsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [toolsOpen]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -552,18 +566,87 @@ export function ChatPanel({
             {agentStatus?.message ?? 'Thinking'} for {elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}
           </span>
           {registeredTools.length > 0 && (
-            <span
-              style={{
-                fontSize: '11px',
-                fontFamily: T2V_FONTS.heading,
-                color: T2V_COLORS.turquoise,
-                backgroundColor: 'rgba(64, 212, 182, 0.12)',
-                padding: '2px 8px',
-                borderRadius: '10px',
-              }}
-            >
-              {registeredTools.length} tools
-            </span>
+            <div ref={toolsRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setToolsOpen((v) => !v)}
+                style={{
+                  fontSize: '11px',
+                  fontFamily: T2V_FONTS.heading,
+                  color: T2V_COLORS.turquoise,
+                  backgroundColor: toolsOpen ? 'rgba(64, 212, 182, 0.2)' : 'rgba(64, 212, 182, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.15s ease',
+                }}
+              >
+                {registeredTools.length} tools
+              </button>
+              {toolsOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    right: 0,
+                    marginBottom: '6px',
+                    backgroundColor: T2V_COLORS.light,
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(1, 22, 30, 0.15)',
+                    border: `1px solid ${T2V_COLORS.lightGray}`,
+                    minWidth: '220px',
+                    maxWidth: '300px',
+                    maxHeight: '240px',
+                    overflowY: 'auto',
+                    zIndex: 100,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontFamily: T2V_FONTS.heading,
+                      fontWeight: 600,
+                      color: T2V_COLORS.turquoise,
+                      borderBottom: `1px solid ${T2V_COLORS.lightGray}`,
+                    }}
+                  >
+                    Registered Tools
+                  </div>
+                  {tools.filter((t) => registeredTools.includes(t.name)).map((tool) => (
+                    <div
+                      key={tool.name}
+                      style={{
+                        padding: '8px 12px',
+                        borderBottom: `1px solid ${T2V_COLORS.lightGray}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontFamily: T2V_FONTS.heading,
+                          fontWeight: 600,
+                          color: T2V_COLORS.dark,
+                        }}
+                      >
+                        {tool.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontFamily: T2V_FONTS.body,
+                          color: T2V_COLORS.midGray,
+                          marginTop: '2px',
+                          lineHeight: '1.4',
+                        }}
+                      >
+                        {tool.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
