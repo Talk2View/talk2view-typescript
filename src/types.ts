@@ -81,6 +81,11 @@ export interface ToolCallInterrupt {
   arguments: Record<string, unknown>;
 }
 
+export interface AgentStatus {
+  type: string;
+  message: string;
+}
+
 export interface ChatCompletionChunk {
   id: string;
   object: string;
@@ -89,6 +94,8 @@ export interface ChatCompletionChunk {
   choices: ChatCompletionChunkChoice[];
   thread_id?: string;
   interrupt?: ToolCallInterrupt;
+  status?: AgentStatus;
+  todos?: string;
 }
 
 // ── Chat Events (public API) ──
@@ -97,7 +104,9 @@ export type ChatEvent =
   | { type: 'text'; content: string }
   | { type: 'tool_call'; toolName: string; toolCallId: string; arguments: Record<string, unknown> }
   | { type: 'done'; threadId: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'status'; status: string; message: string }
+  | { type: 'todos'; todos: string };
 
 // ── Tools ──
 

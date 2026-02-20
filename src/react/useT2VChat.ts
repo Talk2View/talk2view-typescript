@@ -19,6 +19,8 @@ export interface UseT2VChatResult {
   isLoading: boolean;
   error: string | null;
   threadId: string | null;
+  agentStatus: { status: string; message: string } | null;
+  todos: string;
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
   clearError: () => void;
@@ -35,6 +37,8 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [agentStatus, setAgentStatus] = useState<{ status: string; message: string } | null>(null);
+  const [todos, setTodos] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(
@@ -77,11 +81,20 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
           switch (event.type) {
             case 'text':
               fullContent += event.content;
+              setAgentStatus(null); // Agent is now responding
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId ? { ...m, content: fullContent } : m,
                 ),
               );
+              break;
+
+            case 'status':
+              setAgentStatus({ status: event.status, message: event.message });
+              break;
+
+            case 'todos':
+              setTodos(event.todos);
               break;
 
             case 'done':
@@ -103,6 +116,7 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
             m.id === assistantId ? { ...m, isStreaming: false } : m,
           ),
         );
+        setAgentStatus(null);
         setIsLoading(false);
       }
     },
@@ -122,6 +136,8 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
     isLoading,
     error,
     threadId,
+    agentStatus,
+    todos,
     sendMessage,
     clearMessages,
     clearError,

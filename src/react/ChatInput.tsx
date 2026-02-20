@@ -60,7 +60,7 @@ export function ChatInput({
     async (audioBlob: Blob) => {
       setIsTranscribing(true);
       try {
-        const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'http://localhost:8000';
+        const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'http://localhost:8100';
         const url = `${voiceUrl}/v1/audio/transcriptions`;
 
         const apiKey = getLiteLLMApiKey();

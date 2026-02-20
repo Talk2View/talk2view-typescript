@@ -104,6 +104,7 @@ export type {
   ToolHandler,
   TokenResponse,
   ToolCallInterrupt,
+  AgentStatus,
   ChatCompletionChunk,
   RegisterToolsResponse,
   Model,

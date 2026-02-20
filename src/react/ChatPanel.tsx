@@ -33,13 +33,14 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { isAuthenticated, logout } = useT2VAuth();
   const { registerTools, registeredTools, isRegistered } = useT2VTools();
-  const { messages, isLoading, error, sendMessage, clearMessages, clearError } = useT2VChat({
+  const { messages, isLoading, error, agentStatus, todos, sendMessage, clearMessages, clearError } = useT2VChat({
     systemPrompt,
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [clearHover, setClearHover] = useState(false);
   const [logoutHover, setLogoutHover] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [todosExpanded, setTodosExpanded] = useState(true);
 
   // Thinking timer
   useEffect(() => {
@@ -200,7 +201,7 @@ export function ChatPanel({
               fontFamily: T2V_FONTS.heading,
             }}
           >
-            <span>Thinking</span>
+            <span>{agentStatus?.message ?? 'Thinking'}</span>
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
@@ -219,6 +220,122 @@ export function ChatPanel({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Todos panel */}
+      {todos && (
+        <div
+          style={{
+            borderTop: `1px solid ${T2V_COLORS.lightGray}`,
+            backgroundColor: 'rgba(64, 212, 182, 0.06)',
+          }}
+        >
+          <div
+            onClick={() => setTodosExpanded((v) => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 16px',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '12px',
+                fontFamily: T2V_FONTS.heading,
+                fontWeight: 600,
+                color: T2V_COLORS.turquoise,
+              }}
+            >
+              Agent Plan
+            </span>
+            <span
+              style={{
+                fontSize: '11px',
+                color: T2V_COLORS.midGray,
+                transform: todosExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              &#9660;
+            </span>
+          </div>
+          {todosExpanded && (
+            <div style={{ padding: '0 16px 10px' }}>
+              {todos.split('\n').map((line, i) => {
+                const unchecked = line.match(/^-\s*\[\s*\]\s*(.*)/);
+                const checked = line.match(/^-\s*\[x\]\s*(.*)/i);
+                if (checked) {
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '3px 0',
+                        fontSize: '13px',
+                        fontFamily: T2V_FONTS.body,
+                        color: T2V_COLORS.midGray,
+                        textDecoration: 'line-through',
+                      }}
+                    >
+                      <span style={{ color: T2V_COLORS.turquoise, flexShrink: 0 }}>&#10003;</span>
+                      <span>{checked[1]}</span>
+                    </div>
+                  );
+                }
+                if (unchecked) {
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '3px 0',
+                        fontSize: '13px',
+                        fontFamily: T2V_FONTS.body,
+                        color: T2V_COLORS.dark,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          width: '14px',
+                          height: '14px',
+                          borderRadius: '3px',
+                          border: `1.5px solid ${T2V_COLORS.turquoise}`,
+                          flexShrink: 0,
+                          marginTop: '2px',
+                        }}
+                      />
+                      <span>{unchecked[1]}</span>
+                    </div>
+                  );
+                }
+                if (line.trim()) {
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: '13px',
+                        fontFamily: T2V_FONTS.body,
+                        color: T2V_COLORS.dark,
+                        padding: '2px 0',
+                      }}
+                    >
+                      {line}
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -274,7 +391,7 @@ export function ChatPanel({
                 animation: 't2v-blink 1.2s ease-in-out infinite',
               }}
             />
-            Thinking for {elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}
+            {agentStatus?.message ?? 'Thinking'} for {elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}
           </span>
           {registeredTools.length > 0 && (
             <span

@@ -17,7 +17,7 @@ import type {
   T2VConfig,
 } from './types';
 
-const DEFAULT_BASE_URL = 'http://localhost:8000';
+const DEFAULT_BASE_URL = 'http://localhost:8100';
 
 export class T2VClient {
   private readonly baseUrl: string;

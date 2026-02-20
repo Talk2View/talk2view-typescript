@@ -73,6 +73,16 @@ export class T2VSession {
     body: object,
   ): AsyncGenerator<ChatEvent> {
     for await (const chunk of this.client.streamRequest(endpoint, body)) {
+      // Agent status update (non-terminal — stream continues)
+      if (chunk.status) {
+        yield { type: 'status', status: chunk.status.type, message: chunk.status.message };
+      }
+
+      // Todos update (non-terminal — stream continues)
+      if (chunk.todos) {
+        yield { type: 'todos', todos: chunk.todos };
+      }
+
       // Check for tool call interrupt
       if (chunk.interrupt) {
         const { tool_name, tool_call_id, arguments: args } = chunk.interrupt;
