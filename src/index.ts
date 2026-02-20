@@ -58,7 +58,7 @@ export class Talk2View {
       body: JSON.stringify({ model: this.config.model }),
     });
 
-    const session = new T2VSession(response, this.client, this.tools);
+    const session = new T2VSession(response, this.client, this.tools, this.config);
     this.currentSession = session;
     return session;
   }

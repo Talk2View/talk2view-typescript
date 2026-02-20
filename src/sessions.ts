@@ -8,6 +8,7 @@ import type {
   ChatEvent,
   ChatMessage,
   CreateSessionResponse,
+  T2VConfig,
 } from './types';
 
 export class T2VSession {
@@ -19,6 +20,7 @@ export class T2VSession {
     data: CreateSessionResponse,
     private readonly client: T2VClient,
     private readonly tools: T2VTools,
+    private readonly config?: T2VConfig,
   ) {
     this.id = data.session_id;
     this.threadId = data.thread_id;
@@ -47,7 +49,7 @@ export class T2VSession {
 
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,
-      { messages, stream: true },
+      { messages, stream: true, model: this.config?.model },
     );
   }
 

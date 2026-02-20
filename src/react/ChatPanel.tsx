@@ -52,7 +52,15 @@ export function ChatPanel({
 
   const fontScale = FONT_SCALE_MAP[preferences.fontSize || 'medium'];
 
-  const handleModelChange = useCallback(() => {
+  // Restore saved model preference on mount
+  useEffect(() => {
+    if (preferences.model) {
+      t2v.config.model = preferences.model;
+    }
+  }, [t2v, preferences.model]);
+
+  const handleModelChange = useCallback((model: string) => {
+    t2v.config.model = model;
     t2v.clearSession();
   }, [t2v]);
 

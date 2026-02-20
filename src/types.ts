@@ -59,6 +59,7 @@ export interface SendMessageRequest {
   messages: ChatMessage[];
   stream?: boolean;
   temperature?: number;
+  model?: string;
 }
 
 // ── Streaming ──
