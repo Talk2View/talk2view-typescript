@@ -81,6 +81,44 @@ export function injectT2VStyles(): void {
 @keyframes t2v-spin {
   to { transform: rotate(360deg); }
 }
+/* Markdown content styles */
+.t2v-markdown p { margin: 0 0 0.6em; }
+.t2v-markdown p:last-child { margin-bottom: 0; }
+.t2v-markdown h1, .t2v-markdown h2, .t2v-markdown h3,
+.t2v-markdown h4, .t2v-markdown h5, .t2v-markdown h6 {
+  margin: 0.8em 0 0.4em; font-weight: 600; line-height: 1.3;
+}
+.t2v-markdown h1 { font-size: 1.3em; }
+.t2v-markdown h2 { font-size: 1.15em; }
+.t2v-markdown h3 { font-size: 1.05em; }
+.t2v-markdown ul, .t2v-markdown ol {
+  margin: 0.4em 0; padding-left: 1.4em;
+}
+.t2v-markdown li { margin: 0.2em 0; }
+.t2v-markdown code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.88em; padding: 0.15em 0.35em;
+  background: rgba(1, 22, 30, 0.06); border-radius: 4px;
+}
+.t2v-markdown pre {
+  margin: 0.5em 0; padding: 0.7em 0.9em;
+  background: rgba(1, 22, 30, 0.06); border-radius: 6px;
+  overflow-x: auto; font-size: 0.88em;
+}
+.t2v-markdown pre code {
+  padding: 0; background: none;
+}
+.t2v-markdown blockquote {
+  margin: 0.5em 0; padding: 0.3em 0.8em;
+  border-left: 3px solid ${T2V_COLORS.turquoise};
+  color: ${T2V_COLORS.midGray};
+}
+.t2v-markdown strong { font-weight: 600; }
+.t2v-markdown a { color: ${T2V_COLORS.stormyTeal}; text-decoration: underline; }
+.t2v-markdown hr { border: none; border-top: 1px solid ${T2V_COLORS.lightGray}; margin: 0.6em 0; }
+.t2v-markdown table { border-collapse: collapse; width: 100%; margin: 0.5em 0; font-size: 0.92em; }
+.t2v-markdown th, .t2v-markdown td { border: 1px solid ${T2V_COLORS.lightGray}; padding: 0.35em 0.6em; text-align: left; }
+.t2v-markdown th { background: rgba(1, 22, 30, 0.04); font-weight: 600; }
 `;
   document.head.appendChild(style);
 

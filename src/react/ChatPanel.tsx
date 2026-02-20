@@ -5,9 +5,23 @@
  * streaming, and the full interrupt/resume cycle.
  */
 
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientTool } from '../types';
 import { ChatInput } from './ChatInput';
+
+/** Parse inline markdown (bold, italic, code, links) and sanitize. */
+function renderInline(text: string): string {
+  const raw = marked.parseInline(text);
+  return DOMPurify.sanitize(typeof raw === 'string' ? raw : '');
+}
+
+/** Parse block markdown and sanitize. */
+function renderBlock(text: string): string {
+  const raw = marked.parse(text);
+  return DOMPurify.sanitize(typeof raw === 'string' ? raw : '');
+}
 import { ChatMessage } from './ChatMessage';
 import { LoginModal } from './LoginModal';
 import { SettingsView } from './SettingsView';
@@ -426,7 +440,7 @@ export function ChatPanel({
                       }}
                     >
                       <span style={{ color: T2V_COLORS.turquoise, flexShrink: 0 }}>&#10003;</span>
-                      <span>{checked[1]}</span>
+                      <span dangerouslySetInnerHTML={{ __html: renderInline(checked[1] ?? '') }} />
                     </div>
                   );
                 }
@@ -455,7 +469,7 @@ export function ChatPanel({
                           marginTop: '2px',
                         }}
                       />
-                      <span>{unchecked[1]}</span>
+                      <span dangerouslySetInnerHTML={{ __html: renderInline(unchecked[1] ?? '') }} />
                     </div>
                   );
                 }
@@ -463,15 +477,15 @@ export function ChatPanel({
                   return (
                     <div
                       key={i}
+                      className="t2v-markdown"
                       style={{
                         fontSize: '13px',
                         fontFamily: T2V_FONTS.body,
                         color: T2V_COLORS.dark,
                         padding: '2px 0',
                       }}
-                    >
-                      {line}
-                    </div>
+                      dangerouslySetInnerHTML={{ __html: renderInline(line) }}
+                    />
                   );
                 }
                 return null;

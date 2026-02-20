@@ -2,9 +2,14 @@
  * ChatMessage — renders a single chat message bubble with markdown support.
  */
 
-import React from 'react';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import React, { useMemo } from 'react';
 import type { DisplayMessage } from './useT2VChat';
 import { T2V_COLORS, T2V_FONTS } from './theme';
+
+// Configure marked for inline-friendly output
+marked.setOptions({ breaks: true, gfm: true });
 
 export interface ChatMessageProps {
   message: DisplayMessage;
@@ -14,6 +19,13 @@ export interface ChatMessageProps {
 export function ChatMessage({ message, className = '' }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const time = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const htmlContent = useMemo(() => {
+    if (isUser || !message.content) return '';
+    const raw = marked.parse(message.content);
+    if (typeof raw !== 'string') return '';
+    return DOMPurify.sanitize(raw);
+  }, [isUser, message.content]);
 
   return (
     <div
@@ -35,11 +47,18 @@ export function ChatMessage({ message, className = '' }: ChatMessageProps) {
           fontSize: '14px',
           fontFamily: T2V_FONTS.body,
           lineHeight: '1.55',
-          whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
+          ...(isUser ? { whiteSpace: 'pre-wrap' as const } : {}),
         }}
       >
-        <div>{message.content}</div>
+        {isUser ? (
+          <div>{message.content}</div>
+        ) : (
+          <div
+            className="t2v-markdown"
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+          />
+        )}
         {message.isStreaming && (
           <span
             style={{
