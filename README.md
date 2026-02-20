@@ -124,7 +124,7 @@ Context provider that initializes the Talk2View client. Wrap your app (or the se
 ```tsx
 <T2VProvider
   partnerKey="pk_live_..."   // Required
-  baseUrl="https://api.talk2view.com"  // Optional, defaults to localhost:8000
+  baseUrl="https://api.talk2view.com"  // Optional, defaults to localhost:8100
   model="gpt-4.1-mini"      // Optional, uses server default
 >
   {children}
@@ -477,7 +477,7 @@ const { error, clearError } = useT2VAuth();
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
 | `partnerKey` | `string` | Yes | — | Your partner API key |
-| `baseUrl` | `string` | No | `'http://localhost:8000'` | Talk2View API server URL |
+| `baseUrl` | `string` | No | `'http://localhost:8100'` | Talk2View API server URL |
 | `model` | `string` | No | Server default | LLM model to use |
 
 ---
