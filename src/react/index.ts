@@ -24,6 +24,8 @@ export { LoginModal } from './LoginModal';
 export { ChatPanel } from './ChatPanel';
 export { ChatMessage } from './ChatMessage';
 export { ChatInput } from './ChatInput';
+export { SettingsView } from './SettingsView';
+export { useUserPreferences } from './useUserPreferences';
 
 export type { T2VProviderProps } from './T2VProvider';
 export type { UseT2VAuthResult } from './useT2VAuth';
@@ -33,3 +35,5 @@ export type { LoginModalProps } from './LoginModal';
 export type { ChatPanelProps } from './ChatPanel';
 export type { ChatMessageProps } from './ChatMessage';
 export type { ChatInputProps } from './ChatInput';
+export type { SettingsViewProps } from './SettingsView';
+export type { UseUserPreferencesResult } from './useUserPreferences';

@@ -8,6 +8,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { getLiteLLMApiKey } from '../storage';
 import { T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
+import { useUserPreferences } from './useUserPreferences';
 
 export interface ChatInputProps {
   onSend: (message: string) => void;
@@ -23,6 +24,7 @@ export function ChatInput({
   className = '',
 }: ChatInputProps) {
   const { t2v } = useT2V();
+  const { preferences } = useUserPreferences();
   const [value, setValue] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
   const [btnHover, setBtnHover] = useState(false);
@@ -68,7 +70,10 @@ export function ChatInput({
 
         const formData = new FormData();
         formData.append('file', audioBlob, `recording.${ext}`);
-        formData.append('model', 'whisper-1');
+        formData.append('model', preferences.sttModel ?? 'whisper-1');
+        if (preferences.sttLanguage) {
+          formData.append('language', preferences.sttLanguage);
+        }
 
         const headers: Record<string, string> = {};
         if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -91,7 +96,7 @@ export function ChatInput({
         setIsTranscribing(false);
       }
     },
-    [t2v, onSend],
+    [t2v, onSend, preferences.sttModel, preferences.sttLanguage],
   );
 
   const toggleRecording = useCallback(async () => {

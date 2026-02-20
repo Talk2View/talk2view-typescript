@@ -86,6 +86,13 @@ export class Talk2View {
   getSession(): T2VSession | null {
     return this.currentSession;
   }
+
+  /**
+   * Clear the current session so the next chat() creates a new one.
+   */
+  clearSession(): void {
+    this.currentSession = null;
+  }
 }
 
 // Re-export types and classes for consumers
@@ -109,4 +116,5 @@ export type {
   RegisterToolsResponse,
   Model,
   ModelsResponse,
+  UserPreferences,
 } from './types';

@@ -153,6 +153,15 @@ export interface ModelsResponse {
   data: Model[];
 }
 
+// ── User Preferences ──
+
+export interface UserPreferences {
+  model?: string;
+  sttModel?: string;
+  sttLanguage?: string;
+  fontSize?: 'small' | 'medium' | 'large';
+}
+
 // ── Errors ──
 
 export interface APIErrorBody {

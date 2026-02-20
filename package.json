@@ -29,8 +29,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "marked": "^15.0.0",
-    "dompurify": "^3.2.0"
+    "dompurify": "^3.2.0",
+    "marked": "^15.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",

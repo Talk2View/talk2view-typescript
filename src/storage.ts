@@ -88,6 +88,14 @@ export function clearAuth(): void {
   }
 }
 
+export function getUserPreferences(): string | null {
+  return get('preferences');
+}
+
+export function setUserPreferences(json: string): void {
+  set('preferences', json);
+}
+
 export function hasValidTokens(): boolean {
   return getAccessToken() !== null;
 }

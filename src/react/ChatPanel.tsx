@@ -10,11 +10,15 @@ import type { ClientTool } from '../types';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { LoginModal } from './LoginModal';
+import { SettingsView } from './SettingsView';
 import { useT2V } from './T2VProvider';
 import { useT2VAuth } from './useT2VAuth';
 import { useT2VChat } from './useT2VChat';
 import { useT2VTools } from './useT2VTools';
+import { useUserPreferences } from './useUserPreferences';
 import { T2V_COLORS, T2V_FONTS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
+
+const FONT_SCALE_MAP = { small: 0.9, medium: 1.0, large: 1.1 } as const;
 
 export interface ChatPanelProps {
   tools?: ClientTool[];
@@ -31,16 +35,26 @@ export function ChatPanel({
   className = '',
   style,
 }: ChatPanelProps) {
-  const { isAuthenticated, logout } = useT2VAuth();
+  const { t2v } = useT2V();
+  const { isAuthenticated, user, logout } = useT2VAuth();
   const { registerTools, registeredTools, isRegistered } = useT2VTools();
   const { messages, isLoading, error, agentStatus, todos, sendMessage, clearMessages, clearError } = useT2VChat({
     systemPrompt,
   });
+  const { preferences } = useUserPreferences();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [clearHover, setClearHover] = useState(false);
-  const [logoutHover, setLogoutHover] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [todosExpanded, setTodosExpanded] = useState(true);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  const fontScale = FONT_SCALE_MAP[preferences.fontSize || 'medium'];
+
+  const handleModelChange = useCallback(() => {
+    t2v.clearSession();
+  }, [t2v]);
 
   // Thinking timer
   useEffect(() => {
@@ -66,6 +80,18 @@ export function ChatPanel({
     }
   }, [isAuthenticated, tools, isRegistered, registerTools]);
 
+  // Close profile menu on outside click
+  useEffect(() => {
+    if (!profileOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [profileOpen]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,12 +107,15 @@ export function ChatPanel({
   const panelShell: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
-    height: '100%',
+    height: fontScale === 1 ? '100%' : `${100 / fontScale}%`,
+    width: fontScale === 1 ? '100%' : `${100 / fontScale}%`,
     backgroundColor: T2V_COLORS.light,
     borderRadius: '12px',
     boxShadow: '0 4px 24px rgba(1, 22, 30, 0.10)',
     overflow: 'hidden',
     fontFamily: T2V_FONTS.body,
+    transform: fontScale === 1 ? undefined : `scale(${fontScale})`,
+    transformOrigin: fontScale === 1 ? undefined : 'top left',
     ...style,
   };
 
@@ -94,6 +123,14 @@ export function ChatPanel({
     return (
       <div className={`t2v-chat-panel ${className}`} style={panelShell}>
         <LoginModal signupUrl={signupUrl} />
+      </div>
+    );
+  }
+
+  if (currentView === 'settings') {
+    return (
+      <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+        <SettingsView onBack={() => setCurrentView('chat')} onModelChange={handleModelChange} />
       </div>
     );
   }
@@ -131,24 +168,123 @@ export function ChatPanel({
           >
             Clear
           </button>
-          <button
-            onClick={() => { logout().catch(console.error); }}
-            onMouseEnter={() => setLogoutHover(true)}
-            onMouseLeave={() => setLogoutHover(false)}
-            style={{
-              padding: '4px 10px',
-              borderRadius: '6px',
-              border: `1px solid ${logoutHover ? T2V_COLORS.errorRed : 'rgba(248, 250, 252, 0.2)'}`,
-              backgroundColor: logoutHover ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-              fontSize: '12px',
-              fontFamily: T2V_FONTS.heading,
-              cursor: 'pointer',
-              color: T2V_COLORS.light,
-              transition: 'all 0.15s ease',
-            }}
-          >
-            Sign out
-          </button>
+          {/* Profile icon with dropdown */}
+          <div ref={profileRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setProfileOpen((v) => !v)}
+              style={{
+                width: '30px',
+                height: '30px',
+                borderRadius: '50%',
+                border: `1.5px solid ${profileOpen ? T2V_COLORS.turquoise : 'rgba(248, 250, 252, 0.3)'}`,
+                backgroundColor: profileOpen ? 'rgba(64, 212, 182, 0.15)' : 'rgba(248, 250, 252, 0.1)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                transition: 'all 0.15s ease',
+              }}
+              title={user?.email ?? 'Profile'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T2V_COLORS.light} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
+            {profileOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '6px',
+                  backgroundColor: T2V_COLORS.light,
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 16px rgba(1, 22, 30, 0.15)',
+                  minWidth: '180px',
+                  zIndex: 100,
+                  overflow: 'hidden',
+                  border: `1px solid ${T2V_COLORS.lightGray}`,
+                }}
+              >
+                {/* User email */}
+                {user?.email && (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      fontFamily: T2V_FONTS.body,
+                      color: T2V_COLORS.midGray,
+                      borderBottom: `1px solid ${T2V_COLORS.lightGray}`,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {user.email}
+                  </div>
+                )}
+                {/* Settings */}
+                <button
+                  onClick={() => { setProfileOpen(false); setCurrentView('settings'); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontFamily: T2V_FONTS.heading,
+                    color: T2V_COLORS.dark,
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = T2V_COLORS.lightGray; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T2V_COLORS.midGray} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                  Settings
+                </button>
+                {/* Sign out */}
+                <button
+                  onClick={() => {
+                    setProfileOpen(false);
+                    logout().catch(console.error);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontFamily: T2V_FONTS.heading,
+                    color: T2V_COLORS.errorRed,
+                    textAlign: 'left',
+                    borderTop: `1px solid ${T2V_COLORS.lightGray}`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = T2V_COLORS.errorBg; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T2V_COLORS.errorRed} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
