@@ -26,7 +26,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "dompurify": "^3.2.0",
@@ -53,6 +54,18 @@
       "optional": true
     }
   },
+  "keywords": [
+    "talk2view",
+    "ai",
+    "llm",
+    "chat",
+    "sdk",
+    "natural-language",
+    "react",
+    "agent",
+    "tools"
+  ],
+  "homepage": "https://talk2view.com",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
