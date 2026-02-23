@@ -31,7 +31,7 @@ export interface TokenResponse {
   token_type: string;
   expires_in: number;
   user: User | null;
-  litellm_api_key?: string;
+  user_api_key?: string;
 }
 
 export interface RefreshResponse {

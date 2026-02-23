@@ -10,7 +10,7 @@ import {
   getUser,
   hasValidTokens,
   setAccessToken,
-  setLiteLLMApiKey,
+  setUserApiKey,
   setRefreshToken,
   setUser,
 } from './storage';
@@ -119,8 +119,8 @@ export class T2VAuth {
     if (response.user) {
       setUser(response.user);
     }
-    if (response.litellm_api_key) {
-      setLiteLLMApiKey(response.litellm_api_key);
+    if (response.user_api_key) {
+      setUserApiKey(response.user_api_key);
     }
   }
 

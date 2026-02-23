@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/v1': {
-        target: 'http://localhost:8100',
+        target: 'https://engine.talk2view.com',
         changeOrigin: true,
       },
     },

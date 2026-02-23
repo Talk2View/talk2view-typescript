@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { getLiteLLMApiKey } from '../storage';
+import { getUserApiKey } from '../storage';
 import { T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
@@ -65,7 +65,7 @@ export function ChatInput({
         const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'https://engine.talk2view.com';
         const url = `${voiceUrl}/v1/audio/transcriptions`;
 
-        const apiKey = getLiteLLMApiKey();
+        const apiKey = getUserApiKey();
         const ext = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
 
         const formData = new FormData();

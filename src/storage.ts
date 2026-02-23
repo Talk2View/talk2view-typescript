@@ -68,19 +68,19 @@ export function setUser(user: object): void {
   set('user', JSON.stringify(user));
 }
 
-export function getLiteLLMApiKey(): string | null {
-  return get('litellm_api_key');
+export function getUserApiKey(): string | null {
+  return get('user_api_key');
 }
 
-export function setLiteLLMApiKey(key: string): void {
-  set('litellm_api_key', key);
+export function setUserApiKey(key: string): void {
+  set('user_api_key', key);
 }
 
 export function clearAuth(): void {
   remove('access_token');
   remove('refresh_token');
   remove('user');
-  remove('litellm_api_key');
+  remove('user_api_key');
 
   // Dispatch event for cross-component sync
   if (typeof window !== 'undefined') {

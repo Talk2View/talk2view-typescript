@@ -125,7 +125,7 @@ export function injectT2VStyles(): void {
   stylesInjected = true;
 }
 
-/* ── Logo Assets (hosted on Supabase Storage) ─────────────────── */
+/* ── Logo Assets ──────────────────────────────────────────────── */
 
 const T2V_ASSETS_BASE = 'https://db.talk2view.com/storage/v1/object/public/resources';
 
