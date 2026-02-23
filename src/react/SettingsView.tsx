@@ -3,10 +3,14 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { getUserApiKey } from '../storage';
 import type { Model, UserPreferences } from '../types';
 import { T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
+
+/** Known STT model ID prefixes/patterns — used to filter /v1/models results. */
+const STT_MODEL_PATTERNS = ['whisper', 'deepgram', 'stt'];
 
 export interface SettingsViewProps {
   onBack: () => void;
@@ -71,15 +75,16 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
   const { preferences, updatePreferences } = useUserPreferences();
   const [models, setModels] = useState<Model[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [sttModels, setSttModels] = useState<Model[]>([]);
+  const [sttModelsLoading, setSttModelsLoading] = useState(true);
 
-  // Fetch available models on mount
+  // Fetch available LLM models on mount
   useEffect(() => {
     let cancelled = false;
     setModelsLoading(true);
 
     const fetchModels = async () => {
       try {
-        // Access internal client to fetch models — client is private but accessible at runtime
         const client = (t2v as any).client;
         const res: { data: Model[] } = await client.request('/v1/models');
         if (!cancelled) setModels(res.data ?? []);
@@ -91,6 +96,38 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
     };
 
     fetchModels();
+    return () => { cancelled = true; };
+  }, [t2v]);
+
+  // Fetch available STT models from the voice API
+  useEffect(() => {
+    let cancelled = false;
+    setSttModelsLoading(true);
+
+    const fetchSttModels = async () => {
+      try {
+        const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'https://engine.talk2view.com';
+        const apiKey = getUserApiKey();
+        const headers: Record<string, string> = {};
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+        const response = await fetch(`${voiceUrl}/v1/models`, { headers });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const allModels: Model[] = data.data ?? [];
+        const filtered = allModels.filter((m) =>
+          STT_MODEL_PATTERNS.some((p) => m.id.toLowerCase().includes(p))
+        );
+        if (!cancelled) setSttModels(filtered);
+      } catch (err) {
+        console.error('Failed to fetch STT models:', err);
+      } finally {
+        if (!cancelled) setSttModelsLoading(false);
+      }
+    };
+
+    fetchSttModels();
     return () => { cancelled = true; };
   }, [t2v]);
 
@@ -197,13 +234,45 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
         {/* Speech-to-Text Model */}
         <div style={sectionStyle}>
           <div style={labelStyle}>Speech-to-Text Model</div>
-          <select
-            value={currentSttModel}
-            onChange={(e) => updatePreferences({ sttModel: e.target.value })}
-            style={selectStyle}
-          >
-            <option value="whisper-1">whisper-1</option>
-          </select>
+          {sttModelsLoading ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                fontSize: '13px',
+                fontFamily: T2V_FONTS.body,
+                color: T2V_COLORS.midGray,
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '14px',
+                  height: '14px',
+                  border: `2px solid ${T2V_COLORS.turquoise}`,
+                  borderTopColor: 'transparent',
+                  borderRadius: '50%',
+                  animation: 't2v-spin 0.6s linear infinite',
+                }}
+              />
+              Loading models...
+            </div>
+          ) : (
+            <select
+              value={currentSttModel}
+              onChange={(e) => updatePreferences({ sttModel: e.target.value })}
+              style={selectStyle}
+            >
+              {sttModels.length === 0 && (
+                <option value="whisper-1">whisper-1</option>
+              )}
+              {sttModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.id}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Speech-to-Text Language */}
