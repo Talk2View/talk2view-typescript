@@ -101,7 +101,7 @@ The SDK manages token storage, refresh, and retry automatically.
 
 Tools are functions that run **in your application**, not on the server. When the AI decides to call a tool:
 
-1. The server pauses the AI agent (via LangGraph `interrupt()`)
+1. The server pauses the AI agent
 2. The server sends a `tool_call` event to your app via SSE
 3. Your app executes the tool locally using the registered handler
 4. Your app sends the result back to the server (via `/resume`)
@@ -429,7 +429,7 @@ Stored keys:
 - `talk2view_access_token`
 - `talk2view_refresh_token`
 - `talk2view_user`
-- `talk2view_litellm_api_key`
+- `talk2view_user_api_key`
 
 On logout, all keys are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
 
@@ -591,4 +591,4 @@ import type {
 
 ## License
 
-Proprietary software owned by A2B Technology Corporation Pty Ltd.
+MIT License. See [LICENSE](./LICENSE) for details.
