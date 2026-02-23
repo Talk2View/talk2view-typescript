@@ -127,7 +127,11 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
     setMessages([]);
     setThreadId(null);
     setError(null);
-  }, []);
+    setTodos('');
+    setAgentStatus(null);
+    // Tell the SDK to drop the current session so the next message creates a fresh one
+    t2v.clearSession();
+  }, [t2v]);
 
   const clearError = useCallback(() => setError(null), []);
 

@@ -89,8 +89,14 @@ export class Talk2View {
 
   /**
    * Clear the current session so the next chat() creates a new one.
+   * Also deletes the session on the server so conversation history is reset.
    */
   clearSession(): void {
+    if (this.currentSession) {
+      const sessionId = this.currentSession.id;
+      // Fire-and-forget — don't block the UI on server cleanup
+      this.client.request(`/v1/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+    }
     this.currentSession = null;
   }
 }
