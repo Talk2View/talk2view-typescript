@@ -29,7 +29,7 @@ import { T2VAuth } from './auth';
 import { T2VClient } from './client';
 import { T2VSession } from './sessions';
 import { T2VTools } from './tools';
-import type { ChatEvent, ChatMessage, T2VConfig } from './types';
+import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
 
 export class Talk2View {
   readonly auth: T2VAuth;
@@ -39,6 +39,13 @@ export class Talk2View {
   private currentSession: T2VSession | null = null;
 
   constructor(config: T2VConfig) {
+    if (config.voiceApiUrl) {
+      console.warn(
+        '[Talk2View] voiceApiUrl is deprecated and has no effect. ' +
+        'Voice requests now route through baseUrl. ' +
+        'Remove voiceApiUrl from your T2VConfig.',
+      );
+    }
     this.config = config;
     this.client = new T2VClient(config);
     this.auth = new T2VAuth(this.client);
@@ -78,6 +85,27 @@ export class Talk2View {
     }
 
     yield* this.currentSession!.sendMessage(message, options);
+  }
+
+  /**
+   * List available LLM models.
+   */
+  async listModels(): Promise<ModelsResponse> {
+    return this.client.request<ModelsResponse>('/v1/models');
+  }
+
+  /**
+   * Transcribe audio via the engine's /v1/audio/transcriptions endpoint.
+   */
+  async transcribe(formData: FormData): Promise<TranscriptionResponse> {
+    return this.client.uploadRequest<TranscriptionResponse>('/v1/audio/transcriptions', formData);
+  }
+
+  /**
+   * List available speech-to-text models.
+   */
+  async listAudioModels(): Promise<AudioModelsResponse> {
+    return this.client.request<AudioModelsResponse>('/v1/audio/models');
   }
 
   /**
@@ -122,5 +150,7 @@ export type {
   RegisterToolsResponse,
   Model,
   ModelsResponse,
+  TranscriptionResponse,
+  AudioModelsResponse,
   UserPreferences,
 } from './types';

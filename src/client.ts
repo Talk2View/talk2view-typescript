@@ -86,6 +86,68 @@ export class T2VClient {
   }
 
   /**
+   * Make an authenticated multipart upload request (e.g. audio files).
+   * Does NOT set Content-Type — the browser sets it with the correct boundary.
+   */
+  async uploadRequest<T>(
+    endpoint: string,
+    formData: FormData,
+    requiresAuth = true,
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      'X-T2V-Partner-Key': this.partnerKey,
+    };
+
+    if (requiresAuth) {
+      const token = getAccessToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+    } catch (err) {
+      throw new NetworkError(
+        `Network request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    }
+
+    // Handle 401 — try to refresh token
+    if (response.status === 401 && requiresAuth) {
+      const refreshed = await this.tryRefreshToken();
+      if (refreshed) {
+        headers['Authorization'] = `Bearer ${getAccessToken()}`;
+        const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+        if (!retryResponse.ok) {
+          const error = await retryResponse.json().catch(() => ({ error: { message: 'Upload failed' } }));
+          throw new T2VError(error?.error?.message ?? 'Upload failed', error?.error?.type, retryResponse.status);
+        }
+        return retryResponse.json();
+      } else {
+        clearAuth();
+        throw new AuthenticationError('Session expired. Please log in again.');
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Upload failed' } }));
+      throw new T2VError(error?.error?.message ?? 'Upload failed', error?.error?.type, response.status);
+    }
+
+    return response.json();
+  }
+
+  /**
    * Make an authenticated SSE streaming request.
    */
   async *streamRequest(

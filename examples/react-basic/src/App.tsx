@@ -51,7 +51,7 @@ const tools: ClientTool[] = [
 
 export default function App() {
   return (
-    <T2VProvider partnerKey="pk_test_ex_reactbasic_local_dev_12345" baseUrl="" voiceApiUrl="https://t2v4-staging.talk2view.com">
+    <T2VProvider partnerKey="pk_test_ex_reactbasic_local_dev_12345" baseUrl="">
       <div style={{ display: 'flex', height: '100vh' }}>
         {/* Your application content */}
         <div style={{ flex: 1, padding: '32px' }}>

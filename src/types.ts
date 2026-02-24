@@ -3,6 +3,7 @@
 export interface T2VConfig {
   partnerKey: string;
   baseUrl?: string;
+  /** @deprecated Voice requests now route through baseUrl. This option will be removed in a future version. */
   voiceApiUrl?: string;
   model?: string;
 }
@@ -153,6 +154,14 @@ export interface ModelsResponse {
   object: string;
   data: Model[];
 }
+
+// ── Audio ──
+
+export interface TranscriptionResponse {
+  text: string;
+}
+
+export type AudioModelsResponse = ModelsResponse;
 
 // ── User Preferences ──
 

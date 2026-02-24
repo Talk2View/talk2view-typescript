@@ -3,14 +3,10 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getUserApiKey } from '../storage';
 import type { Model, UserPreferences } from '../types';
 import { T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
-
-/** Known STT model ID prefixes/patterns — used to filter /v1/models results. */
-const STT_MODEL_PATTERNS = ['whisper', 'deepgram', 'stt'];
 
 export interface SettingsViewProps {
   onBack: () => void;
@@ -85,8 +81,7 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
 
     const fetchModels = async () => {
       try {
-        const client = (t2v as any).client;
-        const res: { data: Model[] } = await client.request('/v1/models');
+        const res = await t2v.listModels();
         if (!cancelled) setModels(res.data ?? []);
       } catch (err) {
         console.error('Failed to fetch models:', err);
@@ -99,27 +94,15 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
     return () => { cancelled = true; };
   }, [t2v]);
 
-  // Fetch available STT models from the voice API
+  // Fetch available STT models via the engine (server-side filtering)
   useEffect(() => {
     let cancelled = false;
     setSttModelsLoading(true);
 
     const fetchSttModels = async () => {
       try {
-        const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'https://engine.talk2view.com';
-        const apiKey = getUserApiKey();
-        const headers: Record<string, string> = {};
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-        const response = await fetch(`${voiceUrl}/v1/models`, { headers });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        const allModels: Model[] = data.data ?? [];
-        const filtered = allModels.filter((m) =>
-          STT_MODEL_PATTERNS.some((p) => m.id.toLowerCase().includes(p))
-        );
-        if (!cancelled) setSttModels(filtered);
+        const data = await t2v.listAudioModels();
+        if (!cancelled) setSttModels(data.data ?? []);
       } catch (err) {
         console.error('Failed to fetch STT models:', err);
       } finally {
@@ -132,7 +115,7 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
   }, [t2v]);
 
   const currentModel = preferences.model || t2v.config.model || '';
-  const currentSttModel = preferences.sttModel || 'whisper-1';
+  const currentSttModel = preferences.sttModel || '';
   const currentSttLanguage = preferences.sttLanguage ?? '';
   const currentFontSize = preferences.fontSize || 'medium';
 
@@ -266,7 +249,10 @@ export function SettingsView({ onBack, onModelChange }: SettingsViewProps) {
               style={selectStyle}
             >
               {sttModels.length === 0 && (
-                <option value="whisper-1">whisper-1</option>
+                <option value="">No models available</option>
+              )}
+              {!currentSttModel && sttModels.length > 0 && (
+                <option value="">Select a model</option>
               )}
               {sttModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.id}</option>

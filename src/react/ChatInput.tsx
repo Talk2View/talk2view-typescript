@@ -5,7 +5,6 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { getUserApiKey } from '../storage';
 import { T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
@@ -35,7 +34,7 @@ export function ChatInput({
   const chunksRef = useRef<Blob[]>([]);
 
   const canSend = value.trim().length > 0 && !disabled;
-  const micDisabled = disabled || isTranscribing;
+  const micDisabled = disabled || isTranscribing || !preferences.sttModel;
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -62,30 +61,18 @@ export function ChatInput({
     async (audioBlob: Blob) => {
       setIsTranscribing(true);
       try {
-        const voiceUrl = t2v.config.voiceApiUrl || t2v.config.baseUrl || 'https://engine.talk2view.com';
-        const url = `${voiceUrl}/v1/audio/transcriptions`;
-
-        const apiKey = getUserApiKey();
         const ext = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
 
         const formData = new FormData();
         formData.append('file', audioBlob, `recording.${ext}`);
-        formData.append('model', preferences.sttModel ?? 'whisper-1');
+        if (preferences.sttModel) {
+          formData.append('model', preferences.sttModel);
+        }
         if (preferences.sttLanguage) {
           formData.append('language', preferences.sttLanguage);
         }
 
-        const headers: Record<string, string> = {};
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-        const response = await fetch(url, { method: 'POST', headers, body: formData });
-
-        if (!response.ok) {
-          console.error('Transcription failed:', response.status);
-          return;
-        }
-
-        const data = await response.json();
+        const data = await t2v.transcribe(formData);
         const text = data.text?.trim();
         if (text) {
           onSend(text);
@@ -105,8 +92,9 @@ export function ChatInput({
       return;
     }
 
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       chunksRef.current = [];
 
@@ -117,7 +105,7 @@ export function ChatInput({
       mediaRecorder.onstop = () => {
         const mimeType = mediaRecorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(chunksRef.current, { type: mimeType });
-        stream.getTracks().forEach((track) => track.stop());
+        stream!.getTracks().forEach((track) => track.stop());
         chunksRef.current = [];
         mediaRecorderRef.current = null;
         setIsRecording(false);
@@ -127,10 +115,11 @@ export function ChatInput({
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
+      mediaRecorder.start(1000); // flush chunks every 1s — fixes Safari dropping early audio
       setIsRecording(true);
     } catch (err) {
-      console.error('Microphone access denied:', err);
+      stream?.getTracks().forEach((track) => track.stop());
+      console.error('Voice recording error:', err);
     }
   }, [isRecording, transcribeAudio]);
 
@@ -197,7 +186,8 @@ export function ChatInput({
           transform: micHover && !micDisabled ? 'translateY(-1px)' : 'none',
           flexShrink: 0,
         }}
-        aria-label={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Start voice input'}
+        title={!preferences.sttModel ? 'Select a Speech-to-Text model in Settings to enable voice input' : undefined}
+        aria-label={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : !preferences.sttModel ? 'Voice input unavailable' : 'Start voice input'}
       >
         {isTranscribing ? (
           <span

@@ -23,7 +23,7 @@ export interface T2VProviderProps extends T2VConfig {
 }
 
 export function T2VProvider({ children, ...config }: T2VProviderProps) {
-  const t2v = useMemo(() => new Talk2View(config), [config.partnerKey, config.baseUrl, config.voiceApiUrl, config.model]);
+  const t2v = useMemo(() => new Talk2View(config), [config.partnerKey, config.baseUrl, config.model]);
   const [user, setUser] = useState<User | null>(() => t2v.auth.getUser());
 
   useEffect(() => {
