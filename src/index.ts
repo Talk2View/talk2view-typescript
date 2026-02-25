@@ -109,6 +109,21 @@ export class Talk2View {
   }
 
   /**
+   * Send a direct completion request (e.g. MedGemma) routed through the engine.
+   */
+  async completions(body: {
+    model: string;
+    messages: Array<{ role: string; content: unknown }>;
+    max_tokens?: number;
+    temperature?: number;
+  }): Promise<unknown> {
+    return this.client.request('/v1/completions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
    * Get the current session (if any).
    */
   getSession(): T2VSession | null {
