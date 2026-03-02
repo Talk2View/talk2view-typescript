@@ -2,7 +2,7 @@
  * useT2VTools — React hook for tool registration.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ClientTool, ClientToolSchema, RegisterToolsResponse } from '../types';
 import { useT2V } from './T2VProvider';
 
@@ -15,13 +15,13 @@ export interface UseT2VToolsResult {
 export function useT2VTools(): UseT2VToolsResult {
   const { t2v, isAuthenticated } = useT2V();
   const [registeredTools, setRegisteredTools] = useState<string[]>([]);
-  const registeredRef = useRef(false);
+  const [isRegistered, setIsRegistered] = useState(false);
 
   const registerTools = useCallback(
     async (tools: (ClientToolSchema | ClientTool)[]) => {
       const response = await t2v.tools.register(tools);
       setRegisteredTools(response.registered);
-      registeredRef.current = true;
+      setIsRegistered(true);
       return response;
     },
     [t2v],
@@ -31,13 +31,13 @@ export function useT2VTools(): UseT2VToolsResult {
   useEffect(() => {
     if (!isAuthenticated) {
       setRegisteredTools([]);
-      registeredRef.current = false;
+      setIsRegistered(false);
     }
   }, [isAuthenticated]);
 
   return {
     registerTools,
     registeredTools,
-    isRegistered: registeredRef.current,
+    isRegistered,
   };
 }
