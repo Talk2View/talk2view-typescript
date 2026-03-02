@@ -184,8 +184,10 @@ export function ChatPanel({
           color: T2V_COLORS.light,
         }}
       >
-        <T2VLogo size={22} variant="horizontalDark" />
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
+          <T2VLogo size={22} variant="horizontalDark" />
+        </div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
           <button
             onClick={clearMessages}
             onMouseEnter={() => setClearHover(true)}
