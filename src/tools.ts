@@ -70,10 +70,14 @@ export class T2VTools {
     }
 
     try {
-      const result = await handler(args);
+      const raw = await handler(args);
+      const result = typeof raw === 'string' ? raw : JSON.stringify(raw);
       return { result, isError: false };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Tool execution failed';
+      const message =
+        err instanceof Error ? err.message :
+        typeof err === 'string' ? err :
+        JSON.stringify(err);
       return {
         result: JSON.stringify({ error: message }),
         isError: true,
