@@ -52,6 +52,8 @@ export function ChatPanel({
   });
   const { preferences } = useUserPreferences();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  const roRef = useRef<ResizeObserver | null>(null);
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [clearHover, setClearHover] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -62,6 +64,26 @@ export function ChatPanel({
   const profileRef = useRef<HTMLDivElement>(null);
 
   const fontScale = FONT_SCALE_MAP[preferences.fontSize || 'medium'];
+
+  // Callback ref: (re-)attaches ResizeObserver whenever the root element changes
+  const panelRef = useCallback((node: HTMLDivElement | null) => {
+    if (roRef.current) {
+      roRef.current.disconnect();
+      roRef.current = null;
+    }
+    if (!node) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+        setCompact(w > 0 && w < 360);
+      }
+    });
+    ro.observe(node);
+    roRef.current = ro;
+  }, []);
+
+  // Disconnect ResizeObserver on unmount
+  useEffect(() => () => { roRef.current?.disconnect(); }, []);
 
   // Restore saved model preference on mount
   useEffect(() => {
@@ -152,7 +174,7 @@ export function ChatPanel({
 
   if (!isAuthenticated) {
     return (
-      <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+      <div ref={panelRef} className={`t2v-chat-panel ${className}`} style={panelShell}>
         <LoginModal signupUrl={signupUrl} />
       </div>
     );
@@ -160,29 +182,29 @@ export function ChatPanel({
 
   if (currentView === 'settings') {
     return (
-      <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+      <div ref={panelRef} className={`t2v-chat-panel ${className}`} style={panelShell}>
         <SettingsView onBack={() => setCurrentView('chat')} onModelChange={handleModelChange} />
       </div>
     );
   }
 
   return (
-    <div className={`t2v-chat-panel ${className}`} style={panelShell}>
+    <div ref={panelRef} className={`t2v-chat-panel ${className}`} style={panelShell}>
       {/* Header */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '12px 16px',
+          padding: compact ? '8px 12px' : '12px 16px',
           backgroundColor: T2V_COLORS.dark,
           color: T2V_COLORS.light,
         }}
       >
         <div style={{ flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-          <T2VLogo size={22} variant="horizontalDark" />
+          <T2VLogo size={compact ? 18 : 22} variant="horizontalDark" />
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: compact ? '6px' : '10px', alignItems: 'center', flexShrink: 0 }}>
           <button
             onClick={clearMessages}
             onMouseEnter={() => setClearHover(true)}
@@ -192,7 +214,7 @@ export function ChatPanel({
               borderRadius: '6px',
               border: `1px solid ${clearHover ? T2V_COLORS.turquoise : T2V_ALPHA.light20}`,
               backgroundColor: clearHover ? T2V_ALPHA.turquoise10 : 'transparent',
-              fontSize: '12px',
+              fontSize: compact ? '11px' : '12px',
               fontFamily: T2V_FONTS.heading,
               cursor: 'pointer',
               color: T2V_COLORS.light,
@@ -206,8 +228,8 @@ export function ChatPanel({
             <button
               onClick={() => setProfileOpen((v) => !v)}
               style={{
-                width: '30px',
-                height: '30px',
+                width: compact ? '26px' : '30px',
+                height: compact ? '26px' : '30px',
                 borderRadius: '50%',
                 border: `1.5px solid ${profileOpen ? T2V_COLORS.turquoise : T2V_ALPHA.light30}`,
                 backgroundColor: profileOpen ? T2V_ALPHA.turquoise15 : T2V_ALPHA.light10,
@@ -649,7 +671,7 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <ChatInput onSend={handleSend} disabled={isLoading} />
+      <ChatInput onSend={handleSend} disabled={isLoading} compact={compact} />
     </div>
   );
 }

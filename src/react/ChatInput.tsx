@@ -12,6 +12,7 @@ import { useUserPreferences } from './useUserPreferences';
 export interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  compact?: boolean;
   placeholder?: string;
   className?: string;
 }
@@ -19,6 +20,7 @@ export interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
+  compact = false,
   placeholder = 'Type a message...',
   className = '',
 }: ChatInputProps) {
@@ -129,8 +131,9 @@ export function ChatInput({
       className={`t2v-chat-input ${className}`}
       style={{
         display: 'flex',
-        gap: '8px',
-        padding: '12px',
+        gap: compact ? '6px' : '8px',
+        padding: compact ? '8px' : '12px',
+        boxSizing: 'border-box',
         borderTop: `1px solid ${T2V_COLORS.lightGray}`,
         backgroundColor: T2V_COLORS.light,
       }}
@@ -146,10 +149,11 @@ export function ChatInput({
         disabled={disabled}
         style={{
           flex: 1,
-          padding: '10px 14px',
+          minWidth: 0,
+          padding: compact ? '8px 10px' : '10px 14px',
           borderRadius: '8px',
           border: `1.5px solid ${inputFocused ? T2V_COLORS.turquoise : T2V_COLORS.lightGray}`,
-          fontSize: '14px',
+          fontSize: compact ? '13px' : '14px',
           fontFamily: T2V_FONTS.body,
           outline: 'none',
           backgroundColor: disabled ? T2V_COLORS.lightGray : '#ffffff',
@@ -169,8 +173,8 @@ export function ChatInput({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: '42px',
-          height: '42px',
+          width: compact ? '36px' : '42px',
+          height: compact ? '36px' : '42px',
           borderRadius: '8px',
           border: 'none',
           backgroundColor: isRecording
@@ -220,8 +224,8 @@ export function ChatInput({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: '42px',
-          height: '42px',
+          width: compact ? '36px' : '42px',
+          height: compact ? '36px' : '42px',
           borderRadius: '8px',
           border: 'none',
           backgroundColor: canSend
