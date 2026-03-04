@@ -42,8 +42,8 @@ export function ChatMessage({ message, className = '' }: ChatMessageProps) {
           maxWidth: '80%',
           padding: '10px 14px',
           borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-          backgroundColor: isUser ? T2V_COLORS.dark : 'rgba(64, 212, 182, 0.08)',
-          color: isUser ? T2V_COLORS.light : T2V_COLORS.dark,
+          backgroundColor: isUser ? 'rgba(64, 212, 182, 0.15)' : 'rgba(64, 212, 182, 0.08)',
+          color: T2V_COLORS.dark,
           fontSize: '14px',
           fontFamily: T2V_FONTS.body,
           lineHeight: '1.55',
@@ -65,7 +65,7 @@ export function ChatMessage({ message, className = '' }: ChatMessageProps) {
               display: 'inline-block',
               width: '2px',
               height: '14px',
-              backgroundColor: isUser ? T2V_COLORS.light : T2V_COLORS.turquoise,
+              backgroundColor: T2V_COLORS.turquoise,
               marginLeft: '2px',
               animation: 't2v-blink 1s infinite',
             }}
@@ -75,7 +75,7 @@ export function ChatMessage({ message, className = '' }: ChatMessageProps) {
           style={{
             fontSize: '10px',
             fontFamily: T2V_FONTS.heading,
-            color: isUser ? 'rgba(248, 250, 252, 0.5)' : T2V_COLORS.midGray,
+            color: T2V_COLORS.midGray,
             marginTop: '4px',
             textAlign: 'right',
           }}
