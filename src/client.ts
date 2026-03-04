@@ -164,11 +164,18 @@ export class T2VClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      throw new NetworkError(
+        `Stream request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    }
 
     if (!response.ok) {
       if (response.status === 401) {
