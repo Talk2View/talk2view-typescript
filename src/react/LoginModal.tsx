@@ -4,7 +4,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { useT2VAuth } from './useT2VAuth';
-import { T2V_COLORS, T2V_FONTS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
+import { T2V_ALPHA, T2V_COLORS, T2V_FONTS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
 
 export interface LoginModalProps {
   signupUrl?: string;
@@ -57,7 +57,7 @@ export function LoginModal({
     boxSizing: 'border-box',
     color: T2V_COLORS.dark,
     backgroundColor: '#ffffff',
-    boxShadow: focused ? '0 0 0 3px rgba(64, 212, 182, 0.15)' : 'none',
+    boxShadow: focused ? `0 0 0 3px ${T2V_ALPHA.turquoise15}` : 'none',
     transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
   });
 

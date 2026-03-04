@@ -2,7 +2,7 @@
  * useT2VChat — React hook for chat interactions with streaming and auto tool handling.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatEvent, ChatMessage } from '../types';
 import { useT2V } from './T2VProvider';
 
@@ -39,7 +39,8 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
   const [threadId, setThreadId] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<{ status: string; message: string } | null>(null);
   const [todos, setTodos] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef<DisplayMessage[]>([]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -65,8 +66,8 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-      // Build conversation history for context
-      const history: ChatMessage[] = messages.map((m) => ({
+      // Build conversation history from ref (avoids stale closure over messages state)
+      const history: ChatMessage[] = messagesRef.current.map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -120,7 +121,7 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
         setIsLoading(false);
       }
     },
-    [t2v, messages, options?.systemPrompt],
+    [t2v, options?.systemPrompt],
   );
 
   const clearMessages = useCallback(() => {

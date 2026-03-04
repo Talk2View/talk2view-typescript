@@ -15,13 +15,11 @@ export interface UseT2VToolsResult {
 export function useT2VTools(): UseT2VToolsResult {
   const { t2v, isAuthenticated } = useT2V();
   const [registeredTools, setRegisteredTools] = useState<string[]>([]);
-  const [isRegistered, setIsRegistered] = useState(false);
 
   const registerTools = useCallback(
     async (tools: (ClientToolSchema | ClientTool)[]) => {
       const response = await t2v.tools.register(tools);
       setRegisteredTools(response.registered);
-      setIsRegistered(true);
       return response;
     },
     [t2v],
@@ -31,13 +29,12 @@ export function useT2VTools(): UseT2VToolsResult {
   useEffect(() => {
     if (!isAuthenticated) {
       setRegisteredTools([]);
-      setIsRegistered(false);
     }
   }, [isAuthenticated]);
 
   return {
     registerTools,
     registeredTools,
-    isRegistered,
+    isRegistered: registeredTools.length > 0,
   };
 }

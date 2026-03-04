@@ -31,50 +31,36 @@ export class T2VClient {
   }
 
   /**
-   * Make an authenticated JSON request.
+   * Execute a fetch with network-error wrapping, 401 refresh/retry, and error parsing.
    */
-  async request<T>(
+  private async fetchWithAuth(
     endpoint: string,
-    options: RequestInit = {},
-    requiresAuth = true,
-  ): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-T2V-Partner-Key': this.partnerKey,
-      ...(options.headers as Record<string, string> | undefined),
-    };
-
-    if (requiresAuth) {
-      const token = getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    }
-
+    init: RequestInit,
+    headers: Record<string, string>,
+    requiresAuth: boolean,
+  ): Promise<Response> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${endpoint}`, { ...options, headers });
+      response = await fetch(`${this.baseUrl}${endpoint}`, { ...init, headers });
     } catch (err) {
       throw new NetworkError(
-        `Network request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        `Request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
 
-    // Handle 401 — try to refresh token
     if (response.status === 401 && requiresAuth) {
       const refreshed = await this.tryRefreshToken();
       if (refreshed) {
         headers['Authorization'] = `Bearer ${getAccessToken()}`;
-        const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, { ...options, headers });
+        const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, { ...init, headers });
         if (!retryResponse.ok) {
           const error = await retryResponse.json().catch(() => ({ error: { message: 'Request failed' } }));
           throw new T2VError(error?.error?.message ?? 'Request failed', error?.error?.type, retryResponse.status);
         }
-        return retryResponse.json();
-      } else {
-        clearAuth();
-        throw new AuthenticationError('Session expired. Please log in again.');
+        return retryResponse;
       }
+      clearAuth();
+      throw new AuthenticationError('Session expired. Please log in again.');
     }
 
     if (!response.ok) {
@@ -82,6 +68,39 @@ export class T2VClient {
       throw new T2VError(error?.error?.message ?? 'Request failed', error?.error?.type, response.status);
     }
 
+    return response;
+  }
+
+  private buildHeaders(
+    requiresAuth: boolean,
+    extra?: Record<string, string>,
+  ): Record<string, string> {
+    const headers: Record<string, string> = {
+      'X-T2V-Partner-Key': this.partnerKey,
+      ...extra,
+    };
+    if (requiresAuth) {
+      const token = getAccessToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    return headers;
+  }
+
+  /**
+   * Make an authenticated JSON request.
+   */
+  async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    requiresAuth = true,
+  ): Promise<T> {
+    const headers = this.buildHeaders(requiresAuth, {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined),
+    });
+    const response = await this.fetchWithAuth(endpoint, options, headers, requiresAuth);
     return response.json();
   }
 
@@ -94,56 +113,13 @@ export class T2VClient {
     formData: FormData,
     requiresAuth = true,
   ): Promise<T> {
-    const headers: Record<string, string> = {
-      'X-T2V-Partner-Key': this.partnerKey,
-    };
-
-    if (requiresAuth) {
-      const token = getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-    } catch (err) {
-      throw new NetworkError(
-        `Network request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
-      );
-    }
-
-    // Handle 401 — try to refresh token
-    if (response.status === 401 && requiresAuth) {
-      const refreshed = await this.tryRefreshToken();
-      if (refreshed) {
-        headers['Authorization'] = `Bearer ${getAccessToken()}`;
-        const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-        if (!retryResponse.ok) {
-          const error = await retryResponse.json().catch(() => ({ error: { message: 'Upload failed' } }));
-          throw new T2VError(error?.error?.message ?? 'Upload failed', error?.error?.type, retryResponse.status);
-        }
-        return retryResponse.json();
-      } else {
-        clearAuth();
-        throw new AuthenticationError('Session expired. Please log in again.');
-      }
-    }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Upload failed' } }));
-      throw new T2VError(error?.error?.message ?? 'Upload failed', error?.error?.type, response.status);
-    }
-
+    const headers = this.buildHeaders(requiresAuth);
+    const response = await this.fetchWithAuth(
+      endpoint,
+      { method: 'POST', body: formData },
+      headers,
+      requiresAuth,
+    );
     return response.json();
   }
 
@@ -154,54 +130,14 @@ export class T2VClient {
     endpoint: string,
     body: object,
   ): AsyncGenerator<ChatCompletionChunk> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-T2V-Partner-Key': this.partnerKey,
-    };
-
-    const token = getAccessToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-    } catch (err) {
-      throw new NetworkError(
-        `Stream request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
-      );
-    }
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        const refreshed = await this.tryRefreshToken();
-        if (refreshed) {
-          // Retry with new token
-          headers['Authorization'] = `Bearer ${getAccessToken()}`;
-          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-          });
-          if (!retryResponse.ok) {
-            throw new T2VError('Stream request failed after token refresh');
-          }
-          yield* decodeSSEStream(retryResponse);
-          return;
-        }
-        clearAuth();
-        throw new AuthenticationError('Session expired. Please log in again.');
-      }
-
-      const error = await response.json().catch(() => ({ error: { message: 'Stream request failed' } }));
-      throw new T2VError(error?.error?.message ?? 'Stream request failed', error?.error?.type, response.status);
-    }
-
+    const headers = this.buildHeaders(true, { 'Content-Type': 'application/json' });
+    const serializedBody = JSON.stringify(body);
+    const response = await this.fetchWithAuth(
+      endpoint,
+      { method: 'POST', body: serializedBody },
+      headers,
+      true,
+    );
     yield* decodeSSEStream(response);
   }
 

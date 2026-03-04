@@ -6,7 +6,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import React, { useMemo } from 'react';
 import type { DisplayMessage } from './useT2VChat';
-import { T2V_COLORS, T2V_FONTS } from './theme';
+import { T2V_ALPHA, T2V_COLORS, T2V_FONTS } from './theme';
 
 // Configure marked for inline-friendly output
 marked.setOptions({ breaks: true, gfm: true });
@@ -42,7 +42,7 @@ export function ChatMessage({ message, className = '' }: ChatMessageProps) {
           maxWidth: '80%',
           padding: '10px 14px',
           borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-          backgroundColor: isUser ? 'rgba(64, 212, 182, 0.15)' : 'rgba(64, 212, 182, 0.08)',
+          backgroundColor: isUser ? T2V_ALPHA.turquoise15 : T2V_ALPHA.turquoise08,
           color: T2V_COLORS.dark,
           fontSize: '14px',
           fontFamily: T2V_FONTS.body,

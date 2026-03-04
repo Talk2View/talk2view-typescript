@@ -17,11 +17,6 @@ function renderInline(text: string): string {
   return DOMPurify.sanitize(typeof raw === 'string' ? raw : '');
 }
 
-/** Parse block markdown and sanitize. */
-function renderBlock(text: string): string {
-  const raw = marked.parse(text);
-  return DOMPurify.sanitize(typeof raw === 'string' ? raw : '');
-}
 import { ChatMessage } from './ChatMessage';
 import { LoginModal } from './LoginModal';
 import { SettingsView } from './SettingsView';
@@ -30,7 +25,7 @@ import { useT2VAuth } from './useT2VAuth';
 import { useT2VChat } from './useT2VChat';
 import { useT2VTools } from './useT2VTools';
 import { useUserPreferences } from './useUserPreferences';
-import { T2V_COLORS, T2V_FONTS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
+import { T2V_ALPHA, T2V_COLORS, T2V_FONTS, T2V_SHADOWS, T2VLogo, injectT2VFonts, injectT2VStyles } from './theme';
 
 const FONT_SCALE_MAP = { small: 0.9, medium: 1.0, large: 1.1 } as const;
 
@@ -147,7 +142,7 @@ export function ChatPanel({
     width: fontScale === 1 ? '100%' : `${100 / fontScale}%`,
     backgroundColor: T2V_COLORS.light,
     borderRadius: '12px',
-    boxShadow: '0 4px 24px rgba(1, 22, 30, 0.10)',
+    boxShadow: T2V_SHADOWS.panel,
     overflow: 'hidden',
     fontFamily: T2V_FONTS.body,
     transform: fontScale === 1 ? undefined : `scale(${fontScale})`,
@@ -195,8 +190,8 @@ export function ChatPanel({
             style={{
               padding: '4px 10px',
               borderRadius: '6px',
-              border: `1px solid ${clearHover ? T2V_COLORS.turquoise : 'rgba(248, 250, 252, 0.2)'}`,
-              backgroundColor: clearHover ? 'rgba(64, 212, 182, 0.1)' : 'transparent',
+              border: `1px solid ${clearHover ? T2V_COLORS.turquoise : T2V_ALPHA.light20}`,
+              backgroundColor: clearHover ? T2V_ALPHA.turquoise10 : 'transparent',
               fontSize: '12px',
               fontFamily: T2V_FONTS.heading,
               cursor: 'pointer',
@@ -214,8 +209,8 @@ export function ChatPanel({
                 width: '30px',
                 height: '30px',
                 borderRadius: '50%',
-                border: `1.5px solid ${profileOpen ? T2V_COLORS.turquoise : 'rgba(248, 250, 252, 0.3)'}`,
-                backgroundColor: profileOpen ? 'rgba(64, 212, 182, 0.15)' : 'rgba(248, 250, 252, 0.1)',
+                border: `1.5px solid ${profileOpen ? T2V_COLORS.turquoise : T2V_ALPHA.light30}`,
+                backgroundColor: profileOpen ? T2V_ALPHA.turquoise15 : T2V_ALPHA.light10,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -239,7 +234,7 @@ export function ChatPanel({
                   marginTop: '6px',
                   backgroundColor: T2V_COLORS.light,
                   borderRadius: '8px',
-                  boxShadow: '0 4px 16px rgba(1, 22, 30, 0.15)',
+                  boxShadow: T2V_SHADOWS.dropdown,
                   minWidth: '180px',
                   zIndex: 100,
                   overflow: 'hidden',
@@ -400,7 +395,7 @@ export function ChatPanel({
         <div
           style={{
             borderTop: `1px solid ${T2V_COLORS.lightGray}`,
-            backgroundColor: 'rgba(64, 212, 182, 0.06)',
+            backgroundColor: T2V_ALPHA.turquoise06,
           }}
         >
           <div
@@ -575,7 +570,7 @@ export function ChatPanel({
                   fontSize: '11px',
                   fontFamily: T2V_FONTS.heading,
                   color: T2V_COLORS.turquoise,
-                  backgroundColor: toolsOpen ? 'rgba(64, 212, 182, 0.2)' : 'rgba(64, 212, 182, 0.12)',
+                  backgroundColor: toolsOpen ? T2V_ALPHA.turquoise20 : T2V_ALPHA.turquoise12,
                   padding: '2px 8px',
                   borderRadius: '10px',
                   border: 'none',
@@ -594,7 +589,7 @@ export function ChatPanel({
                     marginBottom: '6px',
                     backgroundColor: T2V_COLORS.light,
                     borderRadius: '8px',
-                    boxShadow: '0 4px 16px rgba(1, 22, 30, 0.15)',
+                    boxShadow: T2V_SHADOWS.dropdown,
                     border: `1px solid ${T2V_COLORS.lightGray}`,
                     minWidth: '220px',
                     maxWidth: '300px',

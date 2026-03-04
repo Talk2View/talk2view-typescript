@@ -18,6 +18,27 @@ export const T2V_COLORS = {
   errorBg: '#FEF2F2',
 } as const;
 
+/* ── Alpha Variants ───────────────────────────────────────────── */
+
+export const T2V_ALPHA = {
+  turquoise06: 'rgba(64, 212, 182, 0.06)',
+  turquoise08: 'rgba(64, 212, 182, 0.08)',
+  turquoise10: 'rgba(64, 212, 182, 0.1)',
+  turquoise12: 'rgba(64, 212, 182, 0.12)',
+  turquoise15: 'rgba(64, 212, 182, 0.15)',
+  turquoise20: 'rgba(64, 212, 182, 0.2)',
+  light20: 'rgba(248, 250, 252, 0.2)',
+  light30: 'rgba(248, 250, 252, 0.3)',
+  light10: 'rgba(248, 250, 252, 0.1)',
+  dark10: 'rgba(1, 22, 30, 0.10)',
+  dark15: 'rgba(1, 22, 30, 0.15)',
+} as const;
+
+export const T2V_SHADOWS = {
+  panel: `0 4px 24px ${T2V_ALPHA.dark10}` as const,
+  dropdown: `0 4px 16px ${T2V_ALPHA.dark15}` as const,
+} as const;
+
 /* ── Brand Fonts ───────────────────────────────────────────────── */
 
 export const T2V_FONTS = {

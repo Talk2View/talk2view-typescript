@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { T2V_COLORS, T2V_FONTS } from './theme';
+import { T2V_ALPHA, T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
 
@@ -154,7 +154,7 @@ export function ChatInput({
           outline: 'none',
           backgroundColor: disabled ? T2V_COLORS.lightGray : '#ffffff',
           color: T2V_COLORS.dark,
-          boxShadow: inputFocused ? `0 0 0 3px rgba(64, 212, 182, 0.15)` : 'none',
+          boxShadow: inputFocused ? `0 0 0 3px ${T2V_ALPHA.turquoise15}` : 'none',
           transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
         }}
       />
