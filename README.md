@@ -88,6 +88,13 @@ Every request requires a partner API key (`X-T2V-Partner-Key` header). Keys are 
 
 The SDK attaches this header automatically.
 
+**Partner keys are public identifiers**, not secrets. They identify your application but do not grant access to user data — every data-accessing request also requires a user JWT. It is safe to include partner keys in client-side bundles.
+
+Best practices:
+- Inject keys via environment variables at build time (e.g. `VITE_T2V_PARTNER_KEY`)
+- Use separate `pk_test_` and `pk_live_` keys for development and production
+- To rotate a key, generate a new key in the Talk2View dashboard, update your app, then deactivate the old key
+
 ### Two-Tier Authentication
 
 Talk2View uses two layers of auth on every request:
@@ -196,6 +203,8 @@ const {
   isLoading,         // boolean — true while streaming
   error,             // string | null
   threadId,          // string | null
+  agentStatus,       // { type: string; message: string } | null — real-time agent status
+  todos,             // string — agent's current todo/plan text
   sendMessage,       // (content: string) => Promise<void>
   clearMessages,     // () => void
   clearError,        // () => void
@@ -320,6 +329,43 @@ for await (const event of t2v.chat('Zoom in please')) {
 }
 ```
 
+#### `t2v.clearSession()`
+
+Reset the current session. Clears the thread ID so the next `chat()` call starts a fresh conversation.
+
+```typescript
+t2v.clearSession();
+```
+
+#### `t2v.listModels()` / `t2v.listAudioModels()`
+
+List available models:
+
+```typescript
+const models = await t2v.listModels();         // Chat/completion models
+const audioModels = await t2v.listAudioModels(); // Speech-to-text models
+```
+
+#### `t2v.transcribe()`
+
+Transcribe an audio file using the server's speech-to-text service:
+
+```typescript
+const result = await t2v.transcribe(audioBlob, 'whisper-1', 'en');
+console.log(result.text);
+```
+
+#### `t2v.completions()`
+
+Send a raw completions request (non-streaming):
+
+```typescript
+const response = await t2v.completions({
+  messages: [{ role: 'user', content: 'Hello' }],
+  model: 'gpt-4.1-mini',
+});
+```
+
 #### `t2v.createSession()` / `t2v.getSession()`
 
 For advanced use cases where you need direct session control:
@@ -433,6 +479,19 @@ Stored keys:
 
 On logout, all keys are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
 
+### Security Considerations
+
+The SDK stores tokens in `localStorage` for persistence across page reloads. This is a deliberate trade-off — `localStorage` is accessible to any JavaScript running on the same origin, which means XSS vulnerabilities could expose tokens.
+
+To mitigate this:
+
+- **Use a Content Security Policy (CSP)** that restricts script sources to trusted origins
+- **Keep token lifetimes short** — the SDK automatically refreshes tokens, so short-lived access tokens limit the window of exposure
+- **Always serve your application over HTTPS**
+- **Sanitize user-generated content** to prevent XSS injection
+
+**CSRF protection:** The SDK sends a custom `X-T2V-Partner-Key` header on every request. Browsers block cross-origin requests with custom headers unless the server explicitly allows the origin via CORS. This makes CSRF attacks infeasible — a forged request from a malicious site would be blocked by the browser's preflight check.
+
 ---
 
 ## Error Handling
@@ -447,8 +506,10 @@ The SDK throws typed errors:
 | `NetworkError` | Network failure, server unreachable |
 | `T2VError` | Base class for all SDK errors |
 
+All errors extend `T2VError`, which exposes `message`, `type`, `statusCode`, and `code`:
+
 ```typescript
-import { AuthenticationError, NetworkError } from '@talk2view/sdk';
+import { T2VError, AuthenticationError, NetworkError, SessionError } from '@talk2view/sdk';
 
 try {
   await t2v.auth.login(email, password);
@@ -457,14 +518,22 @@ try {
     console.log('Bad credentials');
   } else if (err instanceof NetworkError) {
     console.log('Server unreachable');
+  } else if (err instanceof SessionError) {
+    console.log('Session issue:', err.message);
+  } else if (err instanceof T2VError) {
+    // Access the error code for programmatic handling
+    console.log(`Error [${err.code}]: ${err.message} (HTTP ${err.statusCode})`);
   }
 }
 ```
+
+**Rate limiting:** The server may return HTTP 429 when rate limits are exceeded. This surfaces as a `T2VError` with `statusCode: 429`. Rate limiting is enforced server-side; implement app-level retry logic if needed.
 
 In React, the hooks catch errors internally and expose them via the `error` state:
 
 ```tsx
 const { error, clearError } = useT2VAuth();
+const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 // error is a string message, not a thrown exception
 ```
 
@@ -479,6 +548,23 @@ const { error, clearError } = useT2VAuth();
 | `partnerKey` | `string` | Yes | — | Your partner API key |
 | `baseUrl` | `string` | No | `'http://localhost:8100'` | Talk2View API server URL |
 | `model` | `string` | No | Server default | LLM model to use |
+| `requestTimeout` | `number` | No | `30000` | HTTP request timeout in ms. Does not apply to SSE streams after connection. |
+
+---
+
+## System Prompts
+
+System prompts set the AI's behavior and context for your application. Pass them to `ChatPanel` or `useT2VChat`:
+
+```tsx
+<ChatPanel systemPrompt="You are a medical imaging assistant. Use the provided tools to control the DICOM viewer." />
+```
+
+Best practices:
+- **Keep prompts concise** — every token in the system prompt is sent with every request and adds to cost
+- **Focus on tools and context** — describe what tools are available and when to use them, rather than general personality traits
+- **Be specific about your domain** — mention the application type and expected user intents
+- **Avoid conflicting instructions** — the system prompt should complement, not contradict, tool descriptions
 
 ---
 

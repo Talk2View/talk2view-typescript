@@ -6,6 +6,7 @@ export class T2VError extends Error {
     message: string,
     public readonly type: string = 'sdk_error',
     public readonly statusCode?: number,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = 'T2VError';

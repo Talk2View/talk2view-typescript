@@ -12,6 +12,62 @@ export class T2VTools {
   constructor(private readonly client: T2VClient) {}
 
   /**
+   * Validate tool arguments against the registered schema.
+   * Returns an error message string, or null if valid.
+   */
+  private validateArgs(toolName: string, args: Record<string, unknown>): string | null {
+    const schema = this.schemas.find((s) => s.name === toolName);
+    if (!schema) return null; // no schema to validate against
+
+    const { properties, required } = schema.parameters;
+
+    // Check required fields
+    if (required) {
+      for (const field of required) {
+        if (!(field in args) || args[field] === undefined) {
+          return `Missing required argument: ${field}`;
+        }
+      }
+    }
+
+    // Type-check provided fields
+    for (const [key, value] of Object.entries(args)) {
+      const propSchema = properties[key];
+      if (!propSchema) continue; // allow extra properties
+
+      const expectedType = propSchema.type;
+      if (expectedType && !this.checkType(value, expectedType)) {
+        return `Argument "${key}" expected type "${expectedType}", got ${typeof value}`;
+      }
+
+      // Enum constraint
+      if (propSchema.enum && !propSchema.enum.includes(String(value))) {
+        return `Argument "${key}" must be one of: ${propSchema.enum.join(', ')}`;
+      }
+    }
+
+    return null;
+  }
+
+  private checkType(value: unknown, expectedType: string): boolean {
+    switch (expectedType) {
+      case 'string':
+        return typeof value === 'string';
+      case 'number':
+      case 'integer':
+        return typeof value === 'number';
+      case 'boolean':
+        return typeof value === 'boolean';
+      case 'array':
+        return Array.isArray(value);
+      case 'object':
+        return typeof value === 'object' && value !== null && !Array.isArray(value);
+      default:
+        return true;
+    }
+  }
+
+  /**
    * Register a handler for a specific tool name.
    * When the agent calls this tool, the handler executes locally.
    */
@@ -65,6 +121,14 @@ export class T2VTools {
     if (!handler) {
       return {
         result: JSON.stringify({ error: `Unknown tool: ${toolName}` }),
+        isError: true,
+      };
+    }
+
+    const validationError = this.validateArgs(toolName, args);
+    if (validationError) {
+      return {
+        result: JSON.stringify({ error: validationError }),
         isError: true,
       };
     }

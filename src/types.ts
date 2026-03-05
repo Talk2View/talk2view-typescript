@@ -6,6 +6,8 @@ export interface T2VConfig {
   /** @deprecated Voice requests now route through baseUrl. This option will be removed in a future version. */
   voiceApiUrl?: string;
   model?: string;
+  /** Timeout in milliseconds for HTTP requests. Defaults to 30000 (30s). Does not apply to SSE streams after connection. */
+  requestTimeout?: number;
 }
 
 // ── Auth ──
@@ -178,5 +180,6 @@ export interface APIErrorBody {
   error: {
     type: string;
     message: string;
+    code?: string;
   };
 }
