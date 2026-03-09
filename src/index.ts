@@ -31,12 +31,15 @@ import { T2VSession } from './sessions';
 import { T2VTools } from './tools';
 import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
 
+type SessionClearCallback = () => void;
+
 export class Talk2View {
   readonly auth: T2VAuth;
   readonly tools: T2VTools;
   private readonly client: T2VClient;
   readonly config: T2VConfig;
   private currentSession: T2VSession | null = null;
+  private sessionClearListeners: Set<SessionClearCallback> = new Set();
 
   constructor(config: T2VConfig) {
     if (config.voiceApiUrl) {
@@ -141,6 +144,25 @@ export class Talk2View {
       this.client.request(`/v1/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {});
     }
     this.currentSession = null;
+    for (const listener of this.sessionClearListeners) {
+      listener();
+    }
+  }
+
+  /**
+   * Subscribe to session clear events.
+   *
+   * Listeners are called when {@link clearSession} runs. This allows hooks
+   * like `useT2VTools` to reset client-side state (e.g. tool registration)
+   * so that tools are re-registered on the next session.
+   *
+   * @returns An unsubscribe function.
+   */
+  onSessionClear(callback: SessionClearCallback): () => void {
+    this.sessionClearListeners.add(callback);
+    return () => {
+      this.sessionClearListeners.delete(callback);
+    };
   }
 }
 

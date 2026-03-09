@@ -32,6 +32,13 @@ export function useT2VTools(): UseT2VToolsResult {
     }
   }, [isAuthenticated]);
 
+  // Reset when session is cleared (tools are session-scoped on the server)
+  useEffect(() => {
+    return t2v.onSessionClear(() => {
+      setRegisteredTools([]);
+    });
+  }, [t2v]);
+
   return {
     registerTools,
     registeredTools,
