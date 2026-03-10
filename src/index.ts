@@ -28,6 +28,7 @@
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
 import { T2VSession } from './sessions';
+import { T2VSkills } from './skills';
 import { T2VTools } from './tools';
 import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
 
@@ -36,6 +37,7 @@ type SessionClearCallback = () => void;
 export class Talk2View {
   readonly auth: T2VAuth;
   readonly tools: T2VTools;
+  readonly skills: T2VSkills;
   private readonly client: T2VClient;
   readonly config: T2VConfig;
   private currentSession: T2VSession | null = null;
@@ -53,6 +55,7 @@ export class Talk2View {
     this.client = new T2VClient(config);
     this.auth = new T2VAuth(this.client);
     this.tools = new T2VTools(this.client);
+    this.skills = new T2VSkills(this.client);
   }
 
   /**
@@ -170,6 +173,7 @@ export class Talk2View {
 export { T2VAuth } from './auth';
 export { T2VClient } from './client';
 export { T2VSession } from './sessions';
+export { T2VSkills } from './skills';
 export { T2VTools } from './tools';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors';
 export type {
@@ -185,6 +189,8 @@ export type {
   AgentStatus,
   ChatCompletionChunk,
   RegisterToolsResponse,
+  RegisterSkillsResponse,
+  UserSkill,
   Model,
   ModelsResponse,
   TranscriptionResponse,

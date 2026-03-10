@@ -303,6 +303,35 @@ t2v.tools.getRegistered()     // ClientToolSchema[]
 t2v.tools.hasHandler('zoom_in') // boolean
 ```
 
+#### `t2v.skills`
+
+Register user-defined skills — knowledge documents the AI agent can discover and load for specialised expertise. Skills are stored client-side and sent to the server per-session.
+
+```typescript
+// Add skills locally
+t2v.skills.add({
+  name: 'radiology-workflow',
+  description: 'Step-by-step radiology reading workflow',
+  content: '## Radiology Reading Workflow\n1. Check study metadata\n2. Apply window/level\n...',
+});
+
+// Persist to localStorage
+t2v.skills.save();
+
+// Register with server (call after session is created)
+await t2v.skills.register(t2v.skills.getAll());
+
+// On next page load, restore from localStorage
+t2v.skills.load();
+
+// Manage skills
+t2v.skills.remove('radiology-workflow');
+t2v.skills.getAll();   // UserSkill[]
+t2v.skills.clear();    // Remove all
+```
+
+Skills merge with partner-defined and built-in skills. User skills take highest priority. See [Skills documentation](../../docs/skills.md) for details.
+
 #### `t2v.chat()`
 
 Send a message and stream the response. Tool calls are executed automatically if handlers are registered.
@@ -661,6 +690,8 @@ import type {
   ToolCallInterrupt,
   ChatCompletionChunk,
   RegisterToolsResponse,
+  UserSkill,
+  RegisterSkillsResponse,
 } from '@talk2view/sdk';
 
 // React types

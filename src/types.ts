@@ -143,6 +143,19 @@ export interface RegisterToolsResponse {
   count: number;
 }
 
+// ── Skills ──
+
+export interface UserSkill {
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface RegisterSkillsResponse {
+  registered: string[];
+  count: number;
+}
+
 // ── Models ──
 
 export interface Model {
