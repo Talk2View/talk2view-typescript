@@ -82,8 +82,9 @@ export class T2VClient {
           );
         }
         if (!retryResponse.ok) {
-          const error = await retryResponse.json().catch(() => ({ error: { message: 'Request failed' } }));
-          throw new T2VError(error?.error?.message ?? 'Request failed', error?.error?.type, retryResponse.status, error?.error?.code);
+          const retryBody = await retryResponse.json().catch(() => ({}));
+          const retryErr = retryBody?.detail?.error ?? retryBody?.error ?? {};
+          throw new T2VError(retryErr.message ?? 'Request failed', retryErr.type, retryResponse.status, retryErr.code);
         }
         return retryResponse;
       }
@@ -92,8 +93,10 @@ export class T2VClient {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Request failed' } }));
-      throw new T2VError(error?.error?.message ?? 'Request failed', error?.error?.type, response.status, error?.error?.code);
+      const body = await response.json().catch(() => ({}));
+      // Server may wrap in { detail: { error: { ... } } } or { error: { ... } }
+      const err = body?.detail?.error ?? body?.error ?? {};
+      throw new T2VError(err.message ?? 'Request failed', err.type, response.status, err.code);
     }
 
     return response;
