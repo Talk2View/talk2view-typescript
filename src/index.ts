@@ -30,7 +30,7 @@ import { T2VClient } from './client';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools } from './tools';
-import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
+import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, PartnerConfig, T2VConfig, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
 
@@ -115,6 +115,16 @@ export class Talk2View {
   }
 
   /**
+   * Fetch partner-level configuration defaults.
+   *
+   * Returns the partner's configured default LLM model, STT model, and system prompt.
+   * Values are `null` when no partner override is set (global platform defaults apply).
+   */
+  async getConfig(): Promise<PartnerConfig> {
+    return this.client.request<PartnerConfig>('/v1/config');
+  }
+
+  /**
    * Send a direct completion request (e.g. MedGemma) routed through the engine.
    */
   async completions(body: {
@@ -195,5 +205,6 @@ export type {
   ModelsResponse,
   TranscriptionResponse,
   AudioModelsResponse,
+  PartnerConfig,
   UserPreferences,
 } from './types';
