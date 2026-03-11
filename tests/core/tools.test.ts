@@ -3,10 +3,14 @@ import { T2VTools } from '../../src/tools';
 import type { T2VClient } from '../../src/client';
 import type { ClientTool } from '../../src/types';
 
-function makeTools(tools: ClientTool[]): T2VTools {
-  const fakeClient = {
+function makeFakeClient(tools: ClientTool[]) {
+  return {
     request: vi.fn().mockResolvedValue({ registered: tools.map((t) => t.name), count: tools.length }),
   } as unknown as T2VClient;
+}
+
+function makeTools(tools: ClientTool[]): T2VTools {
+  const fakeClient = makeFakeClient(tools);
   const t2vTools = new T2VTools(fakeClient);
   // Register synchronously by calling register (which hits the mock client)
   return t2vTools;
@@ -110,5 +114,138 @@ describe('T2VTools.validateArgs', () => {
     const parsed = JSON.parse(result.result);
     expect(parsed.error).toContain('expected type');
     expect(parsed.error).toContain('object');
+  });
+});
+
+describe('T2VTools permission checking', () => {
+  it('checkPermission returns allow for tools without permission config', async () => {
+    const tool: ClientTool = {
+      name: 'safe_tool',
+      description: 'A safe tool',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.checkPermission('safe_tool', {});
+    expect(result).toEqual({ action: 'allow' });
+  });
+
+  it('checkPermission returns require_approval for permission: true', async () => {
+    const tool: ClientTool = {
+      name: 'risky_tool',
+      description: 'A risky tool',
+      parameters: { type: 'object', properties: {} },
+      permission: true,
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.checkPermission('risky_tool', {});
+    expect(result).toEqual({ action: 'require_approval' });
+  });
+
+  it('checkPermission returns allow for unknown tools', async () => {
+    const tools = await setupTools([]);
+    const result = await tools.checkPermission('nonexistent', {});
+    expect(result).toEqual({ action: 'allow' });
+  });
+
+  it('checkPermission calls callback and returns allow', async () => {
+    const callback = vi.fn().mockResolvedValue({ type: 'allow' });
+    const tool: ClientTool = {
+      name: 'callback_tool',
+      description: 'Callback tool',
+      parameters: { type: 'object', properties: {} },
+      permission: callback,
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.checkPermission('callback_tool', { x: 1 });
+    expect(callback).toHaveBeenCalledWith('callback_tool', { x: 1 });
+    expect(result).toEqual({ action: 'allow' });
+  });
+
+  it('checkPermission callback can return allow with updatedInput', async () => {
+    const callback = vi.fn().mockResolvedValue({
+      type: 'allow',
+      updatedInput: { x: 99 },
+    });
+    const tool: ClientTool = {
+      name: 'modify_tool',
+      description: 'Modifies args',
+      parameters: { type: 'object', properties: {} },
+      permission: callback,
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.checkPermission('modify_tool', { x: 1 });
+    expect(result).toEqual({ action: 'allow', updatedInput: { x: 99 } });
+  });
+
+  it('checkPermission callback can return deny with message', async () => {
+    const callback = vi.fn().mockResolvedValue({
+      type: 'deny',
+      message: 'Not allowed in production',
+    });
+    const tool: ClientTool = {
+      name: 'denied_tool',
+      description: 'Denied tool',
+      parameters: { type: 'object', properties: {} },
+      permission: callback,
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.checkPermission('denied_tool', {});
+    expect(result).toEqual({ action: 'deny', message: 'Not allowed in production' });
+  });
+
+  it('tracks permission across multiple tools', async () => {
+    const toolA: ClientTool = {
+      name: 'auto_tool',
+      description: 'Auto',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => 'ok',
+    };
+    const toolB: ClientTool = {
+      name: 'approval_tool',
+      description: 'Needs approval',
+      parameters: { type: 'object', properties: {} },
+      permission: true,
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([toolA, toolB]);
+    expect(await tools.checkPermission('auto_tool', {})).toEqual({ action: 'allow' });
+    expect(await tools.checkPermission('approval_tool', {})).toEqual({ action: 'require_approval' });
+  });
+
+  it('getDescription returns tool description', async () => {
+    const tool: ClientTool = {
+      name: 'my_tool',
+      description: 'Does something important',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => 'ok',
+    };
+    const tools = await setupTools([tool]);
+    expect(tools.getDescription('my_tool')).toBe('Does something important');
+  });
+
+  it('getDescription returns empty string for unknown tools', async () => {
+    const tools = await setupTools([]);
+    expect(tools.getDescription('unknown')).toBe('');
+  });
+
+  it('does not send permission to the server', async () => {
+    const fakeClient = makeFakeClient([]);
+    const tools = new T2VTools(fakeClient);
+    const tool: ClientTool = {
+      name: 'risky_tool',
+      description: 'Risky',
+      parameters: { type: 'object', properties: {} },
+      permission: true,
+      execute: async () => 'ok',
+    };
+    await tools.register([tool]);
+    const body = JSON.parse((fakeClient.request as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    // The schema sent to server should not include permission
+    expect(body.tools[0]).not.toHaveProperty('permission');
   });
 });

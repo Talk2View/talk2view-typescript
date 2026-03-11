@@ -1,13 +1,15 @@
 /**
- * ChatInput — text input with mic and send buttons.
+ * ChatInput — multi-line textarea with mic and send buttons.
  *
  * Voice input uses MediaRecorder + Talk2View's /v1/audio/transcriptions endpoint.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { T2V_ALPHA, T2V_COLORS, T2V_FONTS } from './theme';
 import { useT2V } from './T2VProvider';
 import { useUserPreferences } from './useUserPreferences';
+
+const TEXTAREA_MAX_HEIGHT = 120;
 
 export interface ChatInputProps {
   onSend: (message: string) => void;
@@ -34,13 +36,24 @@ export function ChatInput({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canSend = value.trim().length > 0 && !disabled;
   const micDisabled = disabled || isTranscribing || !preferences.sttModel;
 
+  // Auto-resize textarea, enable scroll when at max height
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const clamped = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT);
+    el.style.height = `${clamped}px`;
+    el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, [value]);
+
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
+    (e?: React.FormEvent) => {
+      e?.preventDefault();
       const trimmed = value.trim();
       if (!trimmed || disabled) return;
       onSend(trimmed);
@@ -53,7 +66,7 @@ export function ChatInput({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        handleSubmit(e);
+        handleSubmit();
       }
     },
     [handleSubmit],
@@ -117,7 +130,7 @@ export function ChatInput({
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(1000); // flush chunks every 1s — fixes Safari dropping early audio
+      mediaRecorder.start(1000);
       setIsRecording(true);
     } catch (err) {
       stream?.getTracks().forEach((track) => track.stop());
@@ -136,10 +149,11 @@ export function ChatInput({
         boxSizing: 'border-box',
         borderTop: `1px solid ${T2V_COLORS.lightGray}`,
         backgroundColor: T2V_COLORS.light,
+        alignItems: 'flex-end',
       }}
     >
-      <input
-        type="text"
+      <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -147,6 +161,8 @@ export function ChatInput({
         onBlur={() => setInputFocused(false)}
         placeholder={isRecording ? 'Recording...' : isTranscribing ? 'Transcribing...' : placeholder}
         disabled={disabled}
+        rows={1}
+        aria-label="Message input"
         style={{
           flex: 1,
           minWidth: 0,
@@ -156,10 +172,13 @@ export function ChatInput({
           fontSize: compact ? '13px' : '14px',
           fontFamily: T2V_FONTS.body,
           outline: 'none',
-          backgroundColor: disabled ? T2V_COLORS.lightGray : '#ffffff',
+          backgroundColor: disabled ? T2V_COLORS.lightGray : T2V_COLORS.light,
           color: T2V_COLORS.dark,
           boxShadow: inputFocused ? `0 0 0 3px ${T2V_ALPHA.turquoise15}` : 'none',
           transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+          resize: 'none',
+          overflowY: 'hidden',
+          lineHeight: '1.45',
         }}
       />
       {/* Mic button */}
@@ -241,7 +260,6 @@ export function ChatInput({
         }}
         aria-label="Send message"
       >
-        {/* Send arrow icon */}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="22" y1="2" x2="11" y2="13" />
           <polygon points="22 2 15 22 11 13 2 9 22 2" />

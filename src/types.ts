@@ -107,10 +107,54 @@ export interface ChatCompletionChunk {
 export type ChatEvent =
   | { type: 'text'; content: string }
   | { type: 'tool_call'; toolName: string; toolCallId: string; arguments: Record<string, unknown> }
+  | { type: 'approval_required'; toolName: string; toolCallId: string; arguments: Record<string, unknown>; description: string }
+  | { type: 'approval_result'; toolName: string; decision: HumanDecision['action'] }
+  | { type: 'todos'; content: string }
   | { type: 'done'; threadId: string }
   | { type: 'error'; message: string }
-  | { type: 'status'; status: string; message: string }
-  | { type: 'todos'; todos: string };
+  | { type: 'status'; status: string; message: string };
+
+// ── Human-in-the-Loop ──
+
+/**
+ * Permission result from a ToolPermissionCallback.
+ * Mirrors Claude Agent SDK's PermissionResultAllow / PermissionResultDeny.
+ */
+export type PermissionResult =
+  | { type: 'allow'; updatedInput?: Record<string, unknown> }
+  | { type: 'deny'; message?: string };
+
+/**
+ * Async callback for programmatic per-call tool permission decisions.
+ * Equivalent to Claude Agent SDK's `can_use_tool` callback.
+ */
+export type ToolPermissionCallback = (
+  toolName: string,
+  args: Record<string, unknown>,
+) => Promise<PermissionResult>;
+
+/**
+ * Internal result from T2VTools.checkPermission().
+ */
+export type PermissionCheckResult =
+  | { action: 'allow'; updatedInput?: Record<string, unknown> }
+  | { action: 'require_approval' }
+  | { action: 'deny'; message?: string };
+
+export interface PendingApproval {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  description: string;
+}
+
+export interface HumanDecision {
+  action: 'once' | 'always' | 'deny';
+  /** Optional corrective feedback (typically for 'deny'). */
+  feedback?: string;
+  /** Optional updated arguments (for 'once' or 'always'). */
+  updatedInput?: Record<string, unknown>;
+}
 
 // ── Tools ──
 
@@ -130,6 +174,13 @@ export interface ClientToolSchema {
     additionalProperties?: boolean;
   };
   return_direct?: boolean;
+  /**
+   * Permission check before tool execution.
+   * - `true`: always requires human approval (shows approval card)
+   * - `false` / omitted: auto-execute
+   * - callback: programmatic per-call decision (like Claude Agent SDK's can_use_tool)
+   */
+  permission?: boolean | ToolPermissionCallback;
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>;

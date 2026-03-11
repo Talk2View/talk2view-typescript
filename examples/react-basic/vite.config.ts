@@ -4,7 +4,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react(), ...(process.env.E2E ? [] : [basicSsl()])],
   server: {
     fs: {
       allow: [

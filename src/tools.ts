@@ -3,11 +3,19 @@
  */
 
 import type { T2VClient } from './client';
-import type { ClientTool, ClientToolSchema, RegisterToolsResponse, ToolHandler } from './types';
+import type {
+  ClientTool,
+  ClientToolSchema,
+  PermissionCheckResult,
+  RegisterToolsResponse,
+  ToolHandler,
+  ToolPermissionCallback,
+} from './types';
 
 export class T2VTools {
   private handlers: Map<string, ToolHandler> = new Map();
   private schemas: ClientToolSchema[] = [];
+  private permissions: Map<string, boolean | ToolPermissionCallback> = new Map();
 
   constructor(private readonly client: T2VClient) {}
 
@@ -98,6 +106,11 @@ export class T2VTools {
       if ('execute' in tool && typeof tool.execute === 'function') {
         this.handlers.set(tool.name, tool.execute);
       }
+
+      // Track permission config
+      if (tool.permission !== undefined && tool.permission !== false) {
+        this.permissions.set(tool.name, tool.permission);
+      }
     }
 
     this.schemas = schemasToRegister;
@@ -162,6 +175,39 @@ export class T2VTools {
    */
   hasHandler(toolName: string): boolean {
     return this.handlers.has(toolName);
+  }
+
+  /**
+   * Run permission check for a tool call.
+   *
+   * - No permission config → allow
+   * - `permission: true` → require_approval (show approval card)
+   * - `permission: callback` → delegate to callback
+   */
+  async checkPermission(
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<PermissionCheckResult> {
+    const perm = this.permissions.get(toolName);
+    if (perm === undefined || perm === false) {
+      return { action: 'allow' };
+    }
+    if (perm === true) {
+      return { action: 'require_approval' };
+    }
+    // Callback — programmatic decision
+    const result = await perm(toolName, args);
+    if (result.type === 'allow') {
+      return { action: 'allow', updatedInput: result.updatedInput };
+    }
+    return { action: 'deny', message: result.message };
+  }
+
+  /**
+   * Get the description of a registered tool.
+   */
+  getDescription(toolName: string): string {
+    return this.schemas.find((s) => s.name === toolName)?.description ?? '';
   }
 
   /**

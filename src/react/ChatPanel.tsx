@@ -5,18 +5,11 @@
  * streaming, and the full interrupt/resume cycle.
  */
 
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientTool } from '../types';
 import { ChatInput } from './ChatInput';
 
-/** Parse inline markdown (bold, italic, code, links) and sanitize. */
-function renderInline(text: string): string {
-  const raw = marked.parseInline(text);
-  return DOMPurify.sanitize(typeof raw === 'string' ? raw : '');
-}
-
+import { ApprovalCard } from './ApprovalCard';
 import { ChatMessage } from './ChatMessage';
 import { LoginModal } from './LoginModal';
 import { SettingsView } from './SettingsView';
@@ -47,11 +40,14 @@ export function ChatPanel({
   const { t2v } = useT2V();
   const { isAuthenticated, user, logout } = useT2VAuth();
   const { registerTools, registeredTools, isRegistered } = useT2VTools();
-  const { messages, isLoading, error, agentStatus, todos, sendMessage, clearMessages, clearError } = useT2VChat({
+  const { messages, isLoading, error, agentStatus, pendingApproval, sendMessage, approveToolCall, retryLastMessage, clearMessages, clearError } = useT2VChat({
     systemPrompt,
   });
   const { preferences } = useUserPreferences();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [compact, setCompact] = useState(false);
   const roRef = useRef<ResizeObserver | null>(null);
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
@@ -60,7 +56,6 @@ export function ChatPanel({
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [todosExpanded, setTodosExpanded] = useState(true);
   const profileRef = useRef<HTMLDivElement>(null);
 
   const fontScale = FONT_SCALE_MAP[preferences.fontSize || 'medium'];
@@ -145,10 +140,40 @@ export function ChatPanel({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [toolsOpen]);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
+  // Scroll tracking — detect if user scrolled up
+  const handleScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+    autoScrollRef.current = atBottom;
+    setShowScrollBtn(!atBottom);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    autoScrollRef.current = true;
+    setShowScrollBtn(false);
+  }, []);
+
+  // Smart auto-scroll — only if user hasn't scrolled up
+  useEffect(() => {
+    if (autoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, pendingApproval, isLoading]);
+
+  // Escape key to close dropdowns
+  useEffect(() => {
+    if (!profileOpen && !toolsOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setProfileOpen(false);
+        setToolsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [profileOpen, toolsOpen]);
 
   const handleSend = useCallback(
     (content: string) => {
@@ -209,6 +234,7 @@ export function ChatPanel({
             onClick={clearMessages}
             onMouseEnter={() => setClearHover(true)}
             onMouseLeave={() => setClearHover(false)}
+            aria-label="Clear chat"
             style={{
               padding: '4px 10px',
               borderRadius: '6px',
@@ -343,195 +369,110 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '16px',
-        }}
-      >
-        {messages.length === 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              gap: '12px',
-            }}
-          >
-            <T2VLogo size={40} />
-            <span
-              style={{
-                color: T2V_COLORS.midGray,
-                fontSize: '15px',
-                fontFamily: T2V_FONTS.heading,
-                fontWeight: 500,
-              }}
-            >
-              How can I help you?
-            </span>
-          </div>
-        )}
-
-        {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} />
-        ))}
-
-        {isLoading && messages[messages.length - 1]?.content === '' && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '10px 14px',
-              color: T2V_COLORS.midGray,
-              fontSize: '13px',
-              fontFamily: T2V_FONTS.heading,
-            }}
-          >
-            <span>{agentStatus?.message ?? 'Thinking'}</span>
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                style={{
-                  display: 'inline-block',
-                  width: '4px',
-                  height: '4px',
-                  borderRadius: '50%',
-                  backgroundColor: T2V_COLORS.turquoise,
-                  animation: `t2v-dot-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Todos panel */}
-      {todos && (
+      {/* Messages wrapper — relative container for scroll button overlay */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <div
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          role="log"
+          aria-live="polite"
+          aria-label="Chat messages"
           style={{
-            borderTop: `1px solid ${T2V_COLORS.lightGray}`,
-            backgroundColor: T2V_ALPHA.turquoise06,
+            height: '100%',
+            overflowY: 'auto',
+            padding: '16px',
           }}
         >
-          <div
-            onClick={() => setTodosExpanded((v) => !v)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-          >
-            <span
+          {messages.length === 0 && (
+            <div
               style={{
-                fontSize: '12px',
-                fontFamily: T2V_FONTS.heading,
-                fontWeight: 600,
-                color: T2V_COLORS.turquoise,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                gap: '12px',
               }}
             >
-              Agent Plan
-            </span>
-            <span
-              style={{
-                fontSize: '11px',
-                color: T2V_COLORS.midGray,
-                transform: todosExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.15s ease',
-              }}
-            >
-              &#9660;
-            </span>
-          </div>
-          {todosExpanded && (
-            <div style={{ padding: '0 16px 10px' }}>
-              {todos.split('\n').map((line, i) => {
-                const unchecked = line.match(/^-\s*\[\s*\]\s*(.*)/);
-                const checked = line.match(/^-\s*\[x\]\s*(.*)/i);
-                if (checked) {
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '8px',
-                        padding: '3px 0',
-                        fontSize: '13px',
-                        fontFamily: T2V_FONTS.body,
-                        color: T2V_COLORS.midGray,
-                        textDecoration: 'line-through',
-                      }}
-                    >
-                      <span style={{ color: T2V_COLORS.turquoise, flexShrink: 0 }}>&#10003;</span>
-                      <span dangerouslySetInnerHTML={{ __html: renderInline(checked[1] ?? '') }} />
-                    </div>
-                  );
-                }
-                if (unchecked) {
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '8px',
-                        padding: '3px 0',
-                        fontSize: '13px',
-                        fontFamily: T2V_FONTS.body,
-                        color: T2V_COLORS.dark,
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          width: '14px',
-                          height: '14px',
-                          borderRadius: '3px',
-                          border: `1.5px solid ${T2V_COLORS.turquoise}`,
-                          flexShrink: 0,
-                          marginTop: '2px',
-                        }}
-                      />
-                      <span dangerouslySetInnerHTML={{ __html: renderInline(unchecked[1] ?? '') }} />
-                    </div>
-                  );
-                }
-                if (line.trim()) {
-                  return (
-                    <div
-                      key={i}
-                      className="t2v-markdown"
-                      style={{
-                        fontSize: '13px',
-                        fontFamily: T2V_FONTS.body,
-                        color: T2V_COLORS.dark,
-                        padding: '2px 0',
-                      }}
-                      dangerouslySetInnerHTML={{ __html: renderInline(line) }}
-                    />
-                  );
-                }
-                return null;
-              })}
+              <T2VLogo size={40} />
+              <span
+                style={{
+                  color: T2V_COLORS.midGray,
+                  fontSize: '15px',
+                  fontFamily: T2V_FONTS.heading,
+                  fontWeight: 500,
+                }}
+              >
+                How can I help you?
+              </span>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Error */}
+          {messages
+            .filter((msg) => msg.role === 'user' || msg.content || msg.isStreaming)
+            .map((msg) => (
+              <ChatMessage key={msg.id} message={msg} />
+            ))}
+
+          {pendingApproval && (
+            <div style={{ padding: '0 0 8px' }}>
+              <ApprovalCard
+                approval={pendingApproval}
+                onDecision={approveToolCall}
+              />
+            </div>
+          )}
+
+          {isLoading && !pendingApproval && messages[messages.length - 1]?.content === '' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '10px 14px',
+                color: T2V_COLORS.midGray,
+                fontSize: '13px',
+                fontFamily: T2V_FONTS.heading,
+              }}
+            >
+              <span>{agentStatus?.message ?? 'Thinking'}</span>
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: 'inline-block',
+                    width: '4px',
+                    height: '4px',
+                    borderRadius: '50%',
+                    backgroundColor: T2V_COLORS.turquoise,
+                    animation: `t2v-dot-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Scroll-to-bottom button — positioned over the scroll container */}
+        {showScrollBtn && (
+          <button
+            className="t2v-scroll-btn"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+            type="button"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Error with retry */}
       {error && (
         <div
-          onClick={clearError}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -541,12 +482,44 @@ export function ChatPanel({
             color: T2V_COLORS.errorRed,
             fontSize: '13px',
             fontFamily: T2V_FONTS.heading,
-            cursor: 'pointer',
             borderLeft: `3px solid ${T2V_COLORS.errorRed}`,
           }}
+          role="alert"
         >
           <span style={{ fontWeight: 600 }}>Error</span>
-          <span>{error}</span>
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            onClick={() => { retryLastMessage().catch(console.error); }}
+            style={{
+              padding: '3px 10px',
+              borderRadius: '4px',
+              border: `1px solid ${T2V_COLORS.errorRed}`,
+              backgroundColor: 'transparent',
+              color: T2V_COLORS.errorRed,
+              fontSize: '11px',
+              fontFamily: T2V_FONTS.heading,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+            aria-label="Retry last message"
+          >
+            Retry
+          </button>
+          <button
+            onClick={clearError}
+            style={{
+              padding: '3px 8px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: T2V_COLORS.errorRed,
+              fontSize: '16px',
+              cursor: 'pointer',
+              opacity: 0.6,
+            }}
+            aria-label="Dismiss error"
+          >
+            &times;
+          </button>
         </div>
       )}
 
@@ -569,7 +542,7 @@ export function ChatPanel({
               fontSize: '11px',
               fontFamily: T2V_FONTS.heading,
               color: T2V_COLORS.midGray,
-              visibility: isLoading ? 'visible' : 'hidden',
+              visibility: isLoading && !pendingApproval ? 'visible' : 'hidden',
             }}
           >
             <span

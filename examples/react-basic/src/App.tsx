@@ -6,6 +6,7 @@
  * 2. Using the pre-built LoginModal for authentication
  * 3. Registering client-side tools the agent can call
  * 4. Using the ChatPanel for the full chat experience
+ * 5. Human-in-the-loop permission model (static + callback-based)
  */
 
 import React from 'react';
@@ -47,6 +48,26 @@ const tools: ClientTool[] = [
       });
     },
   },
+  {
+    // Static permission: always requires human approval (shows approval card)
+    name: 'send_email',
+    description: 'Send an email on behalf of the user',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Recipient email address' },
+        subject: { type: 'string', description: 'Email subject line' },
+        body: { type: 'string', description: 'Email body text' },
+      },
+      required: ['to', 'subject', 'body'],
+    },
+    permission: true,
+    execute: async (args) => {
+      // In a real app, this would send an email via your backend
+      console.log('Sending email to:', args.to, 'subject:', args.subject);
+      return JSON.stringify({ success: true, sent_to: args.to });
+    },
+  },
 ];
 
 export default function App() {
@@ -57,6 +78,9 @@ export default function App() {
         <div style={{ flex: 1, padding: '32px' }}>
           <h1>My Application</h1>
           <p>This is your existing app. The Talk2View chat panel is on the right.</p>
+          <p style={{ color: '#666', marginTop: '16px' }}>
+            Try asking the agent to send an email — it will ask for your approval first.
+          </p>
         </div>
 
         {/* Talk2View chat panel — handles auth, tools, streaming automatically */}

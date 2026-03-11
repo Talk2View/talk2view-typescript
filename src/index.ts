@@ -30,7 +30,7 @@ import { T2VClient } from './client';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools } from './tools';
-import type { AudioModelsResponse, ChatEvent, ChatMessage, Model, ModelsResponse, PartnerConfig, T2VConfig, TranscriptionResponse } from './types';
+import type { AudioModelsResponse, ChatEvent, ChatMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
 
@@ -140,6 +140,21 @@ export class Talk2View {
   }
 
   /**
+   * Respond to a pending approval request (human-in-the-loop).
+   *
+   * Call this after receiving an 'approval_required' ChatEvent.
+   */
+  async *respondToApproval(
+    approval: PendingApproval,
+    decision: HumanDecision,
+  ): AsyncGenerator<ChatEvent> {
+    if (!this.currentSession) {
+      throw new Error('No active session. Start a conversation first.');
+    }
+    yield* this.currentSession.respondToApproval(approval, decision);
+  }
+
+  /**
    * Get the current session (if any).
    */
   getSession(): T2VSession | null {
@@ -201,6 +216,11 @@ export type {
   RegisterToolsResponse,
   RegisterSkillsResponse,
   UserSkill,
+  HumanDecision,
+  PendingApproval,
+  PermissionResult,
+  PermissionCheckResult,
+  ToolPermissionCallback,
   Model,
   ModelsResponse,
   TranscriptionResponse,
