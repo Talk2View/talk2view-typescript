@@ -85,9 +85,10 @@ function injectModalStyles(): void {
 .aui-modal-button[data-state="open"] .t2v-modal-chevron {
   transform: scale(1) rotate(0deg);
 }
-/* Chat popover height */
+/* Chat popover size */
 .aui-modal-content {
   height: 70vh;
+  width: 400px;
 }
 /* Welcome suggestions — stacked vertically, don't affect logo centering */
 .aui-thread-welcome-suggestions {

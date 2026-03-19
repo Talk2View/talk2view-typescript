@@ -13,7 +13,7 @@ export interface LoginModalProps {
 }
 
 export function LoginModal({
-  signupUrl = 'https://talk2view.com/auth?signup',
+  signupUrl = 'https://talk2view.com/sign-up',
   className = '',
   onSuccess,
 }: LoginModalProps) {
@@ -71,8 +71,9 @@ export function LoginModal({
         justifyContent: 'center',
         flex: 1,
         minHeight: 0,
-        padding: '40px 32px',
-        maxWidth: '360px',
+        padding: '40px 22px',
+        width: '100%',
+        maxWidth: '340px',
         margin: '0 auto',
         fontFamily: T2V_FONTS.body,
       }}
@@ -89,7 +90,7 @@ export function LoginModal({
           color: T2V_COLORS.dark,
         }}
       >
-        Welcome back
+        Welcome
       </h2>
       <p
         style={{
@@ -192,7 +193,7 @@ export function LoginModal({
               : btnHover
                 ? T2V_COLORS.stormyTeal
                 : T2V_COLORS.accent,
-            color: isLoading ? T2V_COLORS.midGray : T2V_COLORS.dark,
+            color: isLoading ? T2V_COLORS.midGray : '#ffffff',
             fontSize: '15px',
             fontWeight: 600,
             fontFamily: T2V_FONTS.heading,
@@ -233,8 +234,9 @@ export function LoginModal({
         Don&apos;t have an account?{' '}
         <a
           href={signupUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          {...(typeof window !== 'undefined' && new URL(signupUrl, window.location.origin).origin !== window.location.origin
+            ? { target: '_blank', rel: 'noopener noreferrer' }
+            : {})}
           onMouseEnter={() => setLinkHover(true)}
           onMouseLeave={() => setLinkHover(false)}
           style={{
