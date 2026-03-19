@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@import "@assistant-ui/react-ui/styles/index.css";
+@import "@assistant-ui/react-ui/styles/modal.css";
+@import "@assistant-ui/react-ui/styles/themes/default.css";
+
+/* Talk2View modal button — responsive size */
+.aui-modal-anchor {
+  width: clamp(3.5rem, 5vw, 5rem);
+  height: clamp(3.5rem, 5vw, 5rem);
+}
+
+/* Transparent background when closed (shows T2V logo), default dark bg when open */
+.aui-modal-button[data-state="closed"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Toggle logo/chevron visibility based on parent button state */
+.aui-modal-button[data-state="closed"] .t2v-modal-logo {
+  transform: scale(1) rotate(0deg);
+}
+.aui-modal-button[data-state="open"] .t2v-modal-logo {
+  transform: scale(0) rotate(90deg);
+}
+.aui-modal-button[data-state="closed"] .t2v-modal-chevron {
+  transform: scale(0) rotate(-90deg);
+}
+.aui-modal-button[data-state="open"] .t2v-modal-chevron {
+  transform: scale(1) rotate(0deg);
+}
+
+/* Chat popover height */
+.aui-modal-content {
+  height: 70vh;
+}
