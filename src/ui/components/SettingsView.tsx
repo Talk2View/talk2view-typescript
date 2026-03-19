@@ -122,7 +122,6 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
   const currentSttModel = preferences.sttModel || partnerConfig?.default_stt_model || '';
   const currentSttLanguage = preferences.sttLanguage ?? '';
   const currentFontSize = preferences.fontSize || 'medium';
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}

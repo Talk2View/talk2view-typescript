@@ -156,6 +156,96 @@ When sending a message, the model is resolved in this order:
 3. **Provider prop** — `model` prop on `T2VAssistantProvider` / `T2VProvider`
 4. **Server default** — `T2V_DEFAULT_MODEL` env var on the server
 
+## Integration Guide
+
+### Installation
+
+```bash
+npm install @talk2view/sdk
+```
+
+No additional peer dependencies needed — assistant-ui and its styles are bundled.
+
+### Floating Modal (recommended for most apps)
+
+A chat button in the bottom-right corner that opens a popover:
+
+```tsx
+import { T2VAssistantProvider, T2VAssistantModal } from '@talk2view/sdk/ui';
+
+function App() {
+  return (
+    <T2VAssistantProvider partnerKey="pk_live_abc" tools={myTools}>
+      <MyExistingApp />
+      <T2VAssistantModal
+        welcomeMessage="How can I help?"
+        suggestions={[
+          { prompt: "What is Talk2View?" },
+          { prompt: "Show me the pricing" },
+        ]}
+      />
+    </T2VAssistantProvider>
+  );
+}
+```
+
+### Inline Thread (docked side panel)
+
+A permanent chat panel embedded in your layout:
+
+```tsx
+import { T2VAssistantProvider, T2VThread } from '@talk2view/sdk/ui';
+
+function App() {
+  return (
+    <T2VAssistantProvider partnerKey="pk_live_abc" tools={myTools}>
+      <div style={{ display: 'flex', height: '100vh' }}>
+        {/* Your app takes the remaining space */}
+        <div style={{ flex: 1 }}>
+          <MyExistingApp />
+        </div>
+
+        {/* Chat panel on the right */}
+        <div style={{ width: 420, borderLeft: '1px solid #e0e0e0' }}>
+          <T2VThread />
+        </div>
+      </div>
+    </T2VAssistantProvider>
+  );
+}
+```
+
+### Custom UI (power users)
+
+Use the runtime hook directly with your own assistant-ui components:
+
+```tsx
+import { useT2VRuntime } from '@talk2view/sdk/ui';
+import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { Thread } from '@assistant-ui/react-ui';
+
+function CustomChat() {
+  const { runtime } = useT2VRuntime({ systemPrompt: '...' });
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>
+  );
+}
+```
+
+### Choosing Between Modal and Inline
+
+| | `T2VAssistantModal` | `T2VThread` |
+|---|---|---|
+| Layout | Floating popover, no layout changes needed | Embedded in your flex/grid layout |
+| Visibility | Hidden until user clicks the trigger button | Always visible |
+| Best for | Marketing sites, docs, any page where chat is optional | Dashboards, apps where chat is a core feature |
+| Login gate | Built-in (shows login form inside the popover) | Built-in (shows login form in the panel) |
+| Header | Built-in (logo, settings, clear chat, sign out) | Built-in (same header) |
+
+Both components share the same features: streaming, markdown, tool approval (HITL), mic button (STT), settings, and auth. The only difference is layout.
+
 ## Key Design Decisions
 
 ### Why ExternalStoreRuntime (not LocalRuntime)

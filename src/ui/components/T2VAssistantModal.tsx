@@ -95,8 +95,8 @@ function injectModalStyles(): void {
   align-items: center;
   gap: 0.5rem;
 }
-/* Streaming indicator — pulsing dot for markdown text during streaming */
-[data-status="running"]::after {
+/* Streaming indicator — only shows while waiting for first text, not during streaming */
+.aui-assistant-message-content > [data-status="running"]:empty::after {
   animation: aui-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   content: '\\25CF';
   margin-left: 0.25rem;
