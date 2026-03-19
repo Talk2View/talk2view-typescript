@@ -16,11 +16,21 @@
  * ```
  */
 
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import '@assistant-ui/react-ui/styles/index.css';
 import '@assistant-ui/react-ui/styles/modal.css';
+import '@assistant-ui/react-ui/styles/markdown.css';
 import '@assistant-ui/react-ui/styles/themes/default.css';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
+
+const T2VChatActionsContext = createContext<{ clearMessages: () => void }>({
+  clearMessages: () => {},
+});
+
+/** Hook to access chat actions (e.g. clearMessages for "New chat"). */
+export function useT2VChatActions() {
+  return useContext(T2VChatActionsContext);
+}
 import { T2VProvider, useT2V } from '../../react/T2VProvider';
 import { useT2VTools } from '../../react/useT2VTools';
 import { useT2VRuntime } from '../runtime/useT2VRuntime';
@@ -63,7 +73,7 @@ function InnerProvider({
   // Resolve the effective model: user preference > partner default > provider prop
   const effectiveModel = preferences.model || partnerConfig?.default_llm_model || undefined;
 
-  const runtime = useT2VRuntime({ systemPrompt, model: effectiveModel });
+  const { runtime, clearMessages } = useT2VRuntime({ systemPrompt, model: effectiveModel });
   const { registerTools, isRegistered } = useT2VTools();
 
   // Inject T2V fonts and CSS animations (idempotent)
@@ -80,9 +90,11 @@ function InnerProvider({
   }, [tools, isRegistered, isAuthenticated, registerTools]);
 
   return (
+    <T2VChatActionsContext.Provider value={{ clearMessages }}>
     <AssistantRuntimeProvider runtime={runtime}>
       {children}
     </AssistantRuntimeProvider>
+    </T2VChatActionsContext.Provider>
   );
 }
 

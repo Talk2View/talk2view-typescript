@@ -20,7 +20,7 @@
  */
 
 // ── Components ──
-export { T2VAssistantProvider } from './components/T2VAssistantProvider';
+export { T2VAssistantProvider, useT2VChatActions } from './components/T2VAssistantProvider';
 export { T2VThread } from './components/T2VThread';
 export { T2VAssistantModal } from './components/T2VAssistantModal';
 export { T2VLoginGate } from './components/T2VLoginGate';

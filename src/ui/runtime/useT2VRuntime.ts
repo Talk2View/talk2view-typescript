@@ -46,7 +46,12 @@ export interface UseT2VRuntimeOptions {
  * }
  * ```
  */
-export function useT2VRuntime(options?: UseT2VRuntimeOptions): AssistantRuntime {
+export interface UseT2VRuntimeResult {
+  runtime: AssistantRuntime;
+  clearMessages: () => void;
+}
+
+export function useT2VRuntime(options?: UseT2VRuntimeOptions): UseT2VRuntimeResult {
   const { t2v } = useT2V();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
@@ -58,7 +63,7 @@ export function useT2VRuntime(options?: UseT2VRuntimeOptions): AssistantRuntime 
     return new T2VDictationAdapter(t2v, sttModel, sttLanguage);
   }, [t2v, preferences.sttModel, preferences.sttLanguage, partnerConfig?.default_stt_model]);
 
-  return useExternalStoreRuntime({
+  const runtime = useExternalStoreRuntime({
     messages: chat.messages,
     isRunning: chat.isLoading && !chat.pendingApproval,
 
@@ -103,4 +108,6 @@ export function useT2VRuntime(options?: UseT2VRuntimeOptions): AssistantRuntime 
       // This will be wired to POST /v1/sessions/{id}/cancel in a future phase.
     },
   });
+
+  return { runtime, clearMessages: chat.clearMessages };
 }

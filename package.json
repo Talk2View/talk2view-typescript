@@ -45,7 +45,8 @@
     "@assistant-ui/react-markdown": "^0.12.6",
     "@assistant-ui/react-ui": "^0.2.1",
     "dompurify": "^3.2.0",
-    "marked": "^15.0.0"
+    "marked": "^15.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

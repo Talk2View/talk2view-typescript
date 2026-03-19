@@ -44,11 +44,12 @@ export function convertDisplayMessage(
 
   // Completed tool steps
   if (msg.steps) {
-    for (const step of msg.steps) {
+    for (let i = 0; i < msg.steps.length; i++) {
+      const step = msg.steps[i]!;
       content.push({
         type: 'tool-call' as const,
         toolName: step.name,
-        toolCallId: `step_${step.name}_${msg.id}`,
+        toolCallId: `step_${step.name}_${i}_${msg.id}`,
         args: {} as Record<string, never>,
         result: step.status === 'denied' ? 'Tool call denied' : 'Tool call completed',
         isError: step.status === 'denied',

@@ -20,7 +20,12 @@
 
 import React, { useState } from 'react';
 import { AssistantModal, Thread } from '@assistant-ui/react-ui';
+import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
+import remarkGfm from 'remark-gfm';
 import { T2VToolFallback } from './T2VToolFallback';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MarkdownText: React.FC<any> = () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />;
 import { T2VComposer } from './T2VComposer';
 import { T2V_LOGOS } from '../../react/theme';
 import { T2VChatHeader } from './T2VChatHeader';
@@ -29,6 +34,7 @@ import { LoginModal } from './LoginModal';
 import { useT2VAuth } from '../../react/useT2VAuth';
 import { useT2V } from '../../react/T2VProvider';
 import { useUserPreferences } from '../../react/useUserPreferences';
+import { useT2VChatActions } from './T2VAssistantProvider';
 
 const FONT_SCALE: Record<string, number> = {
   small: 0.875,
@@ -104,6 +110,7 @@ export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const { isAuthenticated } = useT2V();
   const { logout } = useT2VAuth();
+  const { clearMessages } = useT2VChatActions();
   const { preferences } = useUserPreferences();
   const fontSize = FONT_SCALE[preferences.fontSize || 'medium'] ?? 1;
 
@@ -160,6 +167,7 @@ export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
               view={view}
               onSettingsClick={() => setView('settings')}
               onBackClick={() => setView('chat')}
+              onNewChat={clearMessages}
               onSignOut={() => { logout().catch(console.error); }}
             />
             {view === 'settings' ? (
@@ -173,6 +181,7 @@ export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
                 }}
                 assistantMessage={{
                   components: {
+                    Text: MarkdownText,
                     ToolFallback: T2VToolFallback,
                   },
                 }}
