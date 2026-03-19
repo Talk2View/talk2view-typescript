@@ -17,6 +17,9 @@
  */
 
 import React from 'react';
+import '@assistant-ui/react-ui/styles/index.css';
+import '@assistant-ui/react-ui/styles/modal.css';
+import '@assistant-ui/react-ui/styles/themes/default.css';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { T2VProvider, useT2V } from '../../react/T2VProvider';
 import { useT2VTools } from '../../react/useT2VTools';

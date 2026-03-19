@@ -5,8 +5,9 @@
  * Talk2View logo that opens a chat popover. Includes a header with a
  * settings/sign-out dropdown.
  *
- * Must be used inside T2VAssistantProvider. Requires Tailwind CSS +
- * assistant-ui styles.
+ * All styling is self-contained — no CSS overrides needed in the consumer app.
+ *
+ * Must be used inside T2VAssistantProvider.
  *
  * @example
  * ```tsx
@@ -35,6 +36,65 @@ const FONT_SCALE: Record<string, number> = {
   large: 1.125,
 };
 
+/* ── Inject modal-specific CSS (idempotent) ─────────────────── */
+
+let modalStylesInjected = false;
+
+function injectModalStyles(): void {
+  if (modalStylesInjected) return;
+  if (typeof document === 'undefined') return;
+
+  const id = 't2v-modal-styles';
+  if (document.getElementById(id)) {
+    modalStylesInjected = true;
+    return;
+  }
+
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `
+/* T2V modal button — responsive, branded */
+.aui-modal-anchor {
+  width: clamp(3.5rem, 5vw, 5rem);
+  height: clamp(3.5rem, 5vw, 5rem);
+}
+.aui-modal-button[data-state="closed"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.aui-modal-button[data-state="open"] {
+  background: hsl(var(--aui-primary, 0 0% 9.4%)) !important;
+  color: hsl(var(--aui-primary-foreground, 0 0% 98%));
+}
+/* Logo/chevron toggle */
+.aui-modal-button[data-state="closed"] .t2v-modal-logo {
+  transform: scale(1) rotate(0deg);
+}
+.aui-modal-button[data-state="open"] .t2v-modal-logo {
+  transform: scale(0) rotate(90deg);
+}
+.aui-modal-button[data-state="closed"] .t2v-modal-chevron {
+  transform: scale(0) rotate(-90deg);
+}
+.aui-modal-button[data-state="open"] .t2v-modal-chevron {
+  transform: scale(1) rotate(0deg);
+}
+/* Chat popover height */
+.aui-modal-content {
+  height: 70vh;
+}
+/* Prevent host app focus styles from leaking into the chat UI */
+.aui-root *:focus-visible,
+.aui-modal-content *:focus-visible {
+  outline: none !important;
+}
+`;
+  document.head.appendChild(style);
+  modalStylesInjected = true;
+}
+
+/* ── Component ──────────────────────────────────────────────── */
+
 export interface T2VAssistantModalProps {
   /** Welcome message shown before the first user message. */
   welcomeMessage?: string;
@@ -46,6 +106,11 @@ export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
   const { logout } = useT2VAuth();
   const { preferences } = useUserPreferences();
   const fontSize = FONT_SCALE[preferences.fontSize || 'medium'] ?? 1;
+
+  // Inject modal CSS on mount (idempotent)
+  React.useEffect(() => {
+    injectModalStyles();
+  }, []);
 
   // Reset to chat view when auth state changes (e.g. after logout)
   React.useEffect(() => {
