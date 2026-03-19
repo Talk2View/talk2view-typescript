@@ -84,7 +84,7 @@ export class Talk2View {
    */
   async *chat(
     message: string,
-    options?: { systemPrompt?: string; history?: ChatMessage[] },
+    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
   ): AsyncGenerator<ChatEvent> {
     if (!this.currentSession) {
       await this.createSession();

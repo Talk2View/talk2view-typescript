@@ -54,7 +54,7 @@ function nextId(): string {
 }
 
 
-export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResult {
+export function useT2VChat(options?: { systemPrompt?: string; model?: string }): UseT2VChatResult {
   const { t2v } = useT2V();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -247,7 +247,7 @@ export function useT2VChat(options?: { systemPrompt?: string }): UseT2VChatResul
 
       try {
         await drainStream(
-          t2v.chat(content, { systemPrompt: options?.systemPrompt, history }),
+          t2v.chat(content, { systemPrompt: options?.systemPrompt, model: options?.model, history }),
           assistantId,
         );
       } catch (err) {

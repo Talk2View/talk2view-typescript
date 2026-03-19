@@ -37,7 +37,7 @@ export class T2VSession {
    */
   async *sendMessage(
     content: string,
-    options?: { systemPrompt?: string; history?: ChatMessage[] },
+    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
   ): AsyncGenerator<ChatEvent> {
     const messages: ChatMessage[] = [];
 
@@ -51,7 +51,7 @@ export class T2VSession {
 
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,
-      { messages, stream: true, model: this.config?.model },
+      { messages, stream: true, model: options?.model ?? this.config?.model },
     );
   }
 
