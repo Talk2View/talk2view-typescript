@@ -89,6 +89,12 @@ function injectModalStyles(): void {
 .aui-modal-content {
   height: 70vh;
 }
+/* Welcome suggestions — stacked vertically, don't affect logo centering */
+.aui-thread-welcome-suggestions {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
 /* Prevent host app focus styles from leaking into the chat UI */
 .aui-root *:focus-visible,
 .aui-modal-content *:focus-visible {
@@ -104,9 +110,11 @@ function injectModalStyles(): void {
 export interface T2VAssistantModalProps {
   /** Welcome message shown before the first user message. */
   welcomeMessage?: string;
+  /** Clickable suggestion prompts shown below the welcome message. */
+  suggestions?: { prompt: string; text?: React.ReactNode }[];
 }
 
-export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
+export function T2VAssistantModal({ welcomeMessage, suggestions }: T2VAssistantModalProps) {
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const { isAuthenticated } = useT2V();
   const { logout } = useT2VAuth();
@@ -178,6 +186,7 @@ export function T2VAssistantModal({ welcomeMessage }: T2VAssistantModalProps) {
               <Thread
                 welcome={{
                   message: welcomeMessage ?? 'How can I help you today?',
+                  suggestions,
                 }}
                 assistantMessage={{
                   components: {

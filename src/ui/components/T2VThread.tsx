@@ -39,9 +39,11 @@ const FONT_SCALE: Record<string, number> = {
 export interface T2VThreadProps {
   /** Welcome message shown before the first user message. */
   welcomeMessage?: string;
+  /** Clickable suggestion prompts shown below the welcome message. */
+  suggestions?: { prompt: string; text?: React.ReactNode }[];
 }
 
-export function T2VThread({ welcomeMessage }: T2VThreadProps) {
+export function T2VThread({ welcomeMessage, suggestions }: T2VThreadProps) {
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const { isAuthenticated } = useT2V();
   const { logout } = useT2VAuth();
@@ -79,6 +81,7 @@ export function T2VThread({ welcomeMessage }: T2VThreadProps) {
         <Thread
           welcome={{
             message: welcomeMessage ?? 'How can I help you today?',
+            suggestions,
           }}
           assistantMessage={{
             components: {
