@@ -214,7 +214,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
             >
               {!currentModel && <option value="">Select a model</option>}
               {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
+                <option key={m.id} value={m.id}>{m.id.replace(/^openrouter\//, '')}</option>
               ))}
             </select>
           )}

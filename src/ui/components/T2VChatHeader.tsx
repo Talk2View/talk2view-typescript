@@ -80,7 +80,7 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
               borderRadius: '6px',
               border: `1px solid ${T2V_COLORS.lightGray}`,
               backgroundColor: 'transparent',
-              color: T2V_COLORS.midGray,
+              color: T2V_COLORS.dark,
               fontSize: '12px',
               fontFamily: T2V_FONTS.heading,
               fontWeight: 500,

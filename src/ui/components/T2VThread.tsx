@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm';
 import { T2VToolFallback } from './T2VToolFallback';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MarkdownText: React.FC<any> = () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />;
+const MarkdownText: React.FC<any> = () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} smooth />;
 import { T2VComposer } from './T2VComposer';
 import { T2VChatHeader } from './T2VChatHeader';
 import { T2V_LOGOS } from '../../react/theme';

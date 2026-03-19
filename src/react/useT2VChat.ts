@@ -256,7 +256,7 @@ export function useT2VChat(options?: { systemPrompt?: string; model?: string }):
         finalizeStream(assistantId);
       }
     },
-    [t2v, options?.systemPrompt, drainStream, finalizeStream],
+    [t2v, options?.systemPrompt, options?.model, drainStream, finalizeStream],
   );
 
   const approveToolCall = useCallback(

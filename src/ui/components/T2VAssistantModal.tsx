@@ -25,7 +25,7 @@ import remarkGfm from 'remark-gfm';
 import { T2VToolFallback } from './T2VToolFallback';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MarkdownText: React.FC<any> = () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />;
+const MarkdownText: React.FC<any> = () => <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} smooth />;
 import { T2VComposer } from './T2VComposer';
 import { T2V_LOGOS } from '../../react/theme';
 import { T2VChatHeader } from './T2VChatHeader';
@@ -94,6 +94,12 @@ function injectModalStyles(): void {
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+}
+/* Streaming indicator — pulsing dot for markdown text during streaming */
+[data-status="running"]::after {
+  animation: aui-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  content: '\\25CF';
+  margin-left: 0.25rem;
 }
 /* Prevent host app focus styles from leaking into the chat UI */
 .aui-root *:focus-visible,

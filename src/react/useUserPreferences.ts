@@ -40,8 +40,8 @@ export function useUserPreferences(): UseUserPreferencesResult {
     setPreferences((prev) => {
       const next = { ...prev, ...partial };
       setUserPreferences(JSON.stringify(next));
-      // Notify other hook instances
-      window.dispatchEvent(new Event(SYNC_EVENT));
+      // Notify other hook instances (deferred to avoid setState-during-render)
+      queueMicrotask(() => window.dispatchEvent(new Event(SYNC_EVENT)));
       return next;
     });
   }, []);
