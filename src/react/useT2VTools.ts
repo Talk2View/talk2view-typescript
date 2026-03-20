@@ -39,6 +39,13 @@ export function useT2VTools(): UseT2VToolsResult {
     });
   }, [t2v]);
 
+  // Sync state when tools are re-registered on a new session
+  useEffect(() => {
+    return t2v.onSessionCreate((toolNames) => {
+      setRegisteredTools(toolNames);
+    });
+  }, [t2v]);
+
   return {
     registerTools,
     registeredTools,

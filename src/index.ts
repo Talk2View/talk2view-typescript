@@ -33,6 +33,7 @@ import { T2VTools } from './tools';
 import type { AudioModelsResponse, ChatEvent, ChatMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
+type SessionCreateCallback = (toolNames: string[]) => void;
 
 export class Talk2View {
   readonly auth: T2VAuth;
@@ -42,6 +43,7 @@ export class Talk2View {
   readonly config: T2VConfig;
   private currentSession: T2VSession | null = null;
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
+  private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
   constructor(config: T2VConfig) {
     if (config.voiceApiUrl) {
@@ -73,6 +75,21 @@ export class Talk2View {
 
     const session = new T2VSession(response, this.client, this.tools, this.config);
     this.currentSession = session;
+
+    // Re-register tools on the new session (tools are session-scoped on the server).
+    // Failure is non-fatal — the session is still usable; the provider-level effect
+    // will retry registration on the next render cycle.
+    try {
+      const result = await this.tools.reRegister();
+      if (result) {
+        for (const listener of this.sessionCreateListeners) {
+          listener(result.registered);
+        }
+      }
+    } catch (err) {
+      console.warn('[Talk2View] Failed to re-register tools on new session:', err);
+    }
+
     return session;
   }
 
@@ -190,6 +207,22 @@ export class Talk2View {
     this.sessionClearListeners.add(callback);
     return () => {
       this.sessionClearListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Subscribe to session create events.
+   *
+   * Listeners are called after {@link createSession} completes and tools
+   * have been re-registered on the new session. This allows hooks like
+   * `useT2VTools` to sync client-side registration state.
+   *
+   * @returns An unsubscribe function.
+   */
+  onSessionCreate(callback: SessionCreateCallback): () => void {
+    this.sessionCreateListeners.add(callback);
+    return () => {
+      this.sessionCreateListeners.delete(callback);
     };
   }
 }

@@ -211,6 +211,21 @@ export class T2VTools {
   }
 
   /**
+   * Re-register existing tool schemas with the backend.
+   *
+   * Called automatically when a new session is created so that
+   * session-scoped tools survive a clear-chat / session reset.
+   * Returns null if no schemas are registered.
+   */
+  async reRegister(): Promise<RegisterToolsResponse | null> {
+    if (this.schemas.length === 0) return null;
+    return this.client.request<RegisterToolsResponse>('/v1/tools/register', {
+      method: 'POST',
+      body: JSON.stringify({ tools: this.schemas }),
+    });
+  }
+
+  /**
    * Get all registered tool schemas.
    */
   getRegistered(): ClientToolSchema[] {
