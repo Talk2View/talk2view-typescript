@@ -36,9 +36,9 @@ export class T2VClient {
   /**
    * Create an AbortController that auto-aborts after the configured timeout.
    */
-  private makeTimeoutSignal(): { signal: AbortSignal; clear: () => void } {
+  private makeTimeoutSignal(timeout?: number): { signal: AbortSignal; clear: () => void } {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.requestTimeout);
+    const timer = setTimeout(() => controller.abort(), timeout ?? this.requestTimeout);
     return { signal: controller.signal, clear: () => clearTimeout(timer) };
   }
 
@@ -126,12 +126,13 @@ export class T2VClient {
     endpoint: string,
     options: RequestInit = {},
     requiresAuth = true,
+    timeout?: number,
   ): Promise<T> {
     const headers = this.buildHeaders(requiresAuth, {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> | undefined),
     });
-    const { signal, clear } = this.makeTimeoutSignal();
+    const { signal, clear } = this.makeTimeoutSignal(timeout);
     try {
       const response = await this.fetchWithAuth(endpoint, options, headers, requiresAuth, signal);
       return response.json();
