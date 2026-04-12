@@ -1,16 +1,16 @@
 /**
- * SettingsView — full-panel settings page for user preferences.
+ * SettingsPanel — full-panel settings page for user preferences.
  */
 
 import React, { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import type { Model, UserPreferences } from '../../types';
-import { T2V_COLORS, T2V_FONTS } from '../../react/theme';
-import { useT2V } from '../../react/T2VProvider';
+import { useTalk2View } from '../context';
 import { useUserPreferences } from '../../react/useUserPreferences';
 import { usePartnerConfig } from '../../react/usePartnerConfig';
 
-export interface SettingsViewProps {
-  onBack: () => void;
+export interface SettingsPanelProps {
+  onBack?: () => void;
   onModelChange?: (model: string) => void;
   /** Hide the built-in header (use when embedding in a container with its own header). */
   hideHeader?: boolean;
@@ -40,11 +40,11 @@ const selectStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
   borderRadius: '6px',
-  border: `1.5px solid ${T2V_COLORS.lightGray}`,
+  border: '1.5px solid var(--t2v-border)',
   fontSize: '13px',
-  fontFamily: T2V_FONTS.body,
-  color: T2V_COLORS.dark,
-  backgroundColor: '#ffffff',
+  fontFamily: 'var(--t2v-font)',
+  color: 'var(--t2v-foreground)',
+  backgroundColor: 'var(--t2v-bg)',
   outline: 'none',
   cursor: 'pointer',
   appearance: 'none',
@@ -56,9 +56,9 @@ const selectStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontSize: '12px',
-  fontFamily: T2V_FONTS.heading,
+  fontFamily: 'var(--t2v-font)',
   fontWeight: 600,
-  color: T2V_COLORS.midGray,
+  color: 'var(--t2v-muted)',
   textTransform: 'uppercase',
   letterSpacing: '0.5px',
   marginBottom: '6px',
@@ -69,8 +69,8 @@ const sectionStyle: React.CSSProperties = {
   marginBottom: '20px',
 };
 
-export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsViewProps) {
-  const { t2v } = useT2V();
+export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPanelProps) {
+  const { t2v } = useTalk2View();
   const { preferences, updatePreferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
   const [models, setModels] = useState<Model[]>([]);
@@ -122,6 +122,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
   const currentSttModel = preferences.sttModel || partnerConfig?.default_stt_model || '';
   const currentSttLanguage = preferences.sttLanguage ?? '';
   const currentFontSize = preferences.fontSize || 'medium';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
@@ -132,8 +133,8 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
             alignItems: 'center',
             gap: '12px',
             padding: '12px 16px',
-            backgroundColor: T2V_COLORS.dark,
-            color: T2V_COLORS.light,
+            backgroundColor: 'var(--t2v-foreground)',
+            color: 'var(--t2v-bg)',
           }}
         >
           <button
@@ -147,7 +148,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
               borderRadius: '6px',
               border: 'none',
               backgroundColor: 'rgba(248, 250, 252, 0.1)',
-              color: T2V_COLORS.light,
+              color: 'var(--t2v-bg)',
               cursor: 'pointer',
               padding: 0,
               transition: 'background-color 0.15s ease',
@@ -156,14 +157,12 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
             onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(248, 250, 252, 0.1)'; }}
             aria-label="Back to chat"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <ArrowLeft size={16} />
           </button>
           <span
             style={{
               fontSize: '15px',
-              fontFamily: T2V_FONTS.heading,
+              fontFamily: 'var(--t2v-font)',
               fontWeight: 600,
             }}
           >
@@ -185,8 +184,8 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
                 gap: '8px',
                 padding: '8px 12px',
                 fontSize: '13px',
-                fontFamily: T2V_FONTS.body,
-                color: T2V_COLORS.midGray,
+                fontFamily: 'var(--t2v-font)',
+                color: 'var(--t2v-muted)',
               }}
             >
               <span
@@ -194,7 +193,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
                   display: 'inline-block',
                   width: '14px',
                   height: '14px',
-                  border: `2px solid ${T2V_COLORS.turquoise}`,
+                  border: '2px solid var(--t2v-accent)',
                   borderTopColor: 'transparent',
                   borderRadius: '50%',
                   animation: 't2v-spin 0.6s linear infinite',
@@ -230,8 +229,8 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
                 gap: '8px',
                 padding: '8px 12px',
                 fontSize: '13px',
-                fontFamily: T2V_FONTS.body,
-                color: T2V_COLORS.midGray,
+                fontFamily: 'var(--t2v-font)',
+                color: 'var(--t2v-muted)',
               }}
             >
               <span
@@ -239,7 +238,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
                   display: 'inline-block',
                   width: '14px',
                   height: '14px',
-                  border: `2px solid ${T2V_COLORS.turquoise}`,
+                  border: '2px solid var(--t2v-accent)',
                   borderTopColor: 'transparent',
                   borderRadius: '50%',
                   animation: 't2v-spin 0.6s linear infinite',
@@ -287,7 +286,7 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
             style={{
               display: 'flex',
               borderRadius: '8px',
-              border: `1.5px solid ${T2V_COLORS.lightGray}`,
+              border: '1.5px solid var(--t2v-border)',
               overflow: 'hidden',
             }}
           >
@@ -301,10 +300,10 @@ export function SettingsView({ onBack, onModelChange, hideHeader }: SettingsView
                     flex: 1,
                     padding: '8px 0',
                     border: 'none',
-                    backgroundColor: isActive ? T2V_COLORS.turquoise : 'transparent',
-                    color: isActive ? '#ffffff' : T2V_COLORS.dark,
+                    backgroundColor: isActive ? 'var(--t2v-accent)' : 'transparent',
+                    color: isActive ? 'var(--t2v-accent-foreground)' : 'var(--t2v-foreground)',
                     fontSize: '13px',
-                    fontFamily: T2V_FONTS.heading,
+                    fontFamily: 'var(--t2v-font)',
                     fontWeight: isActive ? 600 : 400,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',

@@ -1,47 +1,31 @@
-/**
- * Talk2View UI — pre-styled chat components powered by assistant-ui.
- *
- * Requires Tailwind CSS and @assistant-ui/react + @assistant-ui/react-ui peer dependencies.
- *
- * @example
- * ```tsx
- * import { T2VAssistantProvider, T2VThread } from '@talk2view/sdk/ui';
- *
- * function App() {
- *   return (
- *     <T2VAssistantProvider partnerKey="pk_live_abc" tools={myTools}>
- *       <T2VThread />
- *     </T2VAssistantProvider>
- *   );
- * }
- * ```
- *
- * @packageDocumentation
- */
+// Components
+export { Talk2View } from './components/Talk2View';
+export type { Talk2ViewProps } from './components/Talk2View';
+export { ChatPanel } from './components/ChatPanel';
+export type { ChatPanelProps } from './components/ChatPanel';
+export { ChatWidget } from './components/ChatWidget';
+export type { ChatWidgetProps } from './components/ChatWidget';
 
-// ── Components ──
-export { T2VAssistantProvider, useT2VChatActions } from './components/T2VAssistantProvider';
-export { T2VThread } from './components/T2VThread';
-export { T2VAssistantModal } from './components/T2VAssistantModal';
-export { T2VLoginGate } from './components/T2VLoginGate';
-export { T2VToolFallback } from './components/T2VToolFallback';
-export { T2VComposer } from './components/T2VComposer';
-export { T2VChatHeader } from './components/T2VChatHeader';
+// Context hooks (for advanced custom UI)
+export { useChat, useTalk2View } from './context';
+export type { ChatContextValue, Talk2ViewContextValue } from './context';
 
-// ── Hooks ──
-export { useT2VRuntime } from './runtime/useT2VRuntime';
+// Individual components (for composition)
+export { MessageList } from './components/MessageList';
+export { MessageBubble } from './components/MessageBubble';
+export { Composer } from './components/Composer';
+export { WelcomeScreen } from './components/WelcomeScreen';
+export { LoginForm } from './components/LoginForm';
+export { ChatHeader } from './components/ChatHeader';
+export { SettingsPanel } from './components/SettingsPanel';
+export { ApprovalCard } from './components/ApprovalCard';
+export { ToolDisplay } from './components/ToolDisplay';
+export type { ToolDisplayProps } from './components/ToolDisplay';
+export { MarkdownRenderer } from './components/MarkdownRenderer';
+export { CodeBlock } from './components/CodeBlock';
+export { ThinkingBlock } from './components/ThinkingBlock';
+export { MessageActions } from './components/MessageActions';
+export { Shimmer } from './components/Shimmer';
 
-// ── Adapters ──
-export { T2VDictationAdapter } from './components/T2VDictationAdapter';
-
-// ── Utilities ──
-export { convertDisplayMessage } from './runtime/convertMessage';
-export { t2vPreset } from './themes/tailwind-preset';
-
-// ── Types ──
-export type { T2VAssistantProviderProps } from './components/T2VAssistantProvider';
-export type { T2VThreadProps } from './components/T2VThread';
-export type { T2VAssistantModalProps } from './components/T2VAssistantModal';
-export type { T2VLoginGateProps } from './components/T2VLoginGate';
-export type { T2VChatHeaderProps } from './components/T2VChatHeader';
-export type { UseT2VRuntimeOptions } from './runtime/useT2VRuntime';
+// Theme
+export { THEME_DEFAULTS, LOGOS } from './theme';

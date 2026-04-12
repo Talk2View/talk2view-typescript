@@ -1,15 +1,16 @@
 /**
- * T2VChatHeader — Shared header bar for T2VThread and T2VAssistantModal.
+ * ChatHeader — header bar for the chat panel.
  *
  * Shows the Talk2View logo + title, with a three-dot dropdown menu
  * containing Settings and Sign Out options. In settings view, shows
  * a back button instead.
  */
 
-import React, { useState } from 'react';
-import { T2V_COLORS, T2V_FONTS, T2VLogo } from '../../react/theme';
+import React, { useState, useEffect } from 'react';
+import { Settings, LogOut, Plus, ArrowLeft, MoreVertical } from 'lucide-react';
+import { LOGOS } from '../theme';
 
-export interface T2VChatHeaderProps {
+export interface ChatHeaderProps {
   view: 'chat' | 'settings';
   onSettingsClick: () => void;
   onBackClick: () => void;
@@ -17,8 +18,18 @@ export interface T2VChatHeaderProps {
   onSignOut: () => void;
 }
 
-export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, onSignOut }: T2VChatHeaderProps) {
+export function ChatHeader({ view, onSettingsClick, onBackClick, onNewChat, onSignOut }: ChatHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close dropdown on Escape key
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [menuOpen]);
 
   return (
     <div
@@ -27,7 +38,7 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 14px',
-        borderBottom: `1px solid ${T2V_COLORS.lightGray}`,
+        borderBottom: '1px solid var(--t2v-border)',
         flexShrink: 0,
       }}
     >
@@ -42,8 +53,8 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
               style={{
                 fontSize: '14px',
                 fontWeight: 600,
-                fontFamily: T2V_FONTS.heading,
-                color: T2V_COLORS.dark,
+                fontFamily: 'var(--t2v-font)',
+                color: 'var(--t2v-foreground)',
               }}
             >
               Settings
@@ -51,13 +62,13 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
           </>
         ) : (
           <>
-            <T2VLogo size={20} />
+            <img src={LOGOS.icon} alt="" style={{ width: 20, height: 20 }} />
             <span
               style={{
                 fontSize: '14px',
                 fontWeight: 600,
-                fontFamily: T2V_FONTS.heading,
-                color: T2V_COLORS.dark,
+                fontFamily: 'var(--t2v-font)',
+                color: 'var(--t2v-foreground)',
               }}
             >
               Talk2View
@@ -78,16 +89,16 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
               gap: '4px',
               padding: '4px 10px',
               borderRadius: '6px',
-              border: `1px solid ${T2V_COLORS.lightGray}`,
+              border: '1px solid var(--t2v-border)',
               backgroundColor: 'transparent',
-              color: T2V_COLORS.dark,
+              color: 'var(--t2v-foreground)',
               fontSize: '12px',
-              fontFamily: T2V_FONTS.heading,
+              fontFamily: 'var(--t2v-font)',
               fontWeight: 500,
               cursor: 'pointer',
               transition: 'background-color 0.15s ease',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = T2V_COLORS.lightGray; }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--t2v-border)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
             <NewChatIcon />
@@ -106,6 +117,7 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
                 style={{ position: 'fixed', inset: 0, zIndex: 49 }}
               />
               <div
+                role="menu"
                 style={{
                   position: 'absolute',
                   top: '100%',
@@ -113,8 +125,8 @@ export function T2VChatHeader({ view, onSettingsClick, onBackClick, onNewChat, o
                   marginTop: '4px',
                   minWidth: '140px',
                   borderRadius: '8px',
-                  border: `1px solid ${T2V_COLORS.lightGray}`,
-                  backgroundColor: '#fff',
+                  border: '1px solid var(--t2v-border)',
+                  backgroundColor: 'var(--t2v-bg)',
                   boxShadow: '0 4px 16px rgba(1, 22, 30, 0.12)',
                   zIndex: 50,
                   overflow: 'hidden',
@@ -155,8 +167,8 @@ function HeaderButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
         height: '28px',
         borderRadius: '6px',
         border: 'none',
-        backgroundColor: hovered ? T2V_COLORS.lightGray : 'transparent',
-        color: T2V_COLORS.midGray,
+        backgroundColor: hovered ? 'var(--t2v-border)' : 'transparent',
+        color: 'var(--t2v-muted)',
         cursor: 'pointer',
         padding: 0,
         transition: 'background-color 0.15s ease',
@@ -177,6 +189,7 @@ function DropdownItem({
   const [hovered, setHovered] = useState(false);
   return (
     <button
+      role="menuitem"
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -187,10 +200,12 @@ function DropdownItem({
         width: '100%',
         padding: '8px 12px',
         border: 'none',
-        backgroundColor: hovered ? (danger ? T2V_COLORS.errorBg : T2V_COLORS.light) : 'transparent',
-        color: danger ? T2V_COLORS.errorRed : T2V_COLORS.dark,
+        backgroundColor: hovered
+          ? danger ? 'rgba(220,38,38,0.06)' : 'var(--t2v-border)'
+          : 'transparent',
+        color: danger ? 'var(--t2v-error)' : 'var(--t2v-foreground)',
         fontSize: '13px',
-        fontFamily: T2V_FONTS.heading,
+        fontFamily: 'var(--t2v-font)',
         fontWeight: 500,
         cursor: 'pointer',
         textAlign: 'left',
@@ -202,51 +217,24 @@ function DropdownItem({
   );
 }
 
-/* ── Inline SVG Icons ─────────────────────────────────────────── */
+/* ── Icons (Lucide React) ─────────────────────────────────────── */
 
 function NewChatIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
-    </svg>
-  );
+  return <Plus size={14} />;
 }
 
 function BackIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
+  return <ArrowLeft size={16} />;
 }
 
 function EllipsisIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="1" />
-      <circle cx="19" cy="12" r="1" />
-      <circle cx="5" cy="12" r="1" />
-    </svg>
-  );
+  return <MoreVertical size={16} />;
 }
 
 function SettingsIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
+  return <Settings size={14} />;
 }
 
 function SignOutIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
+  return <LogOut size={14} />;
 }
-

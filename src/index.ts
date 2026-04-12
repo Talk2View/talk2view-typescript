@@ -27,10 +27,11 @@
 
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
+import { TypedEventEmitter } from './event-emitter';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools } from './tools';
-import type { AudioModelsResponse, ChatEvent, ChatMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, TranscriptionResponse } from './types';
+import type { AgentStatus, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
 type SessionCreateCallback = (toolNames: string[]) => void;
@@ -44,6 +45,18 @@ export class Talk2View {
   private currentSession: T2VSession | null = null;
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
+
+  // ── State management ────────────────────────────────────────────────────
+  private _messages: DisplayMessage[] = [];
+  private _isLoading = false;
+  private _error: string | null = null;
+  private _pendingApproval: PendingApproval | null = null;
+  private _agentStatus: AgentStatus | null = null;
+  private _threadId: string | null = null;
+  private _alwaysAllowedTools = new Set<string>();
+  private _lastUserMessage: string | null = null;
+  private _messageCounter = 0;
+  private readonly emitter = new TypedEventEmitter<T2VEventMap>();
 
   constructor(config: T2VConfig) {
     if (config.voiceApiUrl) {
@@ -230,6 +243,246 @@ export class Talk2View {
       this.sessionCreateListeners.delete(callback);
     };
   }
+
+  // ── Public state getters ──────────────────────────────────────────────────
+
+  get messages(): DisplayMessage[] { return this._messages; }
+  get isLoading(): boolean { return this._isLoading; }
+  get error(): string | null { return this._error; }
+  get pendingApproval(): PendingApproval | null { return this._pendingApproval; }
+  get agentStatus(): AgentStatus | null { return this._agentStatus; }
+  get threadId(): string | null { return this._threadId; }
+  get alwaysAllowedTools(): ReadonlySet<string> { return this._alwaysAllowedTools; }
+
+  // ── Event subscription ────────────────────────────────────────────────────
+
+  on<K extends keyof T2VEventMap>(event: K, callback: (...args: T2VEventMap[K]) => void): () => void {
+    return this.emitter.on(event, callback);
+  }
+
+  // ── Private state helpers ─────────────────────────────────────────────────
+
+  private setMessages(msgs: DisplayMessage[]): void {
+    this._messages = msgs;
+    this.emitter.emit('messagesChange', this._messages);
+  }
+
+  private setLoading(loading: boolean): void {
+    this._isLoading = loading;
+    this.emitter.emit('loadingChange', loading);
+  }
+
+  private setError(error: string | null): void {
+    this._error = error;
+    this.emitter.emit('errorChange', error);
+  }
+
+  private setPendingApproval(approval: PendingApproval | null): void {
+    this._pendingApproval = approval;
+    this.emitter.emit('approvalChange', approval);
+  }
+
+  private setAgentStatus(status: AgentStatus | null): void {
+    this._agentStatus = status;
+    this.emitter.emit('statusChange', status);
+  }
+
+  private setThreadId(threadId: string | null): void {
+    this._threadId = threadId;
+    this.emitter.emit('threadIdChange', threadId);
+  }
+
+  private setAlwaysAllowed(tools: Set<string>): void {
+    this._alwaysAllowedTools = tools;
+    this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
+  }
+
+  private nextMessageId(): string {
+    return `msg_${++this._messageCounter}_${Date.now()}`;
+  }
+
+  private updateAssistantMessage(id: string, updater: (msg: DisplayMessage) => DisplayMessage): void {
+    this._messages = this._messages.map((m) => (m.id === id ? updater(m) : m));
+    this.emitter.emit('messagesChange', this._messages);
+  }
+
+  // ── Stream processing ─────────────────────────────────────────────────────
+
+  /**
+   * Process events from a chat stream, updating state as events arrive.
+   * Returns whether the stream paused for approval and any auto-approval info.
+   */
+  private async consumeStream(
+    stream: AsyncGenerator<ChatEvent>,
+    assistantId: string,
+  ): Promise<{ paused: boolean; pendingAutoApproval: PendingApproval | null }> {
+    let pendingAutoApproval: PendingApproval | null = null;
+    try {
+      for await (const event of stream) {
+        switch (event.type) {
+          case 'text':
+            this.updateAssistantMessage(assistantId, (m) => ({ ...m, content: m.content + event.content }));
+            break;
+          case 'status':
+            this.setAgentStatus({ type: event.status, message: event.message });
+            break;
+          case 'todos':
+            this.updateAssistantMessage(assistantId, (m) => ({ ...m, plan: event.content }));
+            break;
+          case 'tool_call':
+            this.updateAssistantMessage(assistantId, (m) => ({
+              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'used' as const, args: event.arguments }],
+            }));
+            break;
+          case 'approval_required': {
+            const approval: PendingApproval = {
+              toolCallId: event.toolCallId, toolName: event.toolName,
+              arguments: event.arguments, description: event.description,
+            };
+            // Create a step immediately so it appears in the UI with args
+            this.updateAssistantMessage(assistantId, (m) => ({
+              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'running' as const, args: event.arguments }],
+            }));
+            if (this._alwaysAllowedTools.has(event.toolName)) {
+              pendingAutoApproval = approval;
+              return { paused: true, pendingAutoApproval };
+            }
+            this.setPendingApproval(approval);
+            return { paused: true, pendingAutoApproval: null };
+          }
+          case 'approval_result':
+            this.updateAssistantMessage(assistantId, (m) => ({
+              ...m, steps: (m.steps ?? []).map((s) =>
+                s.name === event.toolName ? { ...s, status: event.decision === 'deny' ? ('denied' as const) : ('used' as const) } : s),
+            }));
+            break;
+          case 'done':
+            this.setThreadId(event.threadId);
+            break;
+          case 'error':
+            this.setError(event.message);
+            break;
+        }
+      }
+    } catch (err) {
+      this.setError(err instanceof Error ? err.message : String(err));
+    }
+    return { paused: false, pendingAutoApproval: null };
+  }
+
+  /**
+   * Loop consumeStream, auto-approving always-allowed tools until the stream completes.
+   */
+  private async drainStream(stream: AsyncGenerator<ChatEvent>, assistantId: string): Promise<void> {
+    let currentStream = stream;
+    while (true) {
+      const { paused, pendingAutoApproval } = await this.consumeStream(currentStream, assistantId);
+      if (!paused) break;
+      if (!pendingAutoApproval) {
+        // Manual approval needed — keep isStreaming true so ApprovalCard renders
+        this.setLoading(false);
+        return;
+      }
+      this.setAgentStatus({ type: 'auto-approved', message: `Auto-approved ${pendingAutoApproval.toolName}` });
+      currentStream = this.respondToApproval(pendingAutoApproval, { action: 'once' });
+    }
+    this.finalizeStream(assistantId);
+  }
+
+  private finalizeStream(assistantId: string): void {
+    this.updateAssistantMessage(assistantId, (m) => ({ ...m, isStreaming: false }));
+    this.setAgentStatus(null);
+    this.setLoading(false);
+  }
+
+  // ── Public chat methods ───────────────────────────────────────────────────
+
+  /**
+   * Send a message with full state management.
+   *
+   * Adds user/assistant messages, starts streaming, and updates all state
+   * (loading, error, status, etc.) as events arrive.
+   */
+  async sendMessage(content: string, options?: { systemPrompt?: string; model?: string }): Promise<void> {
+    const userMsg: DisplayMessage = { id: this.nextMessageId(), role: 'user', content, timestamp: new Date() };
+    const assistantMsg: DisplayMessage = { id: this.nextMessageId(), role: 'assistant', content: '', timestamp: new Date(), isStreaming: true };
+    this._messages = [...this._messages, userMsg, assistantMsg];
+    this.emitter.emit('messagesChange', this._messages);
+    this._lastUserMessage = content;
+    this.setLoading(true);
+    this.setError(null);
+
+    const history: ChatMessage[] = this._messages
+      .filter((m) => m.id !== assistantMsg.id)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const systemPrompt = options?.systemPrompt;
+    const model = options?.model ?? this.config.model;
+    const stream = this.chat(content, { systemPrompt, model, history });
+    await this.drainStream(stream, assistantMsg.id);
+  }
+
+  /**
+   * Respond to a pending tool approval (human-in-the-loop).
+   *
+   * If `decision.action` is `'always'`, the tool is remembered and auto-approved
+   * for all subsequent calls in this session.
+   */
+  async approveToolCall(decision: HumanDecision): Promise<void> {
+    const approval = this._pendingApproval;
+    if (!approval) return;
+    if (decision.action === 'always') {
+      const updated = new Set(this._alwaysAllowedTools);
+      updated.add(approval.toolName);
+      this.setAlwaysAllowed(updated);
+    }
+    this.setPendingApproval(null);
+    this.setLoading(true);
+    let assistantMsg: DisplayMessage | undefined;
+    for (let i = this._messages.length - 1; i >= 0; i--) {
+      if (this._messages[i]!.role === 'assistant') { assistantMsg = this._messages[i]; break; }
+    }
+    if (!assistantMsg) return;
+    const stream = this.respondToApproval(approval, decision);
+    await this.drainStream(stream, assistantMsg.id);
+  }
+
+  /**
+   * Retry the last user message. Removes the failed user+assistant pair and resends.
+   */
+  async retryLastMessage(): Promise<void> {
+    if (!this._lastUserMessage) return;
+    const content = this._lastUserMessage;
+    const msgs = [...this._messages];
+    while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'assistant') msgs.pop();
+    while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'user') msgs.pop();
+    this.setMessages(msgs);
+    this.setError(null);
+    await this.sendMessage(content);
+  }
+
+  /**
+   * Clear all messages and reset conversation state.
+   */
+  clearMessages(): void {
+    this.setMessages([]);
+    this.setLoading(false);
+    this.setError(null);
+    this.setPendingApproval(null);
+    this.setAgentStatus(null);
+    this.setThreadId(null);
+    this._lastUserMessage = null;
+    this._alwaysAllowedTools = new Set();
+    this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
+    this.clearSession();
+  }
+
+  /**
+   * Clear the current error.
+   */
+  clearError(): void {
+    this.setError(null);
+  }
 }
 
 // Re-export types and classes for consumers
@@ -238,8 +491,10 @@ export { T2VClient } from './client';
 export { T2VSession } from './sessions';
 export { T2VSkills } from './skills';
 export { T2VTools } from './tools';
+export { TypedEventEmitter } from './event-emitter';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors';
 export type {
+  T2VEventMap,
   T2VConfig,
   User,
   ChatEvent,
@@ -265,4 +520,6 @@ export type {
   AudioModelsResponse,
   PartnerConfig,
   UserPreferences,
+  DisplayMessage,
+  ToolStep,
 } from './types';

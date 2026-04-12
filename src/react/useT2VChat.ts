@@ -1,41 +1,23 @@
 /**
- * useT2VChat — React hook for chat interactions with streaming, auto tool handling,
- * and human-in-the-loop approval support.
+ * useT2VChat — thin React wrapper that syncs Talk2View state into React state.
  *
- * Permission model (aligned with Claude Agent SDK):
- * - Allow Once: execute this tool call
- * - Allow Always: execute and auto-approve future calls to this tool for the session
- * - Deny: reject with optional corrective feedback
+ * All state management and streaming logic lives in the Talk2View class.
+ * This hook subscribes to its events and re-exports the result as React state.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatEvent, ChatMessage, HumanDecision, PendingApproval } from '../types';
+import { useState, useEffect, useCallback } from 'react';
 import { useT2V } from './T2VProvider';
+import type { DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types';
 
 export type { PendingApproval } from '../types';
-
-export interface ToolStep {
-  name: string;
-  status: 'used' | 'denied';
-}
-
-export interface DisplayMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  isStreaming?: boolean;
-  /** Markdown checklist from the agent's planning tool (write_todos). */
-  plan?: string;
-  /** Completed tool call steps (rendered as Chainlit-style inline steps). */
-  steps?: ToolStep[];
-}
+export type { DisplayMessage, ToolStep } from '../types';
 
 export interface UseT2VChatResult {
   messages: DisplayMessage[];
   isLoading: boolean;
   error: string | null;
   threadId: string | null;
+  /** Agent status uses `status` field for backwards compatibility (maps from AgentStatus.type). */
   agentStatus: { status: string; message: string } | null;
   pendingApproval: PendingApproval | null;
   /** Tools that are auto-approved for the remainder of the session. */
@@ -48,285 +30,52 @@ export interface UseT2VChatResult {
   clearError: () => void;
 }
 
-let messageIdCounter = 0;
-function nextId(): string {
-  return `msg_${++messageIdCounter}_${Date.now()}`;
+/** Map AgentStatus (with `type` field) to the hook's public shape (with `status` field). */
+function toHookStatus(s: AgentStatus | null): { status: string; message: string } | null {
+  if (!s) return null;
+  return { status: s.type, message: s.message };
 }
-
 
 export function useT2VChat(options?: { systemPrompt?: string; model?: string }): UseT2VChatResult {
   const { t2v } = useT2V();
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
-  const [agentStatus, setAgentStatus] = useState<{ status: string; message: string } | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
-  const [alwaysAllowedTools, setAlwaysAllowedTools] = useState<ReadonlySet<string>>(new Set());
-  const messagesRef = useRef<DisplayMessage[]>([]);
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // Ref to track the current assistant message ID for approval continuation
-  const activeAssistantIdRef = useRef<string | null>(null);
-
-  // Session-scoped set of tools that are auto-approved
-  const alwaysAllowedRef = useRef<Set<string>>(new Set());
-
-  // Queue for auto-approvals (set inside consumeStream, consumed by drainStream)
-  const pendingAutoApprovalRef = useRef<PendingApproval | null>(null);
-
-  // Track last user message for retry
-  const lastUserMessageRef = useRef<string | null>(null);
-
-  /** Mark the current stream as finished (no pending approval). */
-  const finalizeStream = useCallback((assistantId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === assistantId ? { ...m, isStreaming: false } : m,
-      ),
-    );
-    setAgentStatus(null);
-    setIsLoading(false);
-  }, []);
-
-  /**
-   * Consume a ChatEvent stream and update state.
-   * Returns true if the stream paused for approval, false if it completed.
-   */
-  const consumeStream = useCallback(
-    async (stream: AsyncGenerator<ChatEvent>, assistantId: string): Promise<boolean> => {
-      let fullContent = '';
-      // Read current content from the message (may already have content from prior stream)
-      const existing = messagesRef.current.find((m) => m.id === assistantId);
-      if (existing) fullContent = existing.content;
-
-      for await (const event of stream) {
-        switch (event.type) {
-          case 'text':
-            fullContent += event.content;
-            setAgentStatus(null);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId ? { ...m, content: fullContent } : m,
-              ),
-            );
-            break;
-
-          case 'status':
-            setAgentStatus({ status: event.status, message: event.message });
-            break;
-
-          case 'todos':
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId ? { ...m, plan: event.content } : m,
-              ),
-            );
-            break;
-
-          case 'approval_required': {
-            const info: PendingApproval = {
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-              arguments: event.arguments,
-              description: event.description,
-            };
-
-            if (alwaysAllowedRef.current.has(event.toolName)) {
-              // Auto-approve: queue for drainStream to handle
-              pendingAutoApprovalRef.current = info;
-            } else {
-              // Manual approval: show the card
-              setPendingApproval(info);
-            }
-            return true; // Stream paused — either auto or manual approval needed
-          }
-
-          case 'tool_call':
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'used' as const }] }
-                  : m,
-              ),
-            );
-            break;
-
-          case 'approval_result': {
-            const step: ToolStep = {
-              name: event.toolName,
-              status: event.decision === 'deny' ? 'denied' : 'used',
-            };
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, steps: [...(m.steps ?? []), step] }
-                  : m,
-              ),
-            );
-            setPendingApproval(null);
-            setAgentStatus({
-              status: 'resuming',
-              message: `Tool ${event.decision === 'deny' ? 'denied' : 'approved'}, continuing...`,
-            });
-            break;
-          }
-
-          case 'done':
-            setThreadId(event.threadId);
-            break;
-
-          case 'error':
-            setError(event.message);
-            break;
-        }
-      }
-
-      return false; // Stream completed normally
-    },
-    [],
+  const [messages, setMessages] = useState<DisplayMessage[]>(t2v.messages);
+  const [isLoading, setIsLoading] = useState(t2v.isLoading);
+  const [error, setError] = useState<string | null>(t2v.error);
+  const [threadId, setThreadId] = useState<string | null>(t2v.threadId);
+  const [agentStatus, setAgentStatus] = useState<{ status: string; message: string } | null>(
+    toHookStatus(t2v.agentStatus),
   );
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(t2v.pendingApproval);
+  const [alwaysAllowedTools, setAlwaysAllowedTools] = useState<ReadonlySet<string>>(t2v.alwaysAllowedTools);
 
-  /**
-   * Process a stream with auto-approval loop.
-   * Automatically approves tool calls for always-allowed tools without showing the card.
-   */
-  const drainStream = useCallback(
-    async (stream: AsyncGenerator<ChatEvent>, assistantId: string) => {
-      while (true) {
-        const paused = await consumeStream(stream, assistantId);
-        if (!paused) {
-          finalizeStream(assistantId);
-          return;
-        }
-
-        // Check if this is an auto-approval (always-allowed tool)
-        const auto = pendingAutoApprovalRef.current;
-        if (!auto) return; // Manual approval needed — wait for user
-
-        pendingAutoApprovalRef.current = null;
-        setAgentStatus({ status: 'auto-approved', message: `Auto-approved ${auto.toolName}` });
-
-        // Resume with auto-approve and continue the loop
-        stream = t2v.respondToApproval(auto, { action: 'once' });
-      }
-    },
-    [consumeStream, finalizeStream, t2v],
-  );
+  useEffect(() => {
+    const unsubs = [
+      t2v.on('messagesChange', setMessages),
+      t2v.on('loadingChange', setIsLoading),
+      t2v.on('errorChange', setError),
+      t2v.on('threadIdChange', setThreadId),
+      t2v.on('statusChange', (s) => setAgentStatus(toHookStatus(s))),
+      t2v.on('approvalChange', setPendingApproval),
+      t2v.on('alwaysAllowedChange', setAlwaysAllowedTools),
+    ];
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [t2v]);
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      setError(null);
-      setIsLoading(true);
-      setPendingApproval(null);
-      lastUserMessageRef.current = content;
-
-      const userMsg: DisplayMessage = {
-        id: nextId(),
-        role: 'user',
-        content,
-        timestamp: new Date(),
-      };
-
-      const assistantId = nextId();
-      activeAssistantIdRef.current = assistantId;
-      const assistantMsg: DisplayMessage = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-        isStreaming: true,
-      };
-
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-
-      const history: ChatMessage[] = messagesRef.current.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      try {
-        await drainStream(
-          t2v.chat(content, { systemPrompt: options?.systemPrompt, model: options?.model, history }),
-          assistantId,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'An error occurred';
-        setError(message);
-        finalizeStream(assistantId);
-      }
-    },
-    [t2v, options?.systemPrompt, options?.model, drainStream, finalizeStream],
+    (content: string) => t2v.sendMessage(content, options),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t2v, options?.systemPrompt, options?.model],
   );
 
   const approveToolCall = useCallback(
-    async (decision: HumanDecision) => {
-      const approval = pendingApproval;
-      if (!approval) return;
-
-      const assistantId = activeAssistantIdRef.current;
-      if (!assistantId) return;
-
-      // Handle "always" — remember for future calls in this session
-      if (decision.action === 'always') {
-        alwaysAllowedRef.current.add(approval.toolName);
-        setAlwaysAllowedTools(new Set(alwaysAllowedRef.current));
-      }
-
-      setPendingApproval(null);
-      setIsLoading(true);
-
-      try {
-        await drainStream(
-          t2v.respondToApproval(approval, decision),
-          assistantId,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'An error occurred';
-        setError(message);
-        finalizeStream(assistantId);
-      }
-    },
-    [t2v, drainStream, finalizeStream, pendingApproval],
+    (decision: HumanDecision) => t2v.approveToolCall(decision),
+    [t2v],
   );
 
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-    setThreadId(null);
-    setError(null);
-    setAgentStatus(null);
-    setPendingApproval(null);
-    alwaysAllowedRef.current.clear();
-    setAlwaysAllowedTools(new Set());
-    activeAssistantIdRef.current = null;
-    t2v.clearSession();
-  }, [t2v]);
-
-  const retryLastMessage = useCallback(async () => {
-    const lastMsg = lastUserMessageRef.current;
-    if (!lastMsg) return;
-    // Remove the failed assistant message + user message
-    setMessages((prev) => {
-      const copy = [...prev];
-      // Remove trailing assistant (empty/error) and user message
-      while (copy.length > 0) {
-        const last = copy[copy.length - 1]!;
-        if (last.role === 'assistant' && !last.content) {
-          copy.pop();
-        } else if (last.role === 'user' && last.content === lastMsg) {
-          copy.pop();
-          break;
-        } else {
-          break;
-        }
-      }
-      return copy;
-    });
-    setError(null);
-    await sendMessage(lastMsg);
-  }, [sendMessage]);
-
-  const clearError = useCallback(() => setError(null), []);
+  const retryLastMessage = useCallback(() => t2v.retryLastMessage(), [t2v]);
+  const clearMessages = useCallback(() => t2v.clearMessages(), [t2v]);
+  const clearError = useCallback(() => t2v.clearError(), [t2v]);
 
   return {
     messages,

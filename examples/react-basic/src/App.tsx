@@ -2,7 +2,7 @@
  * Minimal React integration example for Talk2View.
  *
  * This demonstrates:
- * 1. Setting up the T2VProvider with your partner key
+ * 1. Setting up the Talk2View provider with your partner key
  * 2. Using the pre-built LoginModal for authentication
  * 3. Registering client-side tools the agent can call
  * 4. Using the ChatPanel for the full chat experience
@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { T2VProvider, ChatPanel } from '@talk2view/sdk/react';
+import { Talk2View, ChatPanel } from '@talk2view/sdk/ui';
 import type { ClientTool } from '@talk2view/sdk';
 
 // Define tools that the AI agent can call in your application
@@ -72,7 +72,7 @@ const tools: ClientTool[] = [
 
 export default function App() {
   return (
-    <T2VProvider partnerKey="pk_test_ex_reactbasic_local_dev_12345" baseUrl="">
+    <Talk2View partnerKey="pk_test_ex_reactbasic_local_dev_12345" baseUrl="" tools={tools}>
       <div style={{ display: 'flex', height: '100vh' }}>
         {/* Your application content */}
         <div style={{ flex: 1, padding: '32px' }}>
@@ -85,9 +85,9 @@ export default function App() {
 
         {/* Talk2View chat panel — handles auth, tools, streaming automatically */}
         <div style={{ width: '400px', borderLeft: '1px solid #e0e0e0' }}>
-          <ChatPanel tools={tools} />
+          <ChatPanel />
         </div>
       </div>
-    </T2VProvider>
+    </Talk2View>
   );
 }

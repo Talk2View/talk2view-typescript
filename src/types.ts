@@ -255,3 +255,54 @@ export interface APIErrorBody {
     code?: string;
   };
 }
+
+// ── Display / UI ──
+
+export interface ToolStep {
+  name: string;
+  status: 'used' | 'denied' | 'running';
+  args?: Record<string, unknown>;
+  result?: string;
+}
+
+export interface DisplayMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  isStreaming?: boolean;
+  /** Markdown checklist from the agent's planning tool (write_todos). */
+  plan?: string;
+  /** Completed tool call steps (rendered as Chainlit-style inline steps). */
+  steps?: ToolStep[];
+}
+
+export interface T2VEventMap {
+  [key: string]: unknown[];
+  messagesChange: [DisplayMessage[]];
+  loadingChange: [boolean];
+  errorChange: [string | null];
+  approvalChange: [PendingApproval | null];
+  statusChange: [AgentStatus | null];
+  threadIdChange: [string | null];
+  alwaysAllowedChange: [ReadonlySet<string>];
+}
+
+// ── Theme ──
+
+export interface Talk2ViewTheme {
+  accent?: string;
+  accentForeground?: string;
+  bg?: string;
+  foreground?: string;
+  muted?: string;
+  border?: string;
+  userBubble?: string;
+  userForeground?: string;
+  error?: string;
+  radius?: number;
+  font?: string;
+  fontMono?: string;
+  surface?: string;
+  surfaceHover?: string;
+}

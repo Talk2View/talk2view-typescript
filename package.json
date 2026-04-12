@@ -1,6 +1,6 @@
 {
   "name": "@talk2view/sdk",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Talk2View SDK — Add AI-powered natural language control to any application",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,11 +17,6 @@
       "default": "./dist/react/index.js"
     },
     "./ui": {
-      "types": "./dist/ui/index.d.ts",
-      "import": "./dist/ui/index.js",
-      "default": "./dist/ui/index.js"
-    },
-    "./assistant-ui": {
       "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
@@ -42,12 +37,10 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@assistant-ui/react": "^0.12.19",
-    "@assistant-ui/react-markdown": "^0.12.6",
-    "@assistant-ui/react-ui": "^0.2.1",
     "dompurify": "^3.2.0",
+    "lucide-react": "^1.8.0",
     "marked": "^15.0.0",
-    "remark-gfm": "^4.0.1"
+    "shiki": "^4.0.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

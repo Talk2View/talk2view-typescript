@@ -2,10 +2,10 @@
  * Talk2View + assistant-ui integration example.
  *
  * Demonstrates:
- * 1. T2VAssistantProvider — combined provider (auth + runtime + tools)
+ * 1. Talk2View — combined provider (auth + runtime + tools)
  * 2. T2VLoginGate — shows login form when unauthenticated
- * 3. T2VThread — inline chat thread (assistant-ui powered)
- * 4. T2VAssistantModal — floating chat widget (bottom-right button)
+ * 3. ChatPanel — inline chat thread
+ * 4. ChatWidget — floating chat widget (bottom-right button)
  * 5. Client-side tools with human-in-the-loop approval
  *
  * Toggle between Thread (inline) and Modal (floating widget) modes
@@ -14,9 +14,9 @@
 
 import { useState } from 'react';
 import {
-  T2VAssistantProvider,
-  T2VThread,
-  T2VAssistantModal,
+  Talk2View,
+  ChatPanel,
+  ChatWidget,
 } from '@talk2view/sdk/ui';
 import type { ClientTool } from '@talk2view/sdk';
 
@@ -87,7 +87,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('modal');
 
   return (
-    <T2VAssistantProvider
+    <Talk2View
       partnerKey="pk_test_ex_reactbasic_local_dev_12345"
       baseUrl=""
       tools={tools}
@@ -144,18 +144,18 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right panel — inline Thread mode */}
+        {/* Right panel — inline ChatPanel mode */}
         {mode === 'thread' && (
           <div style={{ width: '420px', borderLeft: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column' }}>
-            <T2VThread welcomeMessage="Hi! I can show notifications, check the page, or send emails. What would you like?" />
+            <ChatPanel welcome={{ heading: 'Hi! I can show notifications, check the page, or send emails. What would you like?' }} />
           </div>
         )}
       </div>
 
       {/* Floating modal — renders a fixed-position button + popover */}
       {mode === 'modal' && (
-        <T2VAssistantModal welcomeMessage="Hi! I can show notifications, check the page, or send emails." />
+        <ChatWidget welcome={{ heading: 'Hi! I can show notifications, check the page, or send emails.' }} />
       )}
-    </T2VAssistantProvider>
+    </Talk2View>
   );
 }

@@ -28,7 +28,8 @@ export { T2V_VARS } from './theme';
 // ── Types ──
 export type { T2VProviderProps } from './T2VProvider';
 export type { UseT2VAuthResult } from './useT2VAuth';
-export type { UseT2VChatResult, DisplayMessage, ToolStep, PendingApproval } from './useT2VChat';
+export type { UseT2VChatResult, PendingApproval } from './useT2VChat';
+export type { DisplayMessage, ToolStep } from '../types';
 export type { UseT2VToolsResult } from './useT2VTools';
 export type { UseUserPreferencesResult } from './useUserPreferences';
 export type { UsePartnerConfigResult } from './usePartnerConfig';
