@@ -117,6 +117,69 @@ describe('T2VTools.validateArgs', () => {
   });
 });
 
+describe('T2VTools null stripping', () => {
+  const toolWithOptional: ClientTool = {
+    name: 'optional_tool',
+    description: 'Tool with optional params',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Query' },
+        page: { type: 'number', description: 'Page number' },
+        case_sensitive: { type: 'boolean', description: 'Case sensitive' },
+      },
+      required: ['query'],
+    },
+    execute: async (args) => JSON.stringify(args),
+  };
+
+  it('strips null values from args before validation', async () => {
+    const tools = await setupTools([toolWithOptional]);
+    const result = await tools.executeToolCall('optional_tool', {
+      query: 'hello',
+      page: null as unknown as number,
+      case_sensitive: null as unknown as boolean,
+    });
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.result);
+    expect(parsed).toEqual({ query: 'hello' });
+    expect(parsed).not.toHaveProperty('page');
+    expect(parsed).not.toHaveProperty('case_sensitive');
+  });
+
+  it('strips undefined values from args', async () => {
+    const tools = await setupTools([toolWithOptional]);
+    const result = await tools.executeToolCall('optional_tool', {
+      query: 'hello',
+      page: undefined,
+    });
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.result);
+    expect(parsed).toEqual({ query: 'hello' });
+  });
+
+  it('still rejects null for required params', async () => {
+    const tools = await setupTools([toolWithOptional]);
+    const result = await tools.executeToolCall('optional_tool', {
+      query: null as unknown as string,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.result).toContain('Missing required argument');
+  });
+
+  it('passes real values through unchanged', async () => {
+    const tools = await setupTools([toolWithOptional]);
+    const result = await tools.executeToolCall('optional_tool', {
+      query: 'hello',
+      page: 5,
+      case_sensitive: true,
+    });
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.result);
+    expect(parsed).toEqual({ query: 'hello', page: 5, case_sensitive: true });
+  });
+});
+
 describe('T2VTools permission checking', () => {
   it('checkPermission returns allow for tools without permission config', async () => {
     const tool: ClientTool = {

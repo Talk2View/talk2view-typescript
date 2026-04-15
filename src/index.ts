@@ -30,7 +30,7 @@ import { T2VClient } from './client';
 import { TypedEventEmitter } from './event-emitter';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
-import { T2VTools } from './tools';
+import { T2VTools, stripNullArgs } from './tools';
 import type { AgentStatus, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
@@ -47,7 +47,8 @@ export class Talk2View {
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
   // ── State management ────────────────────────────────────────────────────
-  private _messages: DisplayMessage[] = [];
+  private _messages: DisplayMessage[] = [];          // UI display (segmented)
+  private _conversationHistory: ChatMessage[] = [];  // LLM history (clean user/assistant alternation)
   private _isLoading = false;
   private _error: string | null = null;
   private _pendingApproval: PendingApproval | null = null;
@@ -57,6 +58,10 @@ export class Talk2View {
   private _lastUserMessage: string | null = null;
   private _messageCounter = 0;
   private readonly emitter = new TypedEventEmitter<T2VEventMap>();
+
+  private debug(...args: unknown[]): void {
+    if (this.config.debug) console.log('[T2V]', ...args);
+  }
 
   constructor(config: T2VConfig) {
     if (config.voiceApiUrl) {
@@ -312,49 +317,77 @@ export class Talk2View {
    * Process events from a chat stream, updating state as events arrive.
    * Returns whether the stream paused for approval and any auto-approval info.
    */
+  /**
+   * Create a new streaming assistant message and append it to the message list.
+   * Returns the new message's ID.
+   */
+  private startNewAssistantMessage(): string {
+    const msg: DisplayMessage = {
+      id: this.nextMessageId(), role: 'assistant', content: '',
+      timestamp: new Date(), isStreaming: true,
+    };
+    this._messages = [...this._messages, msg];
+    this.emitter.emit('messagesChange', this._messages);
+    return msg.id;
+  }
+
   private async consumeStream(
     stream: AsyncGenerator<ChatEvent>,
     assistantId: string,
-  ): Promise<{ paused: boolean; pendingAutoApproval: PendingApproval | null }> {
+  ): Promise<{ paused: boolean; pendingAutoApproval: PendingApproval | null; currentAssistantId: string }> {
     let pendingAutoApproval: PendingApproval | null = null;
+    let currentId = assistantId;
+    let hadToolSinceLastText = false;
+
     try {
       for await (const event of stream) {
+        if (event.type !== 'text') this.debug('event', event.type, 'toolName' in event ? (event as { toolName: string }).toolName : '');
         switch (event.type) {
           case 'text':
-            this.updateAssistantMessage(assistantId, (m) => ({ ...m, content: m.content + event.content }));
+            // After tool calls, finalize current message and start a new one
+            if (hadToolSinceLastText) {
+              this.updateAssistantMessage(currentId, (m) => ({ ...m, isStreaming: false }));
+              currentId = this.startNewAssistantMessage();
+              hadToolSinceLastText = false;
+            }
+            this.updateAssistantMessage(currentId, (m) => ({
+              ...m, content: m.content + event.content,
+            }));
             break;
           case 'status':
             this.setAgentStatus({ type: event.status, message: event.message });
             break;
           case 'todos':
-            this.updateAssistantMessage(assistantId, (m) => ({ ...m, plan: event.content }));
+            this.updateAssistantMessage(currentId, (m) => ({ ...m, plan: event.content }));
             break;
           case 'tool_call':
-            this.updateAssistantMessage(assistantId, (m) => ({
-              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'used' as const, args: event.arguments }],
+            this.updateAssistantMessage(currentId, (m) => ({
+              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'used' as const, args: stripNullArgs(event.arguments) }],
             }));
+            hadToolSinceLastText = true;
             break;
           case 'approval_required': {
+            const cleanedArgs = stripNullArgs(event.arguments);
             const approval: PendingApproval = {
               toolCallId: event.toolCallId, toolName: event.toolName,
-              arguments: event.arguments, description: event.description,
+              arguments: cleanedArgs, description: event.description,
             };
-            // Create a step immediately so it appears in the UI with args
-            this.updateAssistantMessage(assistantId, (m) => ({
-              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'running' as const, args: event.arguments }],
+            this.updateAssistantMessage(currentId, (m) => ({
+              ...m, steps: [...(m.steps ?? []), { name: event.toolName, status: 'running' as const, args: cleanedArgs }],
             }));
             if (this._alwaysAllowedTools.has(event.toolName)) {
               pendingAutoApproval = approval;
-              return { paused: true, pendingAutoApproval };
+              return { paused: true, pendingAutoApproval, currentAssistantId: currentId };
             }
             this.setPendingApproval(approval);
-            return { paused: true, pendingAutoApproval: null };
+            return { paused: true, pendingAutoApproval: null, currentAssistantId: currentId };
           }
           case 'approval_result':
-            this.updateAssistantMessage(assistantId, (m) => ({
+            this.updateAssistantMessage(currentId, (m) => ({
               ...m, steps: (m.steps ?? []).map((s) =>
                 s.name === event.toolName ? { ...s, status: event.decision === 'deny' ? ('denied' as const) : ('used' as const) } : s),
             }));
+            hadToolSinceLastText = true;
             break;
           case 'done':
             this.setThreadId(event.threadId);
@@ -367,7 +400,7 @@ export class Talk2View {
     } catch (err) {
       this.setError(err instanceof Error ? err.message : String(err));
     }
-    return { paused: false, pendingAutoApproval: null };
+    return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
   }
 
   /**
@@ -375,8 +408,10 @@ export class Talk2View {
    */
   private async drainStream(stream: AsyncGenerator<ChatEvent>, assistantId: string): Promise<void> {
     let currentStream = stream;
+    let currentId = assistantId;
     while (true) {
-      const { paused, pendingAutoApproval } = await this.consumeStream(currentStream, assistantId);
+      const { paused, pendingAutoApproval, currentAssistantId } = await this.consumeStream(currentStream, currentId);
+      currentId = currentAssistantId;
       if (!paused) break;
       if (!pendingAutoApproval) {
         // Manual approval needed — keep isStreaming true so ApprovalCard renders
@@ -386,11 +421,34 @@ export class Talk2View {
       this.setAgentStatus({ type: 'auto-approved', message: `Auto-approved ${pendingAutoApproval.toolName}` });
       currentStream = this.respondToApproval(pendingAutoApproval, { action: 'once' });
     }
-    this.finalizeStream(assistantId);
+    this.finalizeStream(currentId);
   }
 
   private finalizeStream(assistantId: string): void {
     this.updateAssistantMessage(assistantId, (m) => ({ ...m, isStreaming: false }));
+    // Clean up empty trailing messages (tools-only messages with no text are fine, but
+    // empty messages created right before 'done' should be removed)
+    const last = this._messages[this._messages.length - 1];
+    if (last && last.role === 'assistant' && !last.content && !last.steps?.length && !last.plan) {
+      this._messages = this._messages.slice(0, -1);
+      this.emitter.emit('messagesChange', this._messages);
+    }
+
+    // Record the complete assistant turn in conversation history.
+    // Collect all text from the segmented display messages that form this turn
+    // (consecutive assistant messages after the last user message).
+    const parts: string[] = [];
+    for (let i = this._messages.length - 1; i >= 0; i--) {
+      const m = this._messages[i]!;
+      if (m.role !== 'assistant') break;
+      if (m.content) parts.unshift(m.content);
+    }
+    if (parts.length > 0) {
+      const merged = parts.join('\n\n');
+      this._conversationHistory.push({ role: 'assistant', content: merged });
+      this.debug('finalize — assistant turn recorded', { segments: parts.length, contentLength: merged.length });
+    }
+
     this.setAgentStatus(null);
     this.setLoading(false);
   }
@@ -412,13 +470,16 @@ export class Talk2View {
     this.setLoading(true);
     this.setError(null);
 
-    const history: ChatMessage[] = this._messages
-      .filter((m) => m.id !== assistantMsg.id)
-      .map((m) => ({ role: m.role, content: m.content }));
+    // Build history from prior turns (exclude current message — T2VSession.sendMessage appends it)
+    const historySnapshot = [...this._conversationHistory];
+    // Record user turn in conversation history
+    this._conversationHistory.push({ role: 'user', content });
+    this.debug('sendMessage', { content, historyLength: this._conversationHistory.length });
+    this.debug('history →', JSON.stringify(this._conversationHistory.map((m) => ({ role: m.role, content: m.content.slice(0, 80) + (m.content.length > 80 ? '...' : '') }))));
 
     const systemPrompt = options?.systemPrompt;
     const model = options?.model ?? this.config.model;
-    const stream = this.chat(content, { systemPrompt, model, history });
+    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot });
     await this.drainStream(stream, assistantMsg.id);
   }
 
@@ -438,6 +499,7 @@ export class Talk2View {
     }
     this.setPendingApproval(null);
     this.setLoading(true);
+    // Find the latest streaming assistant message (the one with the pending tool step)
     let assistantMsg: DisplayMessage | undefined;
     for (let i = this._messages.length - 1; i >= 0; i--) {
       if (this._messages[i]!.role === 'assistant') { assistantMsg = this._messages[i]; break; }
@@ -457,6 +519,9 @@ export class Talk2View {
     while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'assistant') msgs.pop();
     while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'user') msgs.pop();
     this.setMessages(msgs);
+    // Remove the last user+assistant pair from conversation history too
+    while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'assistant') this._conversationHistory.pop();
+    while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'user') this._conversationHistory.pop();
     this.setError(null);
     await this.sendMessage(content);
   }
@@ -466,6 +531,7 @@ export class Talk2View {
    */
   clearMessages(): void {
     this.setMessages([]);
+    this._conversationHistory = [];
     this.setLoading(false);
     this.setError(null);
     this.setPendingApproval(null);

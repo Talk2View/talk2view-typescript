@@ -12,6 +12,20 @@ import type {
   ToolPermissionCallback,
 } from './types';
 
+/**
+ * Strip null/undefined values from tool args.
+ * LLMs frequently send null for optional parameters they don't intend to set.
+ */
+export function stripNullArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (value !== null && value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
 export class T2VTools {
   private handlers: Map<string, ToolHandler> = new Map();
   private schemas: ClientToolSchema[] = [];
@@ -138,7 +152,9 @@ export class T2VTools {
       };
     }
 
-    const validationError = this.validateArgs(toolName, args);
+    const cleanArgs = stripNullArgs(args);
+
+    const validationError = this.validateArgs(toolName, cleanArgs);
     if (validationError) {
       return {
         result: JSON.stringify({ error: validationError }),
@@ -147,7 +163,7 @@ export class T2VTools {
     }
 
     try {
-      const raw = await handler(args);
+      const raw = await handler(cleanArgs);
       const result = typeof raw === 'string' ? raw : JSON.stringify(raw) ?? '';
       return { result, isError: false };
     } catch (err) {

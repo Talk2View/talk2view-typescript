@@ -112,6 +112,9 @@ export class T2VSession {
     body: object,
   ): AsyncGenerator<ChatEvent> {
     for await (const chunk of this.client.streamRequest(endpoint, body)) {
+      // Debug: log raw chunks to see what the server actually sends
+      if (this.config?.debug) console.log('[T2V] raw chunk', JSON.stringify(chunk).slice(0, 500));
+
       // Agent status update (non-terminal — stream continues)
       if (chunk.status) {
         yield { type: 'status', status: chunk.status.type, message: chunk.status.message };

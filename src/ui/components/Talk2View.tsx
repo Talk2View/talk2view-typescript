@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { T2VProvider, useT2V } from '../../react/T2VProvider';
+import { useUserPreferences } from '../../react/useUserPreferences';
+import { usePartnerConfig } from '../../react/usePartnerConfig';
 import { Talk2ViewContext, ChatContext } from '../context';
 import { injectTheme, injectFonts } from '../theme';
 import { injectComponentStyles } from '../styles';
@@ -12,6 +14,8 @@ export interface Talk2ViewProps {
   systemPrompt?: string;
   tools?: (ClientToolSchema | ClientTool)[];
   theme?: Talk2ViewTheme;
+  /** Enable debug logging to the browser console. */
+  debug?: boolean;
   children: React.ReactNode;
 }
 
@@ -21,9 +25,9 @@ export interface Talk2ViewProps {
  * Wraps the internal T2VProvider (so hooks like usePartnerConfig, useUserPreferences work)
  * and adds the new Talk2ViewContext + ChatContext for the rebuilt UI layer.
  */
-export function Talk2View({ partnerKey, baseUrl, model, systemPrompt, tools, theme, children }: Talk2ViewProps) {
+export function Talk2View({ partnerKey, baseUrl, model, systemPrompt, tools, theme, debug, children }: Talk2ViewProps) {
   return (
-    <T2VProvider partnerKey={partnerKey} baseUrl={baseUrl} model={model}>
+    <T2VProvider partnerKey={partnerKey} baseUrl={baseUrl} model={model} debug={debug}>
       <InnerProvider systemPrompt={systemPrompt} tools={tools} theme={theme}>
         {children}
       </InnerProvider>
@@ -44,6 +48,11 @@ function InnerProvider({
 }) {
   // Get the t2v instance from T2VProvider (single source of truth)
   const { t2v, user, isAuthenticated } = useT2V();
+  const { preferences } = useUserPreferences();
+  const { config: partnerConfig } = usePartnerConfig();
+
+  // Resolve model: user preference > Talk2View prop > partner config default
+  const resolvedModel = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || undefined;
 
   // Inject theme + fonts + component styles
   useEffect(() => {
@@ -90,8 +99,8 @@ function InnerProvider({
   }, [t2v]);
 
   const sendMessage = useCallback(
-    (content: string) => t2v.sendMessage(content, { systemPrompt }),
-    [t2v, systemPrompt],
+    (content: string) => t2v.sendMessage(content, { systemPrompt, model: resolvedModel }),
+    [t2v, systemPrompt, resolvedModel],
   );
   const approveToolCall = useCallback((d: HumanDecision) => t2v.approveToolCall(d), [t2v]);
   const retryLastMessage = useCallback(() => t2v.retryLastMessage(), [t2v]);

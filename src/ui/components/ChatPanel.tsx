@@ -7,6 +7,7 @@ import { Composer } from './Composer';
 import { WelcomeScreen } from './WelcomeScreen';
 import { SettingsPanel } from './SettingsPanel';
 import { useUserPreferences } from '../../react/useUserPreferences';
+import { usePartnerConfig } from '../../react/usePartnerConfig';
 
 const FONT_SCALE: Record<string, number> = { small: 0.75, medium: 0.875, large: 1 };
 
@@ -19,8 +20,11 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
   const { isAuthenticated, t2v } = useTalk2View();
   const { messages, clearMessages } = useChat();
   const { preferences } = useUserPreferences();
+  const { config: partnerConfig } = usePartnerConfig();
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const fontSize = FONT_SCALE[preferences.fontSize ?? 'medium'] ?? 0.875;
+  const modelId = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
+  const modelDisplay = modelId.replace(/^openrouter\//, '');
 
   useEffect(() => { if (!isAuthenticated) setView('chat'); }, [isAuthenticated]);
 
@@ -45,6 +49,19 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
         <WelcomeScreen heading={welcome?.heading} suggestions={welcome?.suggestions} />
       ) : (
         <MessageList />
+      )}
+      {isAuthenticated && view === 'chat' && modelDisplay && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '4px 12px',
+          fontSize: '10px',
+          fontFamily: 'var(--t2v-font-mono)',
+          color: 'var(--t2v-muted)',
+          letterSpacing: '0.3px',
+          borderTop: '1px solid var(--t2v-border)',
+        }}>
+          {modelDisplay}
+        </div>
       )}
       {isAuthenticated && view === 'chat' && <Composer />}
     </div>

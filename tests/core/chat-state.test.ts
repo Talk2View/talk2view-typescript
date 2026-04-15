@@ -22,6 +22,13 @@ vi.mock('../../src/tools', () => ({
   T2VTools: vi.fn().mockImplementation(() => ({
     reRegister: vi.fn().mockResolvedValue(null),
   })),
+  stripNullArgs: (args: Record<string, unknown>) => {
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (v !== null && v !== undefined) clean[k] = v;
+    }
+    return clean;
+  },
 }));
 
 vi.mock('../../src/skills', () => ({
@@ -362,8 +369,10 @@ describe('Talk2View state management', () => {
       await t2v.approveToolCall({ action: 'once' });
 
       expect(t2v.pendingApproval).toBeNull();
-      const assistant = t2v.messages.find((m) => m.role === 'assistant');
-      expect(assistant?.content).toContain('Email sent!');
+      // After approval, text arrives in a new message segment (message segmentation)
+      const assistants = t2v.messages.filter((m) => m.role === 'assistant');
+      const lastAssistant = assistants[assistants.length - 1];
+      expect(lastAssistant?.content).toContain('Email sent!');
     });
 
     it('approveToolCall with deny marks step as denied', async () => {

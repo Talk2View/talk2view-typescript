@@ -8,6 +8,8 @@ export interface T2VConfig {
   model?: string;
   /** Timeout in milliseconds for HTTP requests. Defaults to 30000 (30s). Does not apply to SSE streams after connection. */
   requestTimeout?: number;
+  /** Enable debug logging to console. Logs streaming events, tool calls, history, and state changes. */
+  debug?: boolean;
 }
 
 // ── Auth ──
@@ -273,7 +275,7 @@ export interface DisplayMessage {
   isStreaming?: boolean;
   /** Markdown checklist from the agent's planning tool (write_todos). */
   plan?: string;
-  /** Completed tool call steps (rendered as Chainlit-style inline steps). */
+  /** Completed tool call steps (rendered as collapsible inline steps). */
   steps?: ToolStep[];
 }
 

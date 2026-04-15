@@ -14,7 +14,7 @@ import { useChat } from '../context';
 import { LOGOS } from '../theme';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
-import { ToolDisplay } from './ToolDisplay';
+import { ToolStepGroup } from './ToolDisplay';
 import { ApprovalCard } from './ApprovalCard';
 import { MessageActions } from './MessageActions';
 import { Shimmer } from './Shimmer';
@@ -109,17 +109,8 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
 
         {/* Tool call steps */}
         {message.steps && message.steps.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '4px',
-              marginBottom: message.content ? '8px' : '0',
-            }}
-          >
-            {message.steps.map((step, i) => (
-              <ToolDisplay key={i} name={step.name} status={step.status} args={step.args} result={step.result} />
-            ))}
+          <div style={{ marginBottom: message.content ? '8px' : '0' }}>
+            <ToolStepGroup steps={message.steps} isStreaming={message.isStreaming} />
           </div>
         )}
 

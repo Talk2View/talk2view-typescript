@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Check, X, Loader2, ChevronDown, Wrench } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
 
 export interface ToolDisplayProps {
   name: string;
@@ -8,182 +7,227 @@ export interface ToolDisplayProps {
   result?: string;
 }
 
+/**
+ * ToolDisplay — compact single-line tool step, expandable to show args/result.
+ */
 export function ToolDisplay({ name, status, args, result }: ToolDisplayProps) {
-  // Default expanded when completed, collapsed when running
-  const [expanded, setExpanded] = useState(status !== 'running');
-  const [contentHeight, setContentHeight] = useState<number>(0);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const isRunning = status === 'running';
-  const isDenied = status === 'denied';
+  const [expanded, setExpanded] = useState(false);
   const hasDetails = (args && Object.keys(args).length > 0) || result;
 
-  // ResizeObserver to track inner content height for smooth max-height transition
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContentHeight(entry.contentRect.height);
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   return (
-    <div style={{
-      border: '1px solid var(--t2v-border)',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      margin: '4px 0',
-      fontFamily: 'var(--t2v-font)',
-    }}>
-      {/* Header */}
+    <div style={{ fontSize: 12 }}>
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
         style={{
-          width: '100%',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          padding: '10px 12px',
+          gap: 6,
+          width: '100%',
+          background: 'none',
           border: 'none',
-          background: 'transparent',
+          padding: '3px 0',
           cursor: hasDetails ? 'pointer' : 'default',
-          fontFamily: 'var(--t2v-font)',
-          color: 'var(--t2v-foreground)',
+          fontFamily: 'var(--t2v-font-mono, monospace)',
+          fontSize: 12,
+          color: 'var(--t2v-muted, #9F9AA4)',
           textAlign: 'left',
         }}
+        aria-expanded={hasDetails ? expanded : undefined}
       >
-        {/* Wrench icon */}
-        <Wrench size={15} style={{ color: 'var(--t2v-muted)', flexShrink: 0 }} />
-
-        {/* Tool name */}
-        <span style={{
-          fontWeight: 600,
-          fontSize: '14px',
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {name}
-        </span>
-
-        {/* Status badge */}
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          fontSize: '12px',
-          fontWeight: 500,
-          color: isDenied ? 'var(--t2v-error)' : isRunning ? 'var(--t2v-muted)' : 'var(--t2v-accent)',
-        }}>
-          {isRunning ? (
-            <Loader2 size={13} style={{ animation: 't2v-spin 1s linear infinite' }} />
-          ) : isDenied ? (
-            <X size={13} />
-          ) : (
-            <Check size={13} />
-          )}
-          {isDenied ? 'Denied' : isRunning ? 'Running...' : 'Completed'}
-        </span>
-
-        {/* Spacer */}
-        <span style={{ flex: 1 }} />
-
-        {/* Chevron */}
-        {hasDetails && (
-          <ChevronDown
-            size={16}
-            style={{
-              color: 'var(--t2v-muted)',
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease',
-              flexShrink: 0,
-            }}
-          />
-        )}
+        <StatusIcon status={status} />
+        <span style={{ flex: 1 }}>{name}</span>
+        {hasDetails && <ChevronIcon rotated={expanded} />}
       </button>
 
-      {/* Expanded detail — always rendered, controlled via max-height for smooth transition */}
-      {hasDetails && (
-        <div style={{
-          maxHeight: expanded ? `${contentHeight}px` : '0px',
-          overflow: 'hidden',
-          transition: 'max-height 0.2s ease-out',
-        }}>
-          <div ref={contentRef} style={{ padding: '4px 16px 16px' }}>
-            {args && Object.keys(args).length > 0 && (
-              <DetailSection label="PARAMETERS" json={JSON.stringify(args, null, 2)} />
-            )}
-            {result && (
-              <DetailSection label="RESULT" json={result} />
-            )}
-          </div>
+      {expanded && hasDetails && (
+        <div
+          style={{
+            marginLeft: 20,
+            paddingLeft: 8,
+            borderLeft: '2px solid var(--t2v-border, #E5E7EB)',
+            fontSize: 11,
+            fontFamily: 'var(--t2v-font-mono, monospace)',
+            color: 'var(--t2v-muted, #9F9AA4)',
+          }}
+        >
+          {args && Object.keys(args).length > 0 && (
+            <DetailSection label="PARAMS" content={formatJson(args)} />
+          )}
+          {result && (
+            <DetailSection label="RESULT" content={formatResult(result)} />
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/** Renders a labeled JSON section with syntax coloring */
-function DetailSection({ label, json }: { label: string; json: string }) {
-  const coloredHtml = useMemo(() => colorizeJson(json), [json]);
+export interface ToolStepGroupProps {
+  steps: Array<{
+    name: string;
+    status: 'used' | 'denied' | 'running';
+    args?: Record<string, unknown>;
+    result?: string;
+  }>;
+  isStreaming?: boolean;
+}
+
+/**
+ * ToolStepGroup — wraps multiple tool steps into a collapsible group.
+ *
+ * While streaming or any tool is running → expanded (shows individual items).
+ * After all tools complete → auto-collapses to summary line.
+ * Single completed step → renders as standalone ToolDisplay.
+ */
+export function ToolStepGroup({ steps, isStreaming }: ToolStepGroupProps) {
+  const hasRunning = steps.some((s) => s.status === 'running');
+  const autoExpanded = hasRunning || !!isStreaming;
+
+  const [userToggle, setUserToggle] = React.useState<boolean | null>(null);
+  const prevAutoRef = React.useRef(autoExpanded);
+
+  React.useEffect(() => {
+    if (prevAutoRef.current && !autoExpanded) {
+      setUserToggle(null);
+    }
+    prevAutoRef.current = autoExpanded;
+  }, [autoExpanded]);
+
+  if (steps.length === 0) return null;
+
+  if (steps.length === 1 && !hasRunning) {
+    const s = steps[0]!;
+    return (
+      <div style={{ padding: '2px 0' }}>
+        <ToolDisplay name={s.name} status={s.status} args={s.args} result={s.result} />
+      </div>
+    );
+  }
+
+  const expanded = userToggle !== null ? userToggle : autoExpanded;
+  const completedCount = steps.filter((s) => s.status === 'used').length;
+  const deniedCount = steps.filter((s) => s.status === 'denied').length;
+  const runningStep = steps.find((s) => s.status === 'running');
+
+  let summaryText: string;
+  if (runningStep) {
+    summaryText = `Running ${runningStep.name}...`;
+  } else {
+    const parts: string[] = [];
+    if (completedCount > 0) parts.push(`${completedCount} completed`);
+    if (deniedCount > 0) parts.push(`${deniedCount} denied`);
+    summaryText = `${steps.length} tool calls — ${parts.join(', ')}`;
+  }
 
   return (
-    <div style={{ marginTop: '12px' }}>
-      <div style={{
-        fontSize: '11px',
-        fontWeight: 700,
-        color: 'var(--t2v-muted)',
-        letterSpacing: '0.5px',
-        marginBottom: '8px',
-      }}>
-        {label}
-      </div>
-      <pre
-        dangerouslySetInnerHTML={{ __html: coloredHtml }}
+    <div style={{ padding: '2px 0' }}>
+      <button
+        onClick={() => setUserToggle(expanded ? false : true)}
         style={{
-          margin: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          width: '100%',
+          background: 'none',
+          border: 'none',
           padding: '4px 0',
-          fontSize: '13px',
-          fontFamily: 'var(--t2v-font-mono)',
-          lineHeight: 1.6,
-          overflow: 'auto',
-          maxHeight: '200px',
-          color: 'var(--t2v-foreground)',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          background: 'transparent',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontFamily: 'var(--t2v-font-mono, monospace)',
+          color: 'var(--t2v-muted, #9F9AA4)',
+          textAlign: 'left',
         }}
-      />
+        aria-expanded={expanded}
+      >
+        <StatusIcon status={runningStep ? 'running' : 'used'} />
+        <span style={{ flex: 1 }}>{summaryText}</span>
+        <ChevronIcon rotated={expanded} />
+      </button>
+
+      {expanded && (
+        <div
+          style={{
+            marginLeft: 6,
+            paddingLeft: 8,
+            borderLeft: '2px solid var(--t2v-border, #E5E7EB)',
+          }}
+        >
+          {steps.map((step, i) => (
+            <ToolDisplay key={i} name={step.name} status={step.status} args={step.args} result={step.result} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/** Simple JSON syntax coloring — no external dependency */
-function colorizeJson(json: string): string {
-  return json.replace(
-    /("(?:[^"\\]|\\.)*")\s*(:)|("(?:[^"\\]|\\.)*")|((?:true|false|null))|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
-    (match, key, colon, str, bool, num) => {
-      if (key && colon) {
-        // JSON key
-        return `<span style="color:#b91c1c">${key}</span>${colon}`;
-      }
-      if (str) {
-        // String value
-        return `<span style="color:#166534">${str}</span>`;
-      }
-      if (bool) {
-        // Boolean / null
-        return `<span style="color:#9333ea">${bool}</span>`;
-      }
-      if (num) {
-        // Number
-        return `<span style="color:#b45309">${num}</span>`;
-      }
-      return match;
-    },
+// ── Shared sub-components ──
+
+function StatusIcon({ status }: { status: string }) {
+  const size = 14;
+  if (status === 'running') {
+    return (
+      <svg
+        width={size} height={size} viewBox="0 0 24 24" fill="none"
+        stroke="var(--t2v-accent, #40D4B6)" strokeWidth={2.5} strokeLinecap="round"
+        style={{ animation: 't2v-spin 1s linear infinite', flexShrink: 0 }}
+      >
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </svg>
+    );
+  }
+  if (status === 'denied') {
+    return (
+      <svg
+        width={size} height={size} viewBox="0 0 24 24" fill="none"
+        stroke="var(--t2v-error, #DC2626)" strokeWidth={2.5}
+        strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}
+      >
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="var(--t2v-accent, #40D4B6)" strokeWidth={2.5}
+      strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
   );
+}
+
+function ChevronIcon({ rotated }: { rotated: boolean }) {
+  return (
+    <svg
+      width={12} height={12} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ transition: 'transform 150ms ease', transform: rotated ? 'rotate(180deg)' : 'rotate(0deg)' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function DetailSection({ label, content }: { label: string; content: string }) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{label}</div>
+      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 150, overflow: 'auto' }}>
+        {content}
+      </pre>
+    </div>
+  );
+}
+
+function formatJson(obj: Record<string, unknown>): string {
+  try { return JSON.stringify(obj, null, 2); }
+  catch { return String(obj); }
+}
+
+function formatResult(result: string): string {
+  try { return JSON.stringify(JSON.parse(result), null, 2); }
+  catch { return result; }
 }
