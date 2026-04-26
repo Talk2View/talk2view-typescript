@@ -326,6 +326,106 @@ describe('Talk2View state management', () => {
     });
   });
 
+  describe('conversation history integrity', () => {
+    it('includes prior completed turns in history on the next send', async () => {
+      setupMockClient(t2v, [[textChunk('first reply'), stopChunk()]]);
+      await t2v.sendMessage('first');
+
+      const chatSpy = vi.spyOn(t2v, 'chat' as never).mockImplementation((() => {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield textChunk('second reply');
+          yield stopChunk();
+        })();
+      }) as never);
+
+      await t2v.sendMessage('second');
+
+      expect(chatSpy).toHaveBeenCalledWith(
+        'second',
+        expect.objectContaining({
+          history: [
+            { role: 'user', content: 'first' },
+            { role: 'assistant', content: 'first reply' },
+          ],
+        }),
+      );
+    });
+
+    it('rolls back orphan user turn when stream errors before any text', async () => {
+      setupMockClient(t2v, [[errorChunk('Network failure')]]);
+      await t2v.sendMessage('failed message');
+      expect(t2v.error).toBe('Network failure');
+
+      const chatSpy = vi.spyOn(t2v, 'chat' as never).mockImplementation((() => {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield textChunk('ok');
+          yield stopChunk();
+        })();
+      }) as never);
+
+      await t2v.sendMessage('next message');
+
+      expect(chatSpy).toHaveBeenCalledWith(
+        'next message',
+        expect.objectContaining({ history: [] }),
+      );
+    });
+
+    it('rolls back orphan user turn when deny-resume stream errors', async () => {
+      setupMockClientSeparate(
+        t2v,
+        [[interruptChunk('delete_file', 'call_1', { path: '/x' }, 'Delete')]],
+        [[errorChunk('Server down')]],
+      );
+
+      await t2v.sendMessage('delete x');
+      await t2v.approveToolCall({ action: 'deny' });
+      expect(t2v.error).toBe('Server down');
+
+      const chatSpy = vi.spyOn(t2v, 'chat' as never).mockImplementation((() => {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield textChunk('ok');
+          yield stopChunk();
+        })();
+      }) as never);
+
+      await t2v.sendMessage('follow up');
+
+      expect(chatSpy).toHaveBeenCalledWith(
+        'follow up',
+        expect.objectContaining({ history: [] }),
+      );
+    });
+
+    it('preserves successful turn when a later turn errors', async () => {
+      setupMockClient(t2v, [[textChunk('good reply'), stopChunk()]]);
+      await t2v.sendMessage('good message');
+
+      setupMockClient(t2v, [[errorChunk('boom')]]);
+      await t2v.sendMessage('bad message');
+      expect(t2v.error).toBe('boom');
+
+      const chatSpy = vi.spyOn(t2v, 'chat' as never).mockImplementation((() => {
+        return (async function* (): AsyncGenerator<ChatEvent> {
+          yield textChunk('fine');
+          yield stopChunk();
+        })();
+      }) as never);
+
+      await t2v.sendMessage('third');
+
+      expect(chatSpy).toHaveBeenCalledWith(
+        'third',
+        expect.objectContaining({
+          history: [
+            { role: 'user', content: 'good message' },
+            { role: 'assistant', content: 'good reply' },
+          ],
+        }),
+      );
+    });
+  });
+
   describe('approval flow', () => {
     it('pauses on approval_required and sets pendingApproval', async () => {
       setupMockClient(t2v, [

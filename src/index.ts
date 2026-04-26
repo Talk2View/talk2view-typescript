@@ -447,6 +447,14 @@ export class Talk2View {
       const merged = parts.join('\n\n');
       this._conversationHistory.push({ role: 'assistant', content: merged });
       this.debug('finalize — assistant turn recorded', { segments: parts.length, contentLength: merged.length });
+    } else if (this._error) {
+      // Stream errored without producing any assistant text. Roll back the
+      // trailing user turn so the next sendMessage doesn't send [..., user, user].
+      const lastHist = this._conversationHistory[this._conversationHistory.length - 1];
+      if (lastHist?.role === 'user') {
+        this._conversationHistory.pop();
+        this.debug('finalize — rolled back orphan user turn after error');
+      }
     }
 
     this.setAgentStatus(null);

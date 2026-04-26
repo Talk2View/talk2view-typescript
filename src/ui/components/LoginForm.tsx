@@ -14,7 +14,12 @@ export function LoginForm({ signupUrl }: LoginFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || isLoading) return;
-    await login(email, password);
+    try {
+      await login(email, password);
+    } catch {
+      // useT2VAuth already surfaces the message via the `error` state; swallow
+      // the rejection here so the dev overlay doesn't flag it as uncaught.
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -41,11 +46,11 @@ export function LoginForm({ signupUrl }: LoginFormProps) {
       <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: '280px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'var(--t2v-font)', color: 'var(--t2v-foreground)' }}>Email</span>
-          <input type="email" placeholder="Email" value={email} onChange={(e) => { setEmail(e.target.value); clearError(); }} className="t2v-focusable" style={inputStyle} />
+          <input id="t2v-email" type="email" placeholder="Email" value={email} onChange={(e) => { setEmail(e.target.value); clearError(); }} className="t2v-focusable" style={inputStyle} />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'var(--t2v-font)', color: 'var(--t2v-foreground)' }}>Password</span>
-          <input type="password" placeholder="Password" value={password} onChange={(e) => { setPassword(e.target.value); clearError(); }} className="t2v-focusable" style={inputStyle} />
+          <input id="t2v-password" type="password" placeholder="Password" value={password} onChange={(e) => { setPassword(e.target.value); clearError(); }} className="t2v-focusable" style={inputStyle} />
         </label>
         <button type="submit" disabled={!email || !password || isLoading} className="t2v-btn" style={{
           width: '100%', padding: '10px', border: 'none', borderRadius: 'calc(var(--t2v-radius) * 0.5px)',

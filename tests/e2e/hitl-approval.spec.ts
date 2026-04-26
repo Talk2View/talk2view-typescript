@@ -23,6 +23,11 @@ const test = base.extend<{ mocks: MockControls }>({
     // Dismiss any unexpected dialogs (e.g. alert from show_notification)
     page.on('dialog', (dialog) => dialog.accept());
 
+    // Arm the tool-registration waiter BEFORE navigation — the Talk2View
+    // provider registers tools in a mount-time effect, so the request fires
+    // before login completes.
+    const toolsRegistered = page.waitForResponse('**/v1/tools/register');
+
     await page.goto('/');
 
     // Log in
@@ -33,8 +38,8 @@ const test = base.extend<{ mocks: MockControls }>({
     // Wait for chat panel ready
     await expect(page.getByText('How can I help you?')).toBeVisible();
 
-    // Wait for tools to register
-    await expect(page.getByText('3 tools')).toBeVisible();
+    // Ensure tools are registered before the first sendMessage
+    await toolsRegistered;
 
     await use(mocks);
   },
@@ -45,15 +50,19 @@ const test = base.extend<{ mocks: MockControls }>({
 const EMAIL_ARGS = { to: 'user@test.com', subject: 'Hello', body: 'World' };
 
 async function sendMessage(page: Page, text: string) {
-  const input = page.getByPlaceholder('Type a message...');
+  const input = page.getByPlaceholder('Type a message…');
   await input.fill(text);
   await page.getByLabel('Send message').click();
+}
+
+function approvalCard(page: Page) {
+  return page.getByRole('region', { name: /Tool approval required/ });
 }
 
 async function triggerApproval(page: Page, mocks: MockControls, callId = 'call_1') {
   mocks.setMessageResponse(interruptSSE('send_email', callId, EMAIL_ARGS));
   await sendMessage(page, 'Send an email');
-  await expect(page.getByText('Approval Required')).toBeVisible();
+  await expect(approvalCard(page)).toBeVisible();
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -62,24 +71,30 @@ test.describe('HITL Approval Flow', () => {
   test('tool call shows the approval card', async ({ page, mocks }) => {
     await triggerApproval(page, mocks);
 
-    // Card content
-    await expect(page.getByText('send_email')).toBeVisible();
-    await expect(page.getByText('"to": "user@test.com"')).toBeVisible();
+    const card = approvalCard(page);
+
+    // Card header shows tool name + description
+    await expect(card.getByText('send_email')).toBeVisible();
+    await expect(card.getByText(/Send an email on behalf of the user/)).toBeVisible();
+
+    // Arguments are collapsed by default; expand and verify payload
+    await card.getByRole('button', { name: /Show arguments/ }).click();
+    await expect(card.getByText('"to": "user@test.com"')).toBeVisible();
 
     // Three action buttons
-    await expect(page.getByText('Allow Once')).toBeVisible();
-    await expect(page.getByText('Allow Always')).toBeVisible();
-    await expect(page.getByText('Deny')).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Allow Once' })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Allow Always' })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Deny' })).toBeVisible();
   });
 
   test('Allow Once executes the tool and resumes', async ({ page, mocks }) => {
     await triggerApproval(page, mocks);
 
     mocks.setResumeResponse(textResponseSSE('Email sent successfully.'));
-    await page.getByText('Allow Once').click();
+    await approvalCard(page).getByRole('button', { name: 'Allow Once' }).click();
 
     // Approval card disappears, response shows
-    await expect(page.getByText('Approval Required')).not.toBeVisible();
+    await expect(approvalCard(page)).not.toBeVisible();
     await expect(page.getByText('Email sent successfully.')).toBeVisible();
 
     // Verify the resume request
@@ -87,7 +102,6 @@ test.describe('HITL Approval Flow', () => {
     expect(resumes).toHaveLength(1);
     expect(resumes[0].tool_call_id).toBe('call_1');
     expect(resumes[0].is_error).toBe(false);
-    // The tool's execute returns { success: true, sent_to: args.to }
     expect(resumes[0].result).toContain('sent_to');
     expect(resumes[0].result).toContain('user@test.com');
   });
@@ -96,7 +110,7 @@ test.describe('HITL Approval Flow', () => {
     // First call — manually approve with Always
     await triggerApproval(page, mocks, 'call_first');
     mocks.setResumeResponse(textResponseSSE('First email sent.'));
-    await page.getByText('Allow Always').click();
+    await approvalCard(page).getByRole('button', { name: 'Allow Always' }).click();
 
     await expect(page.getByText('First email sent.')).toBeVisible();
 
@@ -106,10 +120,9 @@ test.describe('HITL Approval Flow', () => {
     mocks.setResumeResponse(textResponseSSE('Second email sent.'));
     await sendMessage(page, 'Send another email');
 
-    // No approval card should appear
     await expect(page.getByText('Second email sent.')).toBeVisible();
-    // The approval card should NOT be shown (give it a moment to be sure)
-    await expect(page.getByText('Approval Required')).not.toBeVisible();
+    // The approval card should NOT be shown
+    await expect(approvalCard(page)).not.toBeVisible();
 
     // Verify auto-approved resume was sent
     const resumes = mocks.getResumeRequests();
@@ -120,18 +133,19 @@ test.describe('HITL Approval Flow', () => {
 
   test('Deny sends feedback and agent continues', async ({ page, mocks }) => {
     await triggerApproval(page, mocks);
+    const card = approvalCard(page);
 
     // Click Deny — shows feedback input
-    await page.getByText('Deny').click();
-    await expect(page.getByPlaceholder('Corrective feedback (optional)')).toBeVisible();
+    await card.getByRole('button', { name: 'Deny' }).click();
+    const feedback = card.getByPlaceholder('Reason for denying (optional)');
+    await expect(feedback).toBeVisible();
 
     // Type feedback and confirm
-    await page.getByPlaceholder('Corrective feedback (optional)').fill('Wrong recipient');
+    await feedback.fill('Wrong recipient');
     mocks.setResumeResponse(textResponseSSE('Understood, I will not send that email.'));
-    await page.getByText('Confirm Deny').click();
+    await card.getByRole('button', { name: 'Confirm Deny' }).click();
 
-    // Card disappears, response shows
-    await expect(page.getByText('Approval Required')).not.toBeVisible();
+    await expect(approvalCard(page)).not.toBeVisible();
     await expect(page.getByText('Understood, I will not send that email.')).toBeVisible();
 
     // Verify the resume sent a denial
@@ -144,12 +158,14 @@ test.describe('HITL Approval Flow', () => {
 
   test('Edit arguments then Allow Once sends updated input', async ({ page, mocks }) => {
     await triggerApproval(page, mocks);
+    const card = approvalCard(page);
 
-    // Click Edit
-    await page.getByText('Edit').click();
+    // Expand arguments, then click Edit
+    await card.getByRole('button', { name: /Show arguments/ }).click();
+    await card.getByRole('button', { name: 'Edit' }).click();
 
     // Textarea should appear with current args
-    const textarea = page.locator('textarea');
+    const textarea = card.locator('textarea');
     await expect(textarea).toBeVisible();
 
     // Modify the arguments
@@ -162,17 +178,15 @@ test.describe('HITL Approval Flow', () => {
 
     // Approve with modified args
     mocks.setResumeResponse(textResponseSSE('Email sent to new address.'));
-    await page.getByText('Allow Once').click();
+    await card.getByRole('button', { name: 'Allow Once' }).click();
 
-    await expect(page.getByText('Approval Required')).not.toBeVisible();
+    await expect(approvalCard(page)).not.toBeVisible();
     await expect(page.getByText('Email sent to new address.')).toBeVisible();
 
     // Verify the tool was executed with updated args
     const resumes = mocks.getResumeRequests();
     expect(resumes).toHaveLength(1);
     expect(resumes[0].is_error).toBe(false);
-    // The execute function returns { success: true, sent_to: args.to }
-    // With updated args, sent_to should be the new address
     expect(resumes[0].result).toContain('new@test.com');
   });
 });

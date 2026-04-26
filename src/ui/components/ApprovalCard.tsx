@@ -46,7 +46,7 @@ export function ApprovalCard({ toolName, toolCallId, args, description, onDecisi
   };
 
   return (
-    <div style={cardStyle}>
+    <div style={cardStyle} role="region" aria-label={`Tool approval required: ${toolName}`}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px',
         padding: '10px 12px', background: 'var(--t2v-surface)',
