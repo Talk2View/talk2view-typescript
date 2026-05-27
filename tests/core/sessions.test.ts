@@ -352,3 +352,42 @@ describe('T2VSession.respondToApproval', () => {
     expect(body.is_error).toBe(true);
   });
 });
+
+describe('T2VSession — engine error chunks', () => {
+  it('yields a structured error event when the chunk carries engine.error', async () => {
+    const tools = createMockTools();
+    const errorChunk: ChatCompletionChunk = {
+      id: 'test',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: 'test',
+      choices: [
+        {
+          index: 0,
+          delta: { content: 'An error occurred while resuming. Please try again.' },
+          finish_reason: 'stop',
+        },
+      ],
+      thread_id: 'thread_1',
+      error: {
+        type: 'ValidationError',
+        message: 'An error occurred while resuming. Please try again.',
+        detail: "ValidationError(2 errors for ClientTool_insert_content_Args, extras: ['space_before', 'space_after'])",
+      },
+    };
+    const client = createMockClient([[errorChunk]]);
+
+    const session = createSession(client, tools);
+    const events = await collectEvents(session.sendMessage('go'));
+
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toEqual({
+      type: 'error',
+      message: 'An error occurred while resuming. Please try again.',
+      errorType: 'ValidationError',
+      detail: "ValidationError(2 errors for ClientTool_insert_content_Args, extras: ['space_before', 'space_after'])",
+    });
+    // The error message should NOT be duplicated as a text event when chunk.error is present.
+    expect(events.find((e) => e.type === 'text')).toBeUndefined();
+  });
+});

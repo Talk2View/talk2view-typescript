@@ -181,10 +181,22 @@ export class T2VSession {
         }
       }
 
-      // Text content
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
-        yield { type: 'text', content: delta };
+      // Structured error from the engine — surface as an `error` event so
+      // consumers can distinguish failures from AI output instead of rendering
+      // the catch-all string as assistant text.
+      if (chunk.error) {
+        yield {
+          type: 'error',
+          message: chunk.error.message,
+          errorType: chunk.error.type,
+          detail: chunk.error.detail,
+        };
+      } else {
+        // Text content
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          yield { type: 'text', content: delta };
+        }
       }
 
       // Done
