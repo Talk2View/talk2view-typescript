@@ -92,6 +92,18 @@ export interface AgentStatus {
   message: string;
 }
 
+/**
+ * Structured error info on a streaming chunk.
+ * `message` is also mirrored into `delta.content` for OpenAI-shaped consumers.
+ * `type` (exception class name) and `detail` (repr) are debug aids — log them
+ * in devtools, do not surface to end users.
+ */
+export interface ChunkError {
+  type: string;
+  message: string;
+  detail?: string;
+}
+
 export interface ChatCompletionChunk {
   id: string;
   object: string;
@@ -102,6 +114,7 @@ export interface ChatCompletionChunk {
   interrupt?: ToolCallInterrupt;
   status?: AgentStatus;
   todos?: string;
+  error?: ChunkError;
 }
 
 // ── Chat Events (public API) ──
@@ -113,7 +126,7 @@ export type ChatEvent =
   | { type: 'approval_result'; toolName: string; decision: HumanDecision['action'] }
   | { type: 'todos'; content: string }
   | { type: 'done'; threadId: string }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; errorType?: string; detail?: string }
   | { type: 'status'; status: string; message: string };
 
 // ── Human-in-the-Loop ──
