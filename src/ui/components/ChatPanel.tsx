@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
 import { useTalk2View, useChat } from '../context';
 import { ChatHeader } from './ChatHeader';
 import { LoginForm } from './LoginForm';
@@ -18,7 +19,7 @@ export interface ChatPanelProps {
 
 export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
   const { isAuthenticated, t2v } = useTalk2View();
-  const { messages, clearMessages } = useChat();
+  const { messages, clearMessages, error, clearError } = useChat();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
   const [view, setView] = useState<'chat' | 'settings'>('chat');
@@ -49,6 +50,33 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
         <WelcomeScreen heading={welcome?.heading} suggestions={welcome?.suggestions} />
       ) : (
         <MessageList />
+      )}
+      {isAuthenticated && view === 'chat' && error && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: '8px',
+            margin: '0 12px 8px', padding: '8px 12px',
+            background: 'rgba(220,38,38,0.06)',
+            border: '1px solid rgba(220,38,38,0.15)',
+            borderRadius: '6px',
+            fontSize: '12px',
+            color: 'var(--t2v-error)',
+            fontFamily: 'var(--t2v-font)',
+          }}
+        >
+          <span style={{ flex: 1, lineHeight: 1.4 }}>{error}</span>
+          <button
+            onClick={clearError}
+            aria-label="Dismiss error"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              padding: 0, color: 'var(--t2v-error)', display: 'flex',
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
       )}
       {isAuthenticated && view === 'chat' && modelDisplay && (
         <div style={{
