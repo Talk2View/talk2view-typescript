@@ -47,7 +47,7 @@ export function injectComponentStyles(): void {
   outline-offset: 2px;
 }
 
-[data-talk2view] .t2v-md p { margin: 0 0 0.5em; }
+[data-talk2view] .t2v-md p { margin: 0 0 0.7em; }
 [data-talk2view] .t2v-md p:last-child { margin-bottom: 0; }
 [data-talk2view] .t2v-md h1, [data-talk2view] .t2v-md h2, [data-talk2view] .t2v-md h3 {
   margin: 0.8em 0 0.3em; font-weight: 600; line-height: 1.3;
@@ -56,7 +56,7 @@ export function injectComponentStyles(): void {
 [data-talk2view] .t2v-md h2 { font-size: 1.1em; }
 [data-talk2view] .t2v-md h3 { font-size: 1em; }
 [data-talk2view] .t2v-md ul, [data-talk2view] .t2v-md ol { margin: 0.3em 0; padding-left: 1.3em; }
-[data-talk2view] .t2v-md li { margin: 0.15em 0; }
+[data-talk2view] .t2v-md li { margin: 0.2em 0; }
 [data-talk2view] .t2v-md code {
   font-family: var(--t2v-font-mono); font-size: 0.88em;
   padding: 0.12em 0.3em; background: var(--t2v-surface-hover); border-radius: 3px;
@@ -82,6 +82,22 @@ export function injectComponentStyles(): void {
 [data-talk2view] .t2v-btn:hover { filter: brightness(1.05); }
 [data-talk2view] .t2v-btn:active { transform: scale(0.98); }
 [data-talk2view] .t2v-btn-ghost:hover { background: var(--t2v-surface-hover); }
+
+[data-talk2view] .t2v-composer {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+[data-talk2view] .t2v-composer:focus-within {
+  border-color: var(--t2v-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--t2v-accent) 20%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-talk2view] *, [data-talk2view] *::before, [data-talk2view] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 `;
   document.head.appendChild(style);
   injected = true;
