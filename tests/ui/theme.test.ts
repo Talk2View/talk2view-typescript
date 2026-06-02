@@ -65,4 +65,41 @@ describe('theme', () => {
       expect(document.querySelectorAll('#t2v-fonts').length).toBe(1);
     });
   });
+
+  describe('radius scale', () => {
+    it('emits a derived radius scale with valid px values (no length*length calc)', () => {
+      const css = generateThemeCSS({ radius: 12 });
+      expect(css).toContain('--t2v-radius: 12px');
+      expect(css).toContain('--t2v-radius-sm: 6px');
+      expect(css).toContain('--t2v-radius-md: 9px');
+      expect(css).toContain('--t2v-radius-lg: 12px');
+      expect(css).toContain('--t2v-radius-xl: 18px');
+      expect(css).toContain('--t2v-radius-pill: 9999px');
+      // No invalid `<length> * <length>` expressions anywhere.
+      expect(css).not.toMatch(/\*\s*[\d.]+px/);
+    });
+
+    it('scales the radius tokens from the radius knob', () => {
+      const css = generateThemeCSS({ radius: 8 });
+      expect(css).toContain('--t2v-radius-sm: 4px');
+      expect(css).toContain('--t2v-radius-md: 6px');
+      expect(css).toContain('--t2v-radius-xl: 12px');
+    });
+  });
+
+  describe('assistant-ui-aligned defaults', () => {
+    it('defaults the user bubble to a light neutral gray with dark text', () => {
+      expect(THEME_DEFAULTS.userBubble).toBe('#F4F4F5');
+      expect(THEME_DEFAULTS.userForeground).toBe('#01161E');
+    });
+
+    it('defaults surface to a real (opaque) neutral surface', () => {
+      expect(THEME_DEFAULTS.surface).toBe('#F4F4F5');
+    });
+
+    it('exposes a shadow token', () => {
+      expect(THEME_DEFAULTS.shadow).toContain('rgba');
+      expect(generateThemeCSS({})).toContain('--t2v-shadow:');
+    });
+  });
 });

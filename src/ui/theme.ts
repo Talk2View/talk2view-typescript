@@ -7,14 +7,17 @@ export const THEME_DEFAULTS: Required<Talk2ViewTheme> = {
   foreground: '#01161E',
   muted: '#9F9AA4',
   border: '#E5E7EB',
-  userBubble: '#01161E',
-  userForeground: '#F8FAFC',
+  // assistant-ui used a light neutral-gray user bubble (--aui-muted) with dark text.
+  userBubble: '#F4F4F5',
+  userForeground: '#01161E',
   error: '#DC2626',
   radius: 12,
   font: "'IBM Plex Sans', sans-serif",
   fontMono: "'IBM Plex Mono', monospace",
-  surface: 'rgba(0,0,0,0.02)',
-  surfaceHover: 'rgba(0,0,0,0.05)',
+  // Real, visible neutral surfaces (was near-transparent rgba(0,0,0,0.02)).
+  surface: '#F4F4F5',
+  surfaceHover: '#ECECEE',
+  shadow: '0 1px 2px rgba(1,22,30,0.04), 0 2px 12px rgba(1,22,30,0.05)',
 };
 
 export function generateThemeCSS(theme: Talk2ViewTheme): string {
@@ -30,10 +33,16 @@ export function generateThemeCSS(theme: Talk2ViewTheme): string {
   --t2v-user-foreground: ${t.userForeground};
   --t2v-error: ${t.error};
   --t2v-radius: ${t.radius}px;
+  --t2v-radius-sm: ${t.radius * 0.5}px;
+  --t2v-radius-md: ${t.radius * 0.75}px;
+  --t2v-radius-lg: ${t.radius}px;
+  --t2v-radius-xl: ${t.radius * 1.5}px;
+  --t2v-radius-pill: 9999px;
   --t2v-font: ${t.font};
   --t2v-font-mono: ${t.fontMono};
   --t2v-surface: ${t.surface};
   --t2v-surface-hover: ${t.surfaceHover};
+  --t2v-shadow: ${t.shadow};
 }`;
 }
 

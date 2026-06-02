@@ -325,4 +325,6 @@ export interface Talk2ViewTheme {
   fontMono?: string;
   surface?: string;
   surfaceHover?: string;
+  /** Box-shadow used for elevated surfaces (composer, dropdowns, cards). */
+  shadow?: string;
 }
