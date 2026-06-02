@@ -120,106 +120,98 @@ export function Composer() {
   const hasText = text.trim().length > 0;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'flex-end',
-        gap: '6px',
-        padding: '10px 12px',
-        borderTop: '1px solid var(--t2v-border)',
-        background: 'var(--t2v-bg)',
-        fontFamily: 'var(--t2v-font)',
-      }}
-    >
-      {/* Auto-resizing textarea */}
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={isLoading}
-        placeholder="Type a message…"
-        rows={1}
+    <div style={{ padding: '10px 12px', background: 'var(--t2v-bg)', fontFamily: 'var(--t2v-font)' }}>
+      <div
+        className="t2v-composer"
         style={{
-          flex: 1,
-          resize: 'none',
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: '6px',
+          padding: '6px 6px 6px 12px',
           border: '1px solid var(--t2v-border)',
-          borderRadius: 'calc(var(--t2v-radius) * 0.75px)',
-          padding: '8px 10px',
-          fontSize: '14px',
-          lineHeight: 1.5,
-          fontFamily: 'var(--t2v-font)',
-          color: 'var(--t2v-foreground)',
+          borderRadius: 'var(--t2v-radius-lg)',
           background: 'var(--t2v-bg)',
-          outline: 'none',
-          minHeight: '36px',
-          maxHeight: '120px',
-          overflowY: 'auto',
-          transition: 'border-color 0.15s',
-        }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = 'var(--t2v-accent)';
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = 'var(--t2v-border)';
-        }}
-      />
-
-      {/* Mic button */}
-      <button
-        type="button"
-        onClick={() => { handleMic().catch(console.error); }}
-        disabled={isTranscribing}
-        aria-label={
-          isTranscribing
-            ? 'Transcribing…'
-            : isRecording
-              ? 'Stop recording'
-              : 'Voice input'
-        }
-        style={{
-          width: '36px',
-          height: '36px',
-          flexShrink: 0,
-          borderRadius: 'calc(var(--t2v-radius) * 0.75px)',
-          border: 'none',
-          background: isRecording ? 'var(--t2v-error)' : 'var(--t2v-accent)',
-          color: 'var(--t2v-accent-foreground)',
-          cursor: isTranscribing ? 'wait' : 'pointer',
-          opacity: isTranscribing ? 0.6 : 1,
-          transition: 'background 0.15s, opacity 0.15s',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          boxShadow: 'var(--t2v-shadow)',
         }}
       >
-        {isTranscribing ? <Loader2 size={16} style={{ animation: 't2v-spin 0.8s linear infinite' }} /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
-      </button>
+        {/* Auto-resizing textarea (borderless; the container owns the chrome) */}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={isLoading}
+          placeholder="Type a message…"
+          rows={1}
+          style={{
+            flex: 1,
+            resize: 'none',
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            padding: '7px 0',
+            fontSize: '14px',
+            lineHeight: 1.5,
+            fontFamily: 'var(--t2v-font)',
+            color: 'var(--t2v-foreground)',
+            minHeight: '24px',
+            maxHeight: '120px',
+            overflowY: 'auto',
+          }}
+        />
 
-      {/* Send button */}
-      <button
-        type="button"
-        onClick={handleSend}
-        disabled={isLoading || !hasText}
-        aria-label="Send message"
-        style={{
-          width: '36px',
-          height: '36px',
-          flexShrink: 0,
-          borderRadius: 'calc(var(--t2v-radius) * 0.75px)',
-          border: hasText ? 'none' : '1px solid var(--t2v-border)',
-          background: hasText ? 'var(--t2v-accent)' : 'transparent',
-          color: hasText ? 'var(--t2v-accent-foreground)' : 'var(--t2v-muted)',
-          cursor: hasText && !isLoading ? 'pointer' : 'default',
-          opacity: isLoading ? 0.5 : 1,
-          transition: 'background 0.15s, border 0.15s, color 0.15s, opacity 0.15s',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Send size={16} />
-      </button>
+        {/* Mic button */}
+        <button
+          type="button"
+          onClick={() => { handleMic().catch(console.error); }}
+          disabled={isTranscribing}
+          aria-label={
+            isTranscribing ? 'Transcribing…' : isRecording ? 'Stop recording' : 'Voice input'
+          }
+          style={{
+            width: '32px',
+            height: '32px',
+            flexShrink: 0,
+            borderRadius: 'var(--t2v-radius-md)',
+            border: 'none',
+            background: isRecording ? 'var(--t2v-error)' : 'transparent',
+            color: isRecording ? 'var(--t2v-accent-foreground)' : 'var(--t2v-muted)',
+            cursor: isTranscribing ? 'wait' : 'pointer',
+            opacity: isTranscribing ? 0.6 : 1,
+            transition: 'background 0.15s, color 0.15s, opacity 0.15s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {isTranscribing ? <Loader2 size={16} style={{ animation: 't2v-spin 0.8s linear infinite' }} /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
+        </button>
+
+        {/* Send button */}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={isLoading || !hasText}
+          aria-label="Send message"
+          style={{
+            width: '32px',
+            height: '32px',
+            flexShrink: 0,
+            borderRadius: 'var(--t2v-radius-md)',
+            border: 'none',
+            background: hasText ? 'var(--t2v-accent)' : 'transparent',
+            color: hasText ? 'var(--t2v-accent-foreground)' : 'var(--t2v-muted)',
+            cursor: hasText && !isLoading ? 'pointer' : 'default',
+            opacity: isLoading ? 0.5 : 1,
+            transition: 'background 0.15s, color 0.15s, opacity 0.15s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Send size={16} />
+        </button>
+      </div>
     </div>
   );
 }
