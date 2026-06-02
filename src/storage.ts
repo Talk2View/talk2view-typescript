@@ -76,11 +76,20 @@ export function setUserApiKey(key: string): void {
   set('user_api_key', key);
 }
 
+export function getIsAnonymous(): boolean {
+  return get('is_anonymous') === 'true';
+}
+
+export function setIsAnonymous(value: boolean): void {
+  set('is_anonymous', value ? 'true' : 'false');
+}
+
 export function clearAuth(): void {
   remove('access_token');
   remove('refresh_token');
   remove('user');
   remove('user_api_key');
+  remove('is_anonymous');
 
   // Dispatch event for cross-component sync
   if (typeof window !== 'undefined') {

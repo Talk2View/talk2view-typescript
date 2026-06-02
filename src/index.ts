@@ -7,7 +7,11 @@
  *
  * const t2v = new Talk2View({ partnerKey: 'pk_live_abc123' });
  *
- * await t2v.auth.login('user@example.com', 'password');
+ * // No login needed — chat() auto-starts an anonymous demo session.
+ * // After the demo limit, listen for the prompt to sign up:
+ * t2v.on('demoLimitReached', () => showSignupPrompt());
+ * // Convert the demo into a real account (history is preserved):
+ * await t2v.auth.signup('user@example.com', 'password');
  *
  * t2v.tools.handle('create_shape', async (args) => {
  *   return JSON.stringify(await myApp.createShape(args));
@@ -28,6 +32,7 @@
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
 import { TypedEventEmitter } from './event-emitter';
+import { getIsAnonymous, hasValidTokens } from './storage';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools, stripNullArgs } from './tools';
@@ -121,6 +126,15 @@ export class Talk2View {
     message: string,
     options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
   ): AsyncGenerator<ChatEvent> {
+    // Auto-start an anonymous demo session if nothing is authenticated yet.
+    if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
+      try {
+        await this.auth.startAnonymous();
+      } catch (err) {
+        console.warn('[Talk2View] Anonymous auto-start failed:', err);
+      }
+    }
+
     if (!this.currentSession) {
       await this.createSession();
     }
@@ -393,7 +407,14 @@ export class Talk2View {
             this.setThreadId(event.threadId);
             break;
           case 'error':
-            this.setError(event.message);
+            // Anonymous demo budget exhaustion arrives as an SSE error chunk
+            // tagged budget_exceeded — gate the signup prompt rather than
+            // surfacing a raw error to the end user.
+            if (event.errorType === 'budget_exceeded' && getIsAnonymous()) {
+              this.emitter.emit('demoLimitReached');
+            } else {
+              this.setError(event.message);
+            }
             break;
         }
       }
