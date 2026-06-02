@@ -32,7 +32,7 @@ export function LoginForm({ signupUrl, heading, subheading, defaultMode }: Login
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '10px 12px',
-    border: '1.5px solid var(--t2v-border)', borderRadius: 'calc(var(--t2v-radius) * 0.5px)',
+    border: '1.5px solid var(--t2v-border)', borderRadius: 'var(--t2v-radius-sm)',
     fontFamily: 'var(--t2v-font)', fontSize: '14px',
     background: 'var(--t2v-bg)', color: 'var(--t2v-foreground)',
     outline: 'none', transition: 'border-color 0.15s',
@@ -61,7 +61,7 @@ export function LoginForm({ signupUrl, heading, subheading, defaultMode }: Login
           <input id="t2v-password" type="password" placeholder="Password" value={password} onChange={(e) => { setPassword(e.target.value); clearError(); }} className="t2v-focusable" style={inputStyle} />
         </label>
         <button type="submit" disabled={!email || !password || isLoading} className="t2v-btn" style={{
-          width: '100%', padding: '10px', border: 'none', borderRadius: 'calc(var(--t2v-radius) * 0.5px)',
+          width: '100%', padding: '10px', border: 'none', borderRadius: 'var(--t2v-radius-sm)',
           background: 'var(--t2v-accent)', color: 'var(--t2v-accent-foreground)',
           fontFamily: 'var(--t2v-font)', fontSize: '14px', fontWeight: 500,
           cursor: isLoading ? 'wait' : 'pointer', opacity: (!email || !password || isLoading) ? 0.6 : 1,

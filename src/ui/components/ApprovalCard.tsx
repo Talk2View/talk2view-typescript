@@ -33,7 +33,7 @@ export function ApprovalCard({ toolName, toolCallId, args, description, onDecisi
 
   const cardStyle: React.CSSProperties = {
     border: '1px solid var(--t2v-border)',
-    borderRadius: 'calc(var(--t2v-radius) * 0.75px)',
+    borderRadius: 'var(--t2v-radius-md)',
     overflow: 'hidden', margin: '8px 0',
     animation: 't2v-fade-in 0.2s ease-out',
     fontSize: '13px', fontFamily: 'var(--t2v-font)',

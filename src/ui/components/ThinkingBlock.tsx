@@ -52,7 +52,7 @@ export function ThinkingBlock({ content, isStreaming, startTime }: ThinkingBlock
 
   return (
     <div style={{
-      border: '1px solid var(--t2v-border)', borderRadius: 'calc(var(--t2v-radius) * 0.5px)',
+      border: '1px solid var(--t2v-border)', borderRadius: 'var(--t2v-radius-sm)',
       overflow: 'hidden', margin: '6px 0', fontFamily: 'var(--t2v-font)',
     }}>
       <button onClick={() => setExpanded(!expanded)} className="t2v-btn-ghost" style={{

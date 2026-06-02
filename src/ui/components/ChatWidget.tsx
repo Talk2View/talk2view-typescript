@@ -15,7 +15,7 @@ export function ChatWidget(props: ChatWidgetProps) {
           right: 'clamp(16px, 3vw, 24px)',
           width: 'min(400px, calc(100vw - 32px))',
           height: 'min(70vh, 600px)',
-          borderRadius: 'calc(var(--t2v-radius) * 1px)',
+          borderRadius: 'var(--t2v-radius-lg)',
           border: '1px solid var(--t2v-border)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
           overflow: 'hidden', zIndex: 999998,

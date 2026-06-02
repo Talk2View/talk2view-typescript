@@ -69,7 +69,7 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
 
   return (
     <div style={{
-      borderRadius: 'calc(var(--t2v-radius) * 0.5px)',
+      borderRadius: 'var(--t2v-radius-sm)',
       border: '1px solid var(--t2v-border)',
       overflow: 'hidden', margin: '0.5em 0', fontSize: '13px',
     }}>
