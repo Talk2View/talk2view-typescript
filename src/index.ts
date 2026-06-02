@@ -27,7 +27,9 @@
 
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
+import { T2VError } from './errors';
 import { TypedEventEmitter } from './event-emitter';
+import { hasValidTokens } from './storage';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools, stripNullArgs } from './tools';
@@ -121,6 +123,15 @@ export class Talk2View {
     message: string,
     options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
   ): AsyncGenerator<ChatEvent> {
+    // Auto-start an anonymous demo session if nothing is authenticated yet.
+    if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
+      try {
+        await this.auth.startAnonymous();
+      } catch (err) {
+        console.warn('[Talk2View] Anonymous auto-start failed:', err);
+      }
+    }
+
     if (!this.currentSession) {
       await this.createSession();
     }
@@ -398,7 +409,13 @@ export class Talk2View {
         }
       }
     } catch (err) {
-      this.setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof T2VError && err.type === 'demo_limit_reached') {
+        this.emitter.emit('demoLimitReached');
+        this.setAgentStatus(null);
+        this.setLoading(false);
+      } else {
+        this.setError(err instanceof Error ? err.message : String(err));
+      }
     }
     return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
   }
