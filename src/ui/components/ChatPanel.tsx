@@ -20,7 +20,7 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPanelProps) {
-  const { isAuthenticated, isAnonymous, demoLimitReached, t2v } = useTalk2View();
+  const { isAuthenticated, demoLimitReached, t2v } = useTalk2View();
   const { messages, clearMessages, error, clearError } = useChat();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
