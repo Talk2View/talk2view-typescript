@@ -3,7 +3,7 @@
  */
 
 import type { T2VClient } from './client';
-import { AuthenticationError } from './errors';
+import { AuthenticationError, T2VError } from './errors';
 import {
   clearAuth,
   getAccessToken,
@@ -58,11 +58,20 @@ export class T2VAuth {
    */
   async signup(email: string, password: string): Promise<User> {
     if (getIsAnonymous()) {
-      const converted = await this.client.request<User>(
-        '/v1/auth/convert',
-        { method: 'POST', body: JSON.stringify({ email, password }) },
-        true,
-      );
+      let converted: User;
+      try {
+        converted = await this.client.request<User>(
+          '/v1/auth/convert',
+          { method: 'POST', body: JSON.stringify({ email, password }) },
+          true,
+        );
+      } catch (err) {
+        // Email already belongs to an existing account → log into it instead.
+        if (err instanceof T2VError && err.statusCode === 409) {
+          return await this.login(email, password);
+        }
+        throw err;
+      }
       setIsAnonymous(false);
       setUser(converted);
       this.notifyListeners(converted);

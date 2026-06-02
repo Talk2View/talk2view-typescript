@@ -31,9 +31,8 @@
 
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
-import { T2VError } from './errors';
 import { TypedEventEmitter } from './event-emitter';
-import { hasValidTokens } from './storage';
+import { getIsAnonymous, hasValidTokens } from './storage';
 import { T2VSession } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools, stripNullArgs } from './tools';
@@ -408,18 +407,19 @@ export class Talk2View {
             this.setThreadId(event.threadId);
             break;
           case 'error':
-            this.setError(event.message);
+            // Anonymous demo budget exhaustion arrives as an SSE error chunk
+            // tagged budget_exceeded — gate the signup prompt rather than
+            // surfacing a raw error to the end user.
+            if (event.errorType === 'budget_exceeded' && getIsAnonymous()) {
+              this.emitter.emit('demoLimitReached');
+            } else {
+              this.setError(event.message);
+            }
             break;
         }
       }
     } catch (err) {
-      if (err instanceof T2VError && err.type === 'demo_limit_reached') {
-        this.emitter.emit('demoLimitReached');
-        this.setAgentStatus(null);
-        this.setLoading(false);
-      } else {
-        this.setError(err instanceof Error ? err.message : String(err));
-      }
+      this.setError(err instanceof Error ? err.message : String(err));
     }
     return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
   }
