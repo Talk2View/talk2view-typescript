@@ -84,6 +84,8 @@ function InnerProvider({
   const [agentStatus, setAgentStatus] = useState<{ status: string; message: string } | null>(null);
   const [threadId, setThreadId] = useState<string | null>(t2v.threadId);
   const [alwaysAllowedTools, setAlwaysAllowedTools] = useState<ReadonlySet<string>>(t2v.alwaysAllowedTools);
+  const [isAnonymous, setIsAnonymous] = useState(() => t2v.auth.isAnonymous());
+  const [demoLimitReached, setDemoLimitReached] = useState(false);
 
   useEffect(() => {
     const unsubs = [
@@ -94,9 +96,19 @@ function InnerProvider({
       t2v.on('statusChange', (s) => setAgentStatus(s ? { status: s.type, message: s.message } : null)),
       t2v.on('threadIdChange', setThreadId),
       t2v.on('alwaysAllowedChange', setAlwaysAllowedTools),
+      t2v.on('demoLimitReached', () => setDemoLimitReached(true)),
     ];
     return () => unsubs.forEach((u) => u());
   }, [t2v]);
+
+  // Recompute anonymity whenever auth changes. Once the user becomes a
+  // non-anonymous authenticated account (e.g. after converting), clear the
+  // demo-limit gate so the chat resumes.
+  useEffect(() => {
+    const anon = t2v.auth.isAnonymous();
+    setIsAnonymous(anon);
+    if (user !== null && !anon) setDemoLimitReached(false);
+  }, [t2v, user]);
 
   const sendMessage = useCallback(
     (content: string) => t2v.sendMessage(content, { systemPrompt, model: resolvedModel }),
@@ -107,7 +119,10 @@ function InnerProvider({
   const clearMessages = useCallback(() => t2v.clearMessages(), [t2v]);
   const clearError = useCallback(() => t2v.clearError(), [t2v]);
 
-  const t2vValue = useMemo(() => ({ t2v, user, isAuthenticated }), [t2v, user, isAuthenticated]);
+  const t2vValue = useMemo(
+    () => ({ t2v, user, isAuthenticated, isAnonymous, demoLimitReached }),
+    [t2v, user, isAuthenticated, isAnonymous, demoLimitReached],
+  );
   const chatValue = useMemo(() => ({
     messages, isLoading, error, pendingApproval, agentStatus, threadId, alwaysAllowedTools,
     sendMessage, approveToolCall, retryLastMessage, clearMessages, clearError,

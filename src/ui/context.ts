@@ -6,6 +6,8 @@ export interface Talk2ViewContextValue {
   t2v: Talk2ViewClass;
   user: User | null;
   isAuthenticated: boolean;
+  isAnonymous: boolean;
+  demoLimitReached: boolean;
 }
 
 export interface ChatContextValue {

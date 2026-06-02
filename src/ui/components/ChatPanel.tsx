@@ -15,10 +15,12 @@ const FONT_SCALE: Record<string, number> = { small: 0.75, medium: 0.875, large: 
 export interface ChatPanelProps {
   welcome?: { heading?: string; suggestions?: string[] };
   signupUrl?: string;
+  /** Allow logged-out visitors to use the chat via an anonymous demo session. */
+  allowAnonymous?: boolean;
 }
 
-export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
-  const { isAuthenticated, t2v } = useTalk2View();
+export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPanelProps) {
+  const { isAuthenticated, isAnonymous, demoLimitReached, t2v } = useTalk2View();
   const { messages, clearMessages, error, clearError } = useChat();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
@@ -28,6 +30,11 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
   // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`.
   const modelDisplay = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
 
+  // Show the login gate only when anonymous demos are disallowed for a
+  // logged-out visitor, or once an anonymous visitor exhausts the demo budget.
+  const showLoginGate = (!isAuthenticated && !allowAnonymous) || demoLimitReached;
+  const inChat = !showLoginGate;
+
   useEffect(() => { if (!isAuthenticated) setView('chat'); }, [isAuthenticated]);
 
   return (
@@ -35,7 +42,7 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
       display: 'flex', flexDirection: 'column', height: '100%',
       background: 'var(--t2v-bg)', fontSize: `${fontSize}rem`, fontFamily: 'var(--t2v-font)',
     }}>
-      {isAuthenticated && (
+      {inChat && (
         <ChatHeader view={view}
           onSettingsClick={() => setView('settings')}
           onBackClick={() => setView('chat')}
@@ -43,8 +50,13 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
           onSignOut={() => t2v.auth.logout()}
         />
       )}
-      {!isAuthenticated ? (
-        <LoginForm signupUrl={signupUrl} />
+      {showLoginGate ? (
+        <LoginForm
+          signupUrl={signupUrl}
+          heading={demoLimitReached ? 'You’ve reached the demo limit' : undefined}
+          subheading={demoLimitReached ? 'Create an account to keep chatting — your conversation is saved.' : undefined}
+          defaultMode={demoLimitReached ? 'signup' : 'login'}
+        />
       ) : view === 'settings' ? (
         <div style={{ flex: 1, overflow: 'auto' }}><SettingsPanel hideHeader /></div>
       ) : messages.length === 0 ? (
@@ -52,7 +64,7 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
       ) : (
         <MessageList />
       )}
-      {isAuthenticated && view === 'chat' && error && (
+      {inChat && view === 'chat' && error && (
         <div
           role="alert"
           style={{
@@ -79,7 +91,7 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
           </button>
         </div>
       )}
-      {isAuthenticated && view === 'chat' && modelDisplay && (
+      {inChat && view === 'chat' && modelDisplay && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: '4px 12px',
@@ -92,7 +104,7 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
           {modelDisplay}
         </div>
       )}
-      {isAuthenticated && view === 'chat' && <Composer />}
+      {inChat && view === 'chat' && <Composer />}
     </div>
   );
 }
