@@ -61,14 +61,16 @@ export function MessageList() {
           boxSizing: 'border-box',
         }}
       >
-        {messages.map((msg, i) => (
-          <MessageBubble key={msg.id} message={msg} isLast={i === messages.length - 1} />
-        ))}
+        <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
+          {messages.map((msg, i) => (
+            <MessageBubble key={msg.id} message={msg} isLast={i === messages.length - 1} />
+          ))}
 
-        {/* Shimmer is rendered inside MessageBubble, not here */}
+          {/* Shimmer is rendered inside MessageBubble, not here */}
 
-        {/* Spacer so content isn't hidden behind scroll button */}
-        <div style={{ height: showScrollBtn ? '40px' : '0' }} />
+          {/* Spacer so content isn't hidden behind scroll button */}
+          <div style={{ height: showScrollBtn ? '40px' : '0' }} />
+        </div>
       </div>
 
       {/* Scroll-to-bottom button */}
@@ -87,12 +89,12 @@ export function MessageList() {
             padding: '6px 12px',
             background: 'var(--t2v-bg)',
             border: '1px solid var(--t2v-border)',
-            borderRadius: '16px',
+            borderRadius: 'var(--t2v-radius-pill)',
             cursor: 'pointer',
             fontSize: '12px',
             fontFamily: 'var(--t2v-font)',
             color: 'var(--t2v-muted)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: 'var(--t2v-shadow)',
             zIndex: 1,
           }}
         >
