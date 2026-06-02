@@ -10,6 +10,8 @@ export interface T2VConfig {
   requestTimeout?: number;
   /** Enable debug logging to console. Logs streaming events, tool calls, history, and state changes. */
   debug?: boolean;
+  /** Auto-start an anonymous demo session on first chat() if not authenticated. Defaults to true. */
+  anonymousAutoStart?: boolean;
 }
 
 // ── Auth ──
@@ -37,6 +39,8 @@ export interface TokenResponse {
   expires_in: number;
   user: User | null;
   user_api_key?: string;
+  is_anonymous?: boolean;
+  key_pending?: boolean;
 }
 
 export interface RefreshResponse {
@@ -301,6 +305,7 @@ export interface T2VEventMap {
   statusChange: [AgentStatus | null];
   threadIdChange: [string | null];
   alwaysAllowedChange: [ReadonlySet<string>];
+  demoLimitReached: [];
 }
 
 // ── Theme ──
