@@ -118,10 +118,15 @@ export class T2VAuth {
    * Sign out the current user.
    */
   async logout(): Promise<void> {
-    try {
-      await this.client.request<void>('/v1/auth/logout', { method: 'POST' });
-    } catch {
-      // Logout failures are non-critical
+    // Only hit the server when we actually hold a token to revoke. Without one
+    // the endpoint just 401s (it requires a valid JWT), so skip the call and
+    // clear local state directly.
+    if (getAccessToken()) {
+      try {
+        await this.client.request<void>('/v1/auth/logout', { method: 'POST' });
+      } catch {
+        // Server-side logout is best-effort; we always clear locally below.
+      }
     }
     clearAuth();
     this.notifyListeners(null);

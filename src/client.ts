@@ -135,6 +135,8 @@ export class T2VClient {
     const { signal, clear } = this.makeTimeoutSignal(timeout);
     try {
       const response = await this.fetchWithAuth(endpoint, options, headers, requiresAuth, signal);
+      // 204 No Content (e.g. logout, delete-session) has an empty body — don't parse it.
+      if (response.status === 204) return undefined as T;
       return response.json();
     } finally {
       clear();
