@@ -13,15 +13,26 @@ import type {
 } from './types';
 
 /**
- * Strip null/undefined values from tool args.
- * LLMs frequently send null for optional parameters they don't intend to set.
+ * Strip null/undefined — and empty objects — from tool args.
+ * LLMs frequently send null, or an empty object `{}`, for optional parameters
+ * they don't intend to set. Dropping both keeps such "no value" placeholders
+ * from tripping schema type validation for scalar-typed params (e.g. a model
+ * passing `section: {}` to mean "no section" on an optional string field).
  */
 export function stripNullArgs(args: Record<string, unknown>): Record<string, unknown> {
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
-    if (value !== null && value !== undefined) {
-      clean[key] = value;
+    if (value === null || value === undefined) continue;
+    // An empty object is how some models signal "unset" for an optional param;
+    // treat it the same as null so it doesn't fail type validation downstream.
+    if (
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.keys(value as Record<string, unknown>).length === 0
+    ) {
+      continue;
     }
+    clean[key] = value;
   }
   return clean;
 }

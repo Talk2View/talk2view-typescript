@@ -178,6 +178,34 @@ describe('T2VTools null stripping', () => {
     const parsed = JSON.parse(result.result);
     expect(parsed).toEqual({ query: 'hello', page: 5, case_sensitive: true });
   });
+
+  it('strips empty-object placeholders an LLM sends for optional params', async () => {
+    // Repro: some models pass `{}` (not null) for an optional param they don't
+    // intend to set — e.g. navigate_to_page with `section: {}` to mean "no
+    // section". It must be treated as unset, not rejected as a type error.
+    const toolWithOptionalString: ClientTool = {
+      name: 'nav_tool',
+      description: 'Navigate, optionally to a section',
+      parameters: {
+        type: 'object',
+        properties: {
+          page: { type: 'string', description: 'Page id' },
+          section: { type: 'string', description: 'Optional anchor' },
+        },
+        required: ['page'],
+      },
+      execute: async (args) => JSON.stringify(args),
+    };
+    const tools = await setupTools([toolWithOptionalString]);
+    const result = await tools.executeToolCall('nav_tool', {
+      page: 'company',
+      section: {} as unknown as string,
+    });
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.result);
+    expect(parsed).toEqual({ page: 'company' });
+    expect(parsed).not.toHaveProperty('section');
+  });
 });
 
 describe('T2VTools permission checking', () => {
