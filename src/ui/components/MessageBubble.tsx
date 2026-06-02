@@ -18,6 +18,7 @@ import { ToolStepGroup } from './ToolDisplay';
 import { ApprovalCard } from './ApprovalCard';
 import { MessageActions } from './MessageActions';
 import { Shimmer } from './Shimmer';
+import { useSmoothText } from '../useSmoothText';
 
 export interface MessageBubbleProps {
   message: DisplayMessage;
@@ -27,6 +28,8 @@ export interface MessageBubbleProps {
 export function MessageBubble({ message, isLast }: MessageBubbleProps) {
   const { pendingApproval, approveToolCall } = useChat();
   const isUser = message.role === 'user';
+  // Smoothly reveal assistant text while streaming; full text otherwise.
+  const displayContent = useSmoothText(message.content, !!message.isStreaming && !isUser);
 
   if (isUser) {
     return (
@@ -40,10 +43,10 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
       >
         <div
           style={{
-            maxWidth: '75%',
-            padding: '10px 14px',
-            borderRadius: 'calc(var(--t2v-radius) * 1px)',
-            borderBottomRightRadius: '4px',
+            maxWidth: '80%',
+            padding: '8px 14px',
+            borderRadius: 'var(--t2v-radius-xl)',
+            borderBottomRightRadius: 'var(--t2v-radius-sm)',
             background: 'var(--t2v-user-bubble)',
             color: 'var(--t2v-user-foreground)',
             fontSize: '14px',
@@ -90,18 +93,15 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
         }}
       />
 
-      {/* Content */}
+      {/* Content — plain text on the thread background (assistant-ui style) */}
       <div
         style={{
           flex: 1,
           minWidth: 0,
           fontSize: '14px',
-          lineHeight: 1.55,
+          lineHeight: 1.7,
           color: 'var(--t2v-foreground)',
           fontFamily: 'var(--t2v-font)',
-          background: 'var(--t2v-surface)',
-          borderRadius: '8px',
-          padding: '10px 12px',
         }}
       >
         {/* Thinking / plan block */}
@@ -130,23 +130,8 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
           <Shimmer />
         )}
 
-        {/* Message content */}
-        {message.content && <MarkdownRenderer content={message.content} />}
-
-        {/* Streaming cursor — hide during thinking (ThinkingBlock has its own shimmer) and during approval */}
-        {message.isStreaming && message.content && !pendingApproval && !message.plan && (
-          <span
-            style={{
-              display: 'inline-block',
-              width: '2px',
-              height: '1em',
-              background: 'var(--t2v-accent)',
-              marginLeft: '2px',
-              verticalAlign: 'text-bottom',
-              animation: 't2v-blink 1s step-start infinite',
-            }}
-          />
-        )}
+        {/* Message content — smoothly revealed while streaming */}
+        {displayContent && <MarkdownRenderer content={displayContent} />}
 
         {/* Message actions — show when not streaming */}
         {!message.isStreaming && message.content && (
