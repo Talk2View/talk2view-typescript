@@ -2,12 +2,13 @@
  * SettingsPanel — full-panel settings page for user preferences.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { Model, UserPreferences } from '../../types';
 import { useTalk2View } from '../context';
 import { useUserPreferences } from '../../react/useUserPreferences';
 import { usePartnerConfig } from '../../react/usePartnerConfig';
+import { groupModelsByProvider } from '../utils';
 
 export interface SettingsPanelProps {
   onBack?: () => void;
@@ -118,6 +119,8 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
     return () => { cancelled = true; };
   }, [t2v]);
 
+  const modelGroups = useMemo(() => groupModelsByProvider(models), [models]);
+
   const currentModel = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
   const currentSttModel = preferences.sttModel || partnerConfig?.default_stt_model || '';
   const currentSttLanguage = preferences.sttLanguage ?? '';
@@ -211,8 +214,12 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
               style={selectStyle}
             >
               {!currentModel && <option value="">Select a model</option>}
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.id.replace(/^openrouter\//, '')}</option>
+              {modelGroups.map((group) => (
+                <optgroup key={group.key} label={group.title}>
+                  {group.models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.id}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           )}

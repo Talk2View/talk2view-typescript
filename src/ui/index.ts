@@ -29,3 +29,7 @@ export { Shimmer } from './components/Shimmer';
 
 // Theme
 export { THEME_DEFAULTS, LOGOS } from './theme';
+
+// Utilities
+export { groupModelsByProvider, providerTitle, UNKNOWN_PROVIDER_KEY } from './utils';
+export type { ModelGroup } from './utils';

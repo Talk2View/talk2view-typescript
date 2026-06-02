@@ -24,8 +24,9 @@ export function ChatPanel({ welcome, signupUrl }: ChatPanelProps) {
   const { config: partnerConfig } = usePartnerConfig();
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const fontSize = FONT_SCALE[preferences.fontSize ?? 'medium'] ?? 0.875;
-  const modelId = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
-  const modelDisplay = modelId.replace(/^openrouter\//, '');
+  // Show the model id verbatim (no `openrouter/` stripping) so direct-API models
+  // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`.
+  const modelDisplay = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
 
   useEffect(() => { if (!isAuthenticated) setView('chat'); }, [isAuthenticated]);
 
