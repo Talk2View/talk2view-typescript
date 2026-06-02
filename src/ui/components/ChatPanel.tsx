@@ -20,11 +20,11 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPanelProps) {
-  const { isAuthenticated, demoLimitReached, t2v } = useTalk2View();
+  const { isAuthenticated, isAnonymous, demoLimitReached, t2v } = useTalk2View();
   const { messages, clearMessages, error, clearError } = useChat();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
-  const [view, setView] = useState<'chat' | 'settings'>('chat');
+  const [view, setView] = useState<'chat' | 'settings' | 'login'>('chat');
   const fontSize = FONT_SCALE[preferences.fontSize ?? 'medium'] ?? 0.875;
   // Show the model id verbatim (no `openrouter/` stripping) so direct-API models
   // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`.
@@ -36,6 +36,12 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
   const inChat = !showLoginGate;
 
   useEffect(() => { if (!isAuthenticated) setView('chat'); }, [isAuthenticated]);
+  // Return to chat once the visitor is actually signed in to a real account.
+  // Guard on isAuthenticated too: a logged-out visitor (post sign-out) is also
+  // !isAnonymous, and without it the login view would close the instant it opens.
+  useEffect(() => {
+    if (isAuthenticated && !isAnonymous && view === 'login') setView('chat');
+  }, [isAuthenticated, isAnonymous, view]);
 
   return (
     <div style={{
@@ -44,7 +50,10 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
     }}>
       {inChat && (
         <ChatHeader view={view}
+          isAuthenticated={isAuthenticated}
+          isAnonymous={isAnonymous}
           onSettingsClick={() => setView('settings')}
+          onSignIn={() => setView('login')}
           onBackClick={() => setView('chat')}
           onNewChat={() => clearMessages()}
           onSignOut={() => t2v.auth.logout()}
@@ -59,6 +68,8 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
         />
       ) : view === 'settings' ? (
         <div style={{ flex: 1, overflow: 'auto' }}><SettingsPanel hideHeader /></div>
+      ) : view === 'login' ? (
+        <div style={{ flex: 1, overflow: 'auto' }}><LoginForm signupUrl={signupUrl} defaultMode="login" /></div>
       ) : messages.length === 0 ? (
         <WelcomeScreen heading={welcome?.heading} suggestions={welcome?.suggestions} />
       ) : (

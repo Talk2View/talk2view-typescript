@@ -7,18 +7,23 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Settings, LogOut, Plus, ArrowLeft, MoreVertical } from 'lucide-react';
+import { Settings, LogOut, LogIn, Plus, ArrowLeft, MoreVertical } from 'lucide-react';
 import { LOGOS } from '../theme';
 
 export interface ChatHeaderProps {
-  view: 'chat' | 'settings';
+  view: 'chat' | 'settings' | 'login';
+  /** "Sign out" shows only for a real account (isAuthenticated && !isAnonymous);
+   *  anonymous and no-session states show "Sign in" instead. */
+  isAuthenticated: boolean;
+  isAnonymous: boolean;
   onSettingsClick: () => void;
   onBackClick: () => void;
   onNewChat: () => void;
   onSignOut: () => void;
+  onSignIn: () => void;
 }
 
-export function ChatHeader({ view, onSettingsClick, onBackClick, onNewChat, onSignOut }: ChatHeaderProps) {
+export function ChatHeader({ view, isAuthenticated, isAnonymous, onSettingsClick, onBackClick, onNewChat, onSignOut, onSignIn }: ChatHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Close dropdown on Escape key
@@ -44,21 +49,23 @@ export function ChatHeader({ view, onSettingsClick, onBackClick, onNewChat, onSi
     >
       {/* Left side: back button (in settings) or logo (in chat) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {view === 'settings' ? (
+        {view !== 'chat' ? (
           <>
             <HeaderButton onClick={onBackClick} aria-label="Back to chat">
               <BackIcon />
             </HeaderButton>
-            <span
-              style={{
-                fontSize: '14px',
-                fontWeight: 600,
-                fontFamily: 'var(--t2v-font)',
-                color: 'var(--t2v-foreground)',
-              }}
-            >
-              Settings
-            </span>
+            {view === 'settings' && (
+              <span
+                style={{
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  fontFamily: 'var(--t2v-font)',
+                  color: 'var(--t2v-foreground)',
+                }}
+              >
+                Settings
+              </span>
+            )}
           </>
         ) : (
           <>
@@ -137,10 +144,17 @@ export function ChatHeader({ view, onSettingsClick, onBackClick, onNewChat, onSi
                   <SettingsIcon />
                   Settings
                 </DropdownItem>
-                <DropdownItem onClick={() => { setMenuOpen(false); onSignOut(); }} danger>
-                  <SignOutIcon />
-                  Sign out
-                </DropdownItem>
+                {isAuthenticated && !isAnonymous ? (
+                  <DropdownItem onClick={() => { setMenuOpen(false); onSignOut(); }} danger>
+                    <SignOutIcon />
+                    Sign out
+                  </DropdownItem>
+                ) : (
+                  <DropdownItem onClick={() => { setMenuOpen(false); onSignIn(); }}>
+                    <SignInIcon />
+                    Sign in
+                  </DropdownItem>
+                )}
               </div>
             </>
           )}
@@ -237,4 +251,8 @@ function SettingsIcon() {
 
 function SignOutIcon() {
   return <LogOut size={14} />;
+}
+
+function SignInIcon() {
+  return <LogIn size={14} />;
 }
