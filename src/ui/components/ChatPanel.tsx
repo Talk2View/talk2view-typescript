@@ -83,7 +83,7 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
             margin: '0 12px 8px', padding: '8px 12px',
             background: 'rgba(220,38,38,0.06)',
             border: '1px solid rgba(220,38,38,0.15)',
-            borderRadius: '6px',
+            borderRadius: 'var(--t2v-radius-sm)',
             fontSize: '12px',
             color: 'var(--t2v-error)',
             fontFamily: 'var(--t2v-font)',

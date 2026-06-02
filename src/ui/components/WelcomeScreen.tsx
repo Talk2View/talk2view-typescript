@@ -23,7 +23,7 @@ export function WelcomeScreen({ heading, suggestions }: WelcomeScreenProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '280px' }}>
           {suggestions.map((s, i) => (
             <button key={i} onClick={() => { sendMessage(s).catch(() => {}); }} className="t2v-btn-ghost" style={{
-              padding: '10px 14px', borderRadius: 'calc(var(--t2v-radius) * 0.75px)',
+              padding: '10px 14px', borderRadius: 'var(--t2v-radius-md)',
               border: '1px solid var(--t2v-border)', background: 'var(--t2v-bg)',
               cursor: 'pointer', fontFamily: 'var(--t2v-font)', fontSize: '13px',
               color: 'var(--t2v-foreground)', textAlign: 'left', lineHeight: 1.4,
