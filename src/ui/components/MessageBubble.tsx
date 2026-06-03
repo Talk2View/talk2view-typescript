@@ -1,11 +1,11 @@
 /**
  * MessageBubble — renders a single chat message.
  *
- * User messages: right-aligned dark bubble, plain text.
- * Assistant messages: left-aligned with Talk2View logo avatar, renders
- * ThinkingBlock (if plan exists), ToolDisplay (if steps exist),
- * ApprovalCard (if pendingApproval and isStreaming), MarkdownRenderer
- * (for content), and a blinking streaming cursor.
+ * User messages: right-aligned light-gray bubble, plain text.
+ * Assistant messages: left-aligned with Talk2View logo avatar, rendered as
+ * plain text (no card) — ThinkingBlock (if plan exists), ToolDisplay (if
+ * steps exist), ApprovalCard (if pendingApproval and isStreaming), and a
+ * MarkdownRenderer whose content is smoothly revealed while streaming.
  */
 
 import React from 'react';
