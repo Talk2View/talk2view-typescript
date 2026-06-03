@@ -23,9 +23,11 @@ import { useSmoothText } from '../useSmoothText';
 export interface MessageBubbleProps {
   message: DisplayMessage;
   isLast?: boolean;
+  /** Hide the assistant avatar (used to visually group consecutive assistant turns). */
+  hideAvatar?: boolean;
 }
 
-export function MessageBubble({ message, isLast }: MessageBubbleProps) {
+export function MessageBubble({ message, isLast, hideAvatar }: MessageBubbleProps) {
   const { pendingApproval, approveToolCall } = useChat();
   const isUser = message.role === 'user';
   // Smoothly reveal assistant text while streaming; full text otherwise.
@@ -77,21 +79,25 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
         animation: 't2v-fade-in 0.2s ease-out',
       }}
     >
-      {/* Avatar */}
-      <img
-        src={LOGOS.icon}
-        alt="Talk2View"
-        style={{
-          width: '24px',
-          height: '24px',
-          borderRadius: '50%',
-          flexShrink: 0,
-          marginTop: '2px',
-          objectFit: 'contain',
-          background: 'var(--t2v-bg)',
-          border: '1px solid var(--t2v-border)',
-        }}
-      />
+      {/* Avatar — replaced by a same-width spacer when grouped so content stays aligned */}
+      {hideAvatar ? (
+        <div style={{ width: '24px', flexShrink: 0 }} aria-hidden="true" />
+      ) : (
+        <img
+          src={LOGOS.icon}
+          alt="Talk2View"
+          style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            flexShrink: 0,
+            marginTop: '2px',
+            objectFit: 'contain',
+            background: 'var(--t2v-bg)',
+            border: '1px solid var(--t2v-border)',
+          }}
+        />
+      )}
 
       {/* Content — plain text on the thread background (assistant-ui style) */}
       <div

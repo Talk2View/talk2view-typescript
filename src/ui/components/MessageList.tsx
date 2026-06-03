@@ -14,7 +14,15 @@ import { MessageBubble } from './MessageBubble';
 import { Shimmer } from './Shimmer';
 import { LOGOS } from '../theme';
 
-export function MessageList() {
+export interface MessageListProps {
+  /**
+   * Visually merge consecutive assistant messages into one turn by hiding the
+   * avatar on every assistant message that immediately follows another.
+   */
+  groupAssistantMessages?: boolean;
+}
+
+export function MessageList({ groupAssistantMessages }: MessageListProps = {}) {
   const { messages, isLoading } = useChat();
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -63,7 +71,16 @@ export function MessageList() {
       >
         <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
           {messages.map((msg, i) => (
-            <MessageBubble key={msg.id} message={msg} isLast={i === messages.length - 1} />
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isLast={i === messages.length - 1}
+              hideAvatar={
+                groupAssistantMessages === true &&
+                msg.role === 'assistant' &&
+                messages[i - 1]?.role === 'assistant'
+              }
+            />
           ))}
 
           {/* Shimmer is rendered inside MessageBubble, not here */}
