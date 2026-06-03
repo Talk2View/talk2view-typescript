@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Settings, LogOut, LogIn, Plus, ArrowLeft, MoreVertical } from 'lucide-react';
+import { Settings, LogOut, LogIn, PenLine, ArrowLeft, MoreVertical } from 'lucide-react';
 import { LOGOS } from '../theme';
 
 export interface ChatHeaderProps {
@@ -234,7 +234,7 @@ function DropdownItem({
 /* ── Icons (Lucide React) ─────────────────────────────────────── */
 
 function NewChatIcon() {
-  return <Plus size={14} />;
+  return <PenLine size={14} />;
 }
 
 function BackIcon() {
