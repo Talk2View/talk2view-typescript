@@ -7,9 +7,15 @@ export interface LoginFormProps {
   heading?: string;
   subheading?: string;
   defaultMode?: 'login' | 'signup';
+  /** URL of a page where the user can reset their password. When set, a
+   *  "Forgot password?" link is shown in login mode. */
+  resetPasswordUrl?: string;
+  /** Where the reset-password link opens. Defaults to '_blank' (new tab);
+   *  pass '_self' when the URL is a page in your own app. */
+  resetPasswordTarget?: '_self' | '_blank';
 }
 
-export function LoginForm({ signupUrl, heading, subheading, defaultMode }: LoginFormProps) {
+export function LoginForm({ signupUrl, heading, subheading, defaultMode, resetPasswordUrl, resetPasswordTarget = '_blank' }: LoginFormProps) {
   const { login, signup, isLoading, error, clearError } = useT2VAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,6 +78,16 @@ export function LoginForm({ signupUrl, heading, subheading, defaultMode }: Login
             : (isLoading ? 'Signing in...' : 'Sign in')}
         </button>
       </form>
+      {mode === 'login' && resetPasswordUrl && (
+        <a
+          href={resetPasswordUrl}
+          target={resetPasswordTarget}
+          rel={resetPasswordTarget === '_blank' ? 'noopener noreferrer' : undefined}
+          style={{ fontSize: '12px', color: 'var(--t2v-accent)', textDecoration: 'underline' }}
+        >
+          Forgot password?
+        </a>
+      )}
       <p style={{ fontSize: '12px', color: 'var(--t2v-muted)' }}>
         {mode === 'signup' ? 'Already have an account?' : 'New here?'}{' '}
         <button

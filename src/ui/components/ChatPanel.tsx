@@ -17,9 +17,15 @@ export interface ChatPanelProps {
   signupUrl?: string;
   /** Allow logged-out visitors to use the chat via an anonymous demo session. */
   allowAnonymous?: boolean;
+  /** URL of a password-reset page. When set, the login form shows a
+   *  "Forgot password?" link to it. */
+  resetPasswordUrl?: string;
+  /** Where the reset-password link opens. Defaults to '_blank' (new tab);
+   *  pass '_self' for a page in your own app. */
+  resetPasswordTarget?: '_self' | '_blank';
 }
 
-export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPanelProps) {
+export function ChatPanel({ welcome, signupUrl, allowAnonymous = true, resetPasswordUrl, resetPasswordTarget }: ChatPanelProps) {
   const { isAuthenticated, isAnonymous, demoLimitReached, t2v } = useTalk2View();
   const { messages, clearMessages, error, clearError } = useChat();
   const { preferences } = useUserPreferences();
@@ -62,6 +68,8 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
       {showLoginGate ? (
         <LoginForm
           signupUrl={signupUrl}
+          resetPasswordUrl={resetPasswordUrl}
+          resetPasswordTarget={resetPasswordTarget}
           heading={demoLimitReached ? 'You’ve reached the demo limit' : undefined}
           subheading={demoLimitReached ? 'Create an account to keep chatting — your conversation is saved.' : undefined}
           defaultMode={demoLimitReached ? 'signup' : 'login'}
@@ -69,7 +77,7 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
       ) : view === 'settings' ? (
         <div style={{ flex: 1, overflow: 'auto' }}><SettingsPanel hideHeader /></div>
       ) : view === 'login' ? (
-        <LoginForm signupUrl={signupUrl} defaultMode="login" />
+        <LoginForm signupUrl={signupUrl} defaultMode="login" resetPasswordUrl={resetPasswordUrl} resetPasswordTarget={resetPasswordTarget} />
       ) : messages.length === 0 ? (
         <WelcomeScreen heading={welcome?.heading} suggestions={welcome?.suggestions} />
       ) : (
