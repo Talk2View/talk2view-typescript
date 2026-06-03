@@ -21,7 +21,16 @@ export async function* decodeSSEStream(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await reader.read();
+      } catch (err) {
+        // The fetch was aborted (e.g. user pressed "stop") — end the stream
+        // cleanly rather than surfacing an AbortError to the consumer.
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        throw err;
+      }
+      const { done, value } = result;
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });

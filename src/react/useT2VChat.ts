@@ -26,6 +26,8 @@ export interface UseT2VChatResult {
   approveToolCall: (decision: HumanDecision) => Promise<void>;
   /** Retry the last failed message. Only available when error is set. */
   retryLastMessage: () => Promise<void>;
+  /** Stop the in-flight response; the partial text received so far is kept. */
+  stop: () => void;
   clearMessages: () => void;
   clearError: () => void;
 }
@@ -74,6 +76,7 @@ export function useT2VChat(options?: { systemPrompt?: string; model?: string }):
   );
 
   const retryLastMessage = useCallback(() => t2v.retryLastMessage(), [t2v]);
+  const stop = useCallback(() => t2v.stop(), [t2v]);
   const clearMessages = useCallback(() => t2v.clearMessages(), [t2v]);
   const clearError = useCallback(() => t2v.clearError(), [t2v]);
 
@@ -88,6 +91,7 @@ export function useT2VChat(options?: { systemPrompt?: string; model?: string }):
     sendMessage,
     approveToolCall,
     retryLastMessage,
+    stop,
     clearMessages,
     clearError,
   };

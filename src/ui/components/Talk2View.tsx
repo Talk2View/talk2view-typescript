@@ -116,6 +116,7 @@ function InnerProvider({
   );
   const approveToolCall = useCallback((d: HumanDecision) => t2v.approveToolCall(d), [t2v]);
   const retryLastMessage = useCallback(() => t2v.retryLastMessage(), [t2v]);
+  const stop = useCallback(() => t2v.stop(), [t2v]);
   const clearMessages = useCallback(() => t2v.clearMessages(), [t2v]);
   const clearError = useCallback(() => t2v.clearError(), [t2v]);
 
@@ -125,9 +126,9 @@ function InnerProvider({
   );
   const chatValue = useMemo(() => ({
     messages, isLoading, error, pendingApproval, agentStatus, threadId, alwaysAllowedTools,
-    sendMessage, approveToolCall, retryLastMessage, clearMessages, clearError,
+    sendMessage, approveToolCall, retryLastMessage, stop, clearMessages, clearError,
   }), [messages, isLoading, error, pendingApproval, agentStatus, threadId, alwaysAllowedTools,
-    sendMessage, approveToolCall, retryLastMessage, clearMessages, clearError]);
+    sendMessage, approveToolCall, retryLastMessage, stop, clearMessages, clearError]);
 
   return (
     <Talk2ViewContext.Provider value={t2vValue}>

@@ -21,6 +21,8 @@ export interface ChatContextValue {
   sendMessage: (content: string) => Promise<void>;
   approveToolCall: (decision: HumanDecision) => Promise<void>;
   retryLastMessage: () => Promise<void>;
+  /** Stop the in-flight response; the partial text received so far is kept. */
+  stop: () => void;
   clearMessages: () => void;
   clearError: () => void;
 }

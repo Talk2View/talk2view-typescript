@@ -179,10 +179,23 @@ export class T2VClient {
   async *streamRequest(
     endpoint: string,
     body: object,
+    externalSignal?: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
     const headers = this.buildHeaders(true, { 'Content-Type': 'application/json' });
     const serializedBody = JSON.stringify(body);
-    const { signal, clear } = this.makeTimeoutSignal();
+
+    // One controller drives the fetch. It aborts on connection timeout OR when
+    // the caller's external signal fires (user pressed "stop"). The timeout is
+    // cleared once the response arrives, leaving the external signal to abort the
+    // long-lived SSE body.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.requestTimeout);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', onExternalAbort);
+    }
+
     let response: Response;
     try {
       response = await this.fetchWithAuth(
@@ -190,12 +203,20 @@ export class T2VClient {
         { method: 'POST', body: serializedBody },
         headers,
         true,
-        signal,
+        controller.signal,
       );
-    } finally {
-      clear();
+    } catch (err) {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
+      throw err;
     }
-    yield* decodeSSEStream(response);
+    clearTimeout(timer);
+
+    try {
+      yield* decodeSSEStream(response);
+    } finally {
+      externalSignal?.removeEventListener('abort', onExternalAbort);
+    }
   }
 
   private async tryRefreshToken(): Promise<boolean> {

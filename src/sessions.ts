@@ -37,7 +37,7 @@ export class T2VSession {
    */
   async *sendMessage(
     content: string,
-    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
+    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[]; signal?: AbortSignal },
   ): AsyncGenerator<ChatEvent> {
     const messages: ChatMessage[] = [];
 
@@ -52,6 +52,7 @@ export class T2VSession {
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,
       { messages, stream: true, model: options?.model ?? this.config?.model },
+      options?.signal,
     );
   }
 
@@ -62,10 +63,12 @@ export class T2VSession {
     toolCallId: string,
     result: string,
     isError = false,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
     yield* this.processStream(
       `/v1/sessions/${this.id}/resume`,
       { tool_call_id: toolCallId, result, is_error: isError },
+      signal,
     );
   }
 
@@ -79,6 +82,7 @@ export class T2VSession {
   async *respondToApproval(
     approval: PendingApproval,
     decision: HumanDecision,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
     const { toolCallId, toolName } = approval;
     const execArgs = decision.updatedInput ?? approval.arguments;
@@ -101,7 +105,7 @@ export class T2VSession {
     }
 
     yield { type: 'approval_result', toolName, decision: decision.action };
-    yield* this.resumeToolCall(toolCallId, result, isError);
+    yield* this.resumeToolCall(toolCallId, result, isError, signal);
   }
 
   /**
@@ -110,8 +114,9 @@ export class T2VSession {
   private async *processStream(
     endpoint: string,
     body: object,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
-    for await (const chunk of this.client.streamRequest(endpoint, body)) {
+    for await (const chunk of this.client.streamRequest(endpoint, body, signal)) {
       // Debug: log raw chunks to see what the server actually sends
       if (this.config?.debug) console.log('[T2V] raw chunk', JSON.stringify(chunk).slice(0, 500));
 
@@ -150,6 +155,7 @@ export class T2VSession {
               tool_call_id,
               `Permission denied: ${permResult.message ?? 'Tool not allowed'}`,
               true,
+              signal,
             );
             return;
 
@@ -165,7 +171,7 @@ export class T2VSession {
               };
 
               const { result, isError } = await this.tools.executeToolCall(tool_name, execArgs);
-              yield* this.resumeToolCall(tool_call_id, result, isError);
+              yield* this.resumeToolCall(tool_call_id, result, isError, signal);
               return;
             }
 

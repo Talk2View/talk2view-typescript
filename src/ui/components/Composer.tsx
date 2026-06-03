@@ -12,14 +12,14 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Send, Square, Loader2 } from 'lucide-react';
+import { Mic, Send, Square, Check, Loader2 } from 'lucide-react';
 import { useChat } from '../context';
 import { useTalk2View } from '../context';
 import { useUserPreferences } from '../../react/useUserPreferences';
 import { usePartnerConfig } from '../../react/usePartnerConfig';
 
 export function Composer() {
-  const { sendMessage, isLoading } = useChat();
+  const { sendMessage, isLoading, stop } = useChat();
   const { t2v } = useTalk2View();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
@@ -166,8 +166,9 @@ export function Composer() {
           onClick={() => { handleMic().catch(console.error); }}
           disabled={isTranscribing}
           aria-label={
-            isTranscribing ? 'Transcribing…' : isRecording ? 'Stop recording' : 'Voice input'
+            isTranscribing ? 'Transcribing…' : isRecording ? 'Finish recording' : 'Voice input'
           }
+          title={isRecording ? 'Finish recording' : undefined}
           style={{
             width: '32px',
             height: '32px',
@@ -184,32 +185,33 @@ export function Composer() {
             justifyContent: 'center',
           }}
         >
-          {isTranscribing ? <Loader2 size={16} style={{ animation: 't2v-spin 0.8s linear infinite' }} /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
+          {isTranscribing ? <Loader2 size={16} style={{ animation: 't2v-spin 0.8s linear infinite' }} /> : isRecording ? <Check size={16} /> : <Mic size={16} />}
         </button>
 
-        {/* Send button */}
+        {/* Send button — becomes a Stop button while a response is streaming */}
         <button
           type="button"
-          onClick={handleSend}
-          disabled={isLoading || !hasText}
-          aria-label="Send message"
+          onClick={isLoading ? stop : handleSend}
+          disabled={!isLoading && !hasText}
+          aria-label={isLoading ? 'Stop generating' : 'Send message'}
+          title={isLoading ? 'Stop generating' : undefined}
           style={{
             width: '32px',
             height: '32px',
             flexShrink: 0,
             borderRadius: 'var(--t2v-radius-md)',
             border: 'none',
-            background: hasText ? 'var(--t2v-foreground)' : 'transparent',
-            color: hasText ? '#fff' : 'var(--t2v-muted)',
-            cursor: hasText && !isLoading ? 'pointer' : 'default',
-            opacity: isLoading ? 0.5 : 1,
+            background: isLoading || hasText ? 'var(--t2v-foreground)' : 'transparent',
+            color: isLoading || hasText ? '#fff' : 'var(--t2v-muted)',
+            cursor: isLoading || hasText ? 'pointer' : 'default',
+            opacity: 1,
             transition: 'background 0.15s, color 0.15s, opacity 0.15s',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Send size={16} />
+          {isLoading ? <Square size={16} /> : <Send size={16} />}
         </button>
       </div>
     </div>

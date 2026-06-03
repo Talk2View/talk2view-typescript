@@ -62,6 +62,10 @@ export class Talk2View {
   private _alwaysAllowedTools = new Set<string>();
   private _lastUserMessage: string | null = null;
   private _messageCounter = 0;
+  /** Aborts the in-flight response stream when the user stops generation. */
+  private _streamAbort: AbortController | null = null;
+  /** True between stop() and stream teardown, so the abort isn't surfaced as an error. */
+  private _stopped = false;
   private readonly emitter = new TypedEventEmitter<T2VEventMap>();
 
   private debug(...args: unknown[]): void {
@@ -124,7 +128,7 @@ export class Talk2View {
    */
   async *chat(
     message: string,
-    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[] },
+    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[]; signal?: AbortSignal },
   ): AsyncGenerator<ChatEvent> {
     // Auto-start an anonymous demo session if nothing is authenticated yet.
     if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
@@ -140,6 +144,16 @@ export class Talk2View {
     }
 
     yield* this.currentSession!.sendMessage(message, options);
+  }
+
+  /**
+   * Stop the in-flight response stream. The partial response received so far is
+   * kept. No-op when nothing is generating.
+   */
+  stop(): void {
+    if (!this._isLoading || !this._streamAbort) return;
+    this._stopped = true;
+    this._streamAbort.abort();
   }
 
   /**
@@ -201,11 +215,12 @@ export class Talk2View {
   async *respondToApproval(
     approval: PendingApproval,
     decision: HumanDecision,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
     if (!this.currentSession) {
       throw new Error('No active session. Start a conversation first.');
     }
-    yield* this.currentSession.respondToApproval(approval, decision);
+    yield* this.currentSession.respondToApproval(approval, decision, signal);
   }
 
   /**
@@ -419,7 +434,10 @@ export class Talk2View {
         }
       }
     } catch (err) {
-      this.setError(err instanceof Error ? err.message : String(err));
+      // A user-initiated stop aborts the fetch; don't surface that as an error.
+      if (!this._stopped) {
+        this.setError(err instanceof Error ? err.message : String(err));
+      }
     }
     return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
   }
@@ -440,7 +458,7 @@ export class Talk2View {
         return;
       }
       this.setAgentStatus({ type: 'auto-approved', message: `Auto-approved ${pendingAutoApproval.toolName}` });
-      currentStream = this.respondToApproval(pendingAutoApproval, { action: 'once' });
+      currentStream = this.respondToApproval(pendingAutoApproval, { action: 'once' }, this._streamAbort?.signal);
     }
     this.finalizeStream(currentId);
   }
@@ -480,6 +498,8 @@ export class Talk2View {
 
     this.setAgentStatus(null);
     this.setLoading(false);
+    this._streamAbort = null;
+    this._stopped = false;
   }
 
   // ── Public chat methods ───────────────────────────────────────────────────
@@ -508,7 +528,9 @@ export class Talk2View {
 
     const systemPrompt = options?.systemPrompt;
     const model = options?.model ?? this.config.model;
-    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot });
+    this._streamAbort = new AbortController();
+    this._stopped = false;
+    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal });
     await this.drainStream(stream, assistantMsg.id);
   }
 
@@ -534,7 +556,9 @@ export class Talk2View {
       if (this._messages[i]!.role === 'assistant') { assistantMsg = this._messages[i]; break; }
     }
     if (!assistantMsg) return;
-    const stream = this.respondToApproval(approval, decision);
+    this._streamAbort = new AbortController();
+    this._stopped = false;
+    const stream = this.respondToApproval(approval, decision, this._streamAbort.signal);
     await this.drainStream(stream, assistantMsg.id);
   }
 
