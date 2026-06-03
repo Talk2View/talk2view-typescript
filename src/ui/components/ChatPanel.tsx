@@ -69,7 +69,7 @@ export function ChatPanel({ welcome, signupUrl, allowAnonymous = true }: ChatPan
       ) : view === 'settings' ? (
         <div style={{ flex: 1, overflow: 'auto' }}><SettingsPanel hideHeader /></div>
       ) : view === 'login' ? (
-        <div style={{ flex: 1, overflow: 'auto' }}><LoginForm signupUrl={signupUrl} defaultMode="login" /></div>
+        <LoginForm signupUrl={signupUrl} defaultMode="login" />
       ) : messages.length === 0 ? (
         <WelcomeScreen heading={welcome?.heading} suggestions={welcome?.suggestions} />
       ) : (
