@@ -8,10 +8,6 @@ describe('useSmoothText', () => {
     frame = null;
     vi.stubGlobal('requestAnimationFrame', (cb: (ts: number) => void) => { frame = cb; return 1; });
     vi.stubGlobal('cancelAnimationFrame', () => { frame = null; });
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      matches: false, media: q, onchange: null,
-      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; },
-    }));
   });
   afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -45,14 +41,5 @@ describe('useSmoothText', () => {
     pump(0);
     rerender({ s: false });
     expect(result.current).toBe('done text');
-  });
-
-  it('shows full text instantly under prefers-reduced-motion', () => {
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      matches: true, media: q, onchange: null,
-      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; },
-    }));
-    const { result } = renderHook(() => useSmoothText('reduced', true));
-    expect(result.current).toBe('reduced');
   });
 });

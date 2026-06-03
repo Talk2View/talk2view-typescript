@@ -3,16 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 /** Steady reveal rate (characters/second) while streaming. */
 const CHARS_PER_SECOND = 80;
 
-function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
 /**
  * Progressively reveals `target` while `isStreaming`, easing the visible length
  * toward `target.length` at a steady rate (assistant-ui "smooth" reveal feel).
- * Snaps to the full text when streaming ends, when reduced motion is set, when
- * there is no rAF (SSR/tests without rAF), or on unmount. Self-contained.
+ * Snaps to the full text when streaming ends, when there is no rAF (SSR/tests
+ * without rAF), or on unmount. Self-contained.
  */
 export function useSmoothText(target: string, isStreaming: boolean): string {
   const [revealed, setRevealed] = useState<string>(() => (isStreaming ? '' : target));
@@ -24,8 +19,7 @@ export function useSmoothText(target: string, isStreaming: boolean): string {
     const canAnimate =
       isStreaming &&
       typeof window !== 'undefined' &&
-      typeof window.requestAnimationFrame === 'function' &&
-      !prefersReducedMotion();
+      typeof window.requestAnimationFrame === 'function';
 
     if (!canAnimate) {
       lengthRef.current = target.length;

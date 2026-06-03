@@ -90,14 +90,6 @@ export function injectComponentStyles(): void {
   border-color: var(--t2v-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--t2v-accent) 20%, transparent);
 }
-
-@media (prefers-reduced-motion: reduce) {
-  [data-talk2view] *, [data-talk2view] *::before, [data-talk2view] *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
-}
 `;
   document.head.appendChild(style);
   injected = true;
