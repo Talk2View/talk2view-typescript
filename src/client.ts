@@ -20,12 +20,20 @@ import type {
 const DEFAULT_BASE_URL = 'https://engine.talk2view.com';
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
 
+// "refreshed": new tokens stored. "invalid": the refresh token was genuinely
+// rejected (revoked / expired) — log out. "transient": the refresh failed for a
+// reason that does NOT mean the session is dead (the token was already rotated,
+// a rate limit, or a network blip) — surface a retryable error, keep the session.
+// A "transient" result is raised as a NetworkError; callers should retry it,
+// ideally with a short backoff so a 429 isn't made worse.
+type RefreshResult = 'refreshed' | 'invalid' | 'transient';
+
 export class T2VClient {
   private readonly baseUrl: string;
   private readonly partnerKey: string;
   private readonly requestTimeout: number;
   private isRefreshing = false;
-  private refreshPromise: Promise<boolean> | null = null;
+  private refreshPromise: Promise<RefreshResult> | null = null;
 
   constructor(config: T2VConfig) {
     this.partnerKey = config.partnerKey;
@@ -66,8 +74,8 @@ export class T2VClient {
     }
 
     if (response.status === 401 && requiresAuth) {
-      const refreshed = await this.tryRefreshToken();
-      if (refreshed) {
+      const result = await this.tryRefreshToken();
+      if (result === 'refreshed') {
         headers['Authorization'] = `Bearer ${getAccessToken()}`;
         const retryInit = signal ? { ...init, headers, signal } : { ...init, headers };
         let retryResponse: Response;
@@ -88,8 +96,14 @@ export class T2VClient {
         }
         return retryResponse;
       }
-      clearAuth();
-      throw new AuthenticationError('Session expired. Please log in again.');
+      if (result === 'invalid') {
+        // The refresh token is genuinely dead — this is a real logout.
+        clearAuth();
+        throw new AuthenticationError('Session expired. Please log in again.');
+      }
+      // transient: the session is still valid, we just couldn't refresh right
+      // now. Surface a retryable error WITHOUT clearing auth.
+      throw new NetworkError('Token refresh temporarily unavailable; please retry.');
     }
 
     if (!response.ok) {
@@ -219,7 +233,7 @@ export class T2VClient {
     }
   }
 
-  private async tryRefreshToken(): Promise<boolean> {
+  private async tryRefreshToken(): Promise<RefreshResult> {
     if (this.isRefreshing) {
       return this.refreshPromise!;
     }
@@ -235,12 +249,14 @@ export class T2VClient {
     }
   }
 
-  private async doRefreshToken(): Promise<boolean> {
+  private async doRefreshToken(): Promise<RefreshResult> {
+    // Always read the freshest token — it may have been rotated elsewhere.
     const refreshToken = getRefreshToken();
-    if (!refreshToken) return false;
+    if (!refreshToken) return 'invalid';
 
+    let response: Response;
     try {
-      const response = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
+      response = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -248,15 +264,20 @@ export class T2VClient {
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
+    } catch {
+      return 'transient'; // network error — don't log the user out
+    }
 
-      if (!response.ok) return false;
-
+    if (response.ok) {
       const data: RefreshResponse = await response.json();
       setAccessToken(data.access_token);
       setRefreshToken(data.refresh_token);
-      return true;
-    } catch {
-      return false;
+      return 'refreshed';
     }
+    // 401 = the refresh token was genuinely rejected -> real logout.
+    // 409 (already rotated) and 429 (rate limited) are recoverable -> keep the
+    // session and let the caller retry with the latest token.
+    if (response.status === 401) return 'invalid';
+    return 'transient';
   }
 }
