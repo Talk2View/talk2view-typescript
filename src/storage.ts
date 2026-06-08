@@ -4,6 +4,13 @@
 
 const PREFIX = 'talk2view_';
 
+/**
+ * Fully-qualified localStorage key for the access token. Exported so other
+ * modules (e.g. the cross-tab `storage` event listener in auth.ts) can detect
+ * changes to it without re-deriving the prefix.
+ */
+export const ACCESS_TOKEN_STORAGE_KEY = `${PREFIX}access_token`;
+
 const memoryStorage: Record<string, string> = {};
 
 function isLocalStorageAvailable(): boolean {

@@ -643,6 +643,16 @@ export class Talk2View {
   clearError(): void {
     this.setError(null);
   }
+
+  /**
+   * Dispose of this client. Removes the global (window) auth event listeners
+   * registered by the auth module. Call this whenever you permanently discard a
+   * Talk2View instance — e.g. on app teardown, or when re-creating the client —
+   * so the cross-tab `storage`/`talk2view_auth_cleared` listeners don't leak.
+   */
+  destroy(): void {
+    this.auth.destroy();
+  }
 }
 
 // Re-export types and classes for consumers

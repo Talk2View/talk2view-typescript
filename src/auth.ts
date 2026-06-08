@@ -5,6 +5,7 @@
 import type { T2VClient } from './client';
 import { AuthenticationError, T2VError } from './errors';
 import {
+  ACCESS_TOKEN_STORAGE_KEY,
   clearAuth,
   getAccessToken,
   getIsAnonymous,
@@ -23,12 +24,43 @@ type AuthStateCallback = (user: User | null) => void;
 export class T2VAuth {
   private listeners: Set<AuthStateCallback> = new Set();
 
+  // Bound handlers kept so they can be removed in destroy() — never leak listeners.
+  private readonly onAuthCleared = (): void => {
+    this.notifyListeners(null);
+  };
+
+  /**
+   * Cross-tab logout sync. The native `storage` event fires in *other* tabs
+   * when localStorage changes in one tab. When a sibling tab logs out (or a
+   * dead-refresh-token 401 clears auth), the access-token key is removed/nulled;
+   * we observe that here and flip this tab to logged-out too.
+   */
+  private readonly onStorage = (event: StorageEvent): void => {
+    // Only react to our access-token key being cleared (removed → newValue null).
+    if (event.key === ACCESS_TOKEN_STORAGE_KEY && event.newValue === null) {
+      this.notifyListeners(null);
+    }
+  };
+
   constructor(private readonly client: T2VClient) {
-    // Listen for auth cleared events (e.g., from 401 handling)
+    // Same-tab + cross-tab auth-cleared sync. Guarded for SSR/Node where
+    // `window`/`localStorage` are absent.
     if (typeof window !== 'undefined') {
-      window.addEventListener('talk2view_auth_cleared', () => {
-        this.notifyListeners(null);
-      });
+      // Same-tab custom event (e.g., from 401 handling via clearAuth()).
+      window.addEventListener('talk2view_auth_cleared', this.onAuthCleared);
+      // Cross-tab native storage event (a logout in a sibling tab).
+      window.addEventListener('storage', this.onStorage);
+    }
+  }
+
+  /**
+   * Remove the window event listeners registered in the constructor.
+   * Call when disposing of this auth instance to avoid leaking listeners.
+   */
+  destroy(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('talk2view_auth_cleared', this.onAuthCleared);
+      window.removeEventListener('storage', this.onStorage);
     }
   }
 

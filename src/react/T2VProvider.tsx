@@ -30,7 +30,12 @@ export function T2VProvider({ children, ...config }: T2VProviderProps) {
     const unsubscribe = t2v.auth.onAuthStateChange((newUser) => {
       setUser(newUser);
     });
-    return unsubscribe;
+    // On unmount — or whenever `t2v` is re-created (config change) — drop the
+    // subscription AND dispose the old instance so its window listeners don't leak.
+    return () => {
+      unsubscribe();
+      t2v.destroy();
+    };
   }, [t2v]);
 
   const value = useMemo(
