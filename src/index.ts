@@ -51,6 +51,15 @@ export class Talk2View {
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
+  // ── getConfig single-flight + cache ─────────────────────────────────────
+  // Partner config is auth-scoped (not session-scoped) and stable for the life
+  // of a login. Many components mount usePartnerConfig and each calls
+  // getConfig(), so without coalescing we fire N concurrent GET /v1/config on
+  // startup. Share one in-flight request and cache its result; invalidate when
+  // auth state changes (login/logout/user switch).
+  private _configCache: PartnerConfig | null = null;
+  private _configInFlight: Promise<PartnerConfig> | null = null;
+
   // ── State management ────────────────────────────────────────────────────
   private _messages: DisplayMessage[] = [];          // UI display (segmented)
   private _conversationHistory: ChatMessage[] = [];  // LLM history (clean user/assistant alternation)
@@ -85,6 +94,11 @@ export class Talk2View {
     this.auth = new T2VAuth(this.client);
     this.tools = new T2VTools(this.client);
     this.skills = new T2VSkills(this.client);
+
+    // Config is auth-scoped: drop the cache whenever auth state changes
+    // (login, logout, anonymous start, user switch) so a stale partner config
+    // never leaks across users.
+    this.auth.onAuthStateChange(() => this.invalidateConfigCache());
   }
 
   /**
@@ -182,9 +196,36 @@ export class Talk2View {
    *
    * Returns the partner's configured default LLM model, STT model, and system prompt.
    * Values are `null` when no partner override is set (global platform defaults apply).
+   *
+   * Single-flighted and cached: concurrent callers (e.g. several mounted
+   * `usePartnerConfig` hooks) share one GET /v1/config, and later callers reuse
+   * the cached value. The cache is invalidated on auth state changes, so a fresh
+   * login/logout/user switch refetches.
    */
   async getConfig(): Promise<PartnerConfig> {
-    return this.client.request<PartnerConfig>('/v1/config');
+    if (this._configCache !== null) return this._configCache;
+    if (this._configInFlight !== null) return this._configInFlight;
+
+    const inFlight = this.client
+      .request<PartnerConfig>('/v1/config')
+      .then((config) => {
+        this._configCache = config;
+        return config;
+      })
+      .finally(() => {
+        this._configInFlight = null;
+      });
+    this._configInFlight = inFlight;
+    return inFlight;
+  }
+
+  /**
+   * Drop the cached partner config so the next {@link getConfig} refetches.
+   * Called on auth state changes (config is auth-scoped, not session-scoped).
+   */
+  private invalidateConfigCache(): void {
+    this._configCache = null;
+    this._configInFlight = null;
   }
 
   /**

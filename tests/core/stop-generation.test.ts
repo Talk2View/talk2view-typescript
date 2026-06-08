@@ -8,7 +8,7 @@ import type { ChatEvent } from '../../src/types';
 vi.mock('../../src/client', () => ({
   T2VClient: vi.fn().mockImplementation(() => ({ request: vi.fn(), streamRequest: vi.fn() })),
 }));
-vi.mock('../../src/auth', () => ({ T2VAuth: vi.fn().mockImplementation(() => ({})) }));
+vi.mock('../../src/auth', () => ({ T2VAuth: vi.fn().mockImplementation(() => ({ onAuthStateChange: vi.fn() })) }));
 vi.mock('../../src/tools', () => ({
   T2VTools: vi.fn().mockImplementation(() => ({ reRegister: vi.fn().mockResolvedValue(null) })),
   stripNullArgs: (args: Record<string, unknown>) => args,

@@ -15,7 +15,7 @@ vi.mock('../../src/client', () => ({
 }));
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({})),
+  T2VAuth: vi.fn().mockImplementation(() => ({ onAuthStateChange: vi.fn() })),
 }));
 
 vi.mock('../../src/tools', () => ({
