@@ -254,6 +254,11 @@ export class T2VClient {
     const refreshToken = getRefreshToken();
     if (!refreshToken) return 'invalid';
 
+    // Bound the refresh fetch with the same timeout as every other request.
+    // Without this it is the only un-aborted fetch in the client: a hung
+    // /v1/auth/refresh would never settle the shared refreshPromise, so every
+    // concurrent 401 retry de-duped onto it would hang indefinitely.
+    const { signal, clear } = this.makeTimeoutSignal();
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
@@ -263,9 +268,15 @@ export class T2VClient {
           'X-T2V-Partner-Key': this.partnerKey,
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
+        signal,
       });
     } catch {
-      return 'transient'; // network error — don't log the user out
+      // A timeout aborts as a DOMException; like any other network blip this is
+      // transient — fail fast without logging the user out, and let the shared
+      // refreshPromise settle so callers can retry.
+      return 'transient';
+    } finally {
+      clear();
     }
 
     if (response.ok) {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { T2VClient } from '../../src/client';
 import { AuthenticationError, NetworkError } from '../../src/errors';
 import * as storage from '../../src/storage';
+import type { T2VConfig } from '../../src/types';
 
 /** Minimal Response stand-in — the client only touches .ok / .status / .json(). */
 function res(status: number, body: unknown): Response {
@@ -19,8 +20,8 @@ const REFRESH_OK = {
   expires_in: 3600,
 };
 
-function newClient(): T2VClient {
-  return new T2VClient({ partnerKey: 'pk_test', baseUrl: 'https://api.test' });
+function newClient(overrides: Partial<T2VConfig> = {}): T2VClient {
+  return new T2VClient({ partnerKey: 'pk_test', baseUrl: 'https://api.test', ...overrides });
 }
 
 describe('T2VClient token refresh', () => {
@@ -77,6 +78,65 @@ describe('T2VClient token refresh', () => {
     await expect(newClient().request('/v1/thing')).rejects.toBeInstanceOf(AuthenticationError);
     expect(storage.getAccessToken()).toBeNull();
     expect(storage.getRefreshToken()).toBeNull();
+  });
+
+  it('fails fast (transient) when /refresh hangs past the timeout, then can retry', async () => {
+    vi.useFakeTimers();
+    try {
+      // /refresh never resolves on its own — only its AbortSignal can settle it.
+      let refreshCalls = 0;
+      const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/v1/auth/refresh')) {
+          refreshCalls += 1;
+          return new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            // Mirror fetch's behaviour: reject with an AbortError when aborted.
+            signal?.addEventListener('abort', () => {
+              reject(
+                new DOMException('The operation was aborted.', 'AbortError'),
+              );
+            });
+          });
+        }
+        return Promise.resolve(res(401, { error: { message: 'expired' } }));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const client = newClient({ requestTimeout: 5_000 });
+
+      // First attempt: the hung refresh must reject within the timeout window
+      // (NetworkError surfaced as "temporarily unavailable") rather than hang.
+      const firstAttempt = client.request('/v1/thing');
+      const firstAssertion = expect(firstAttempt).rejects.toBeInstanceOf(NetworkError);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await firstAssertion;
+
+      // Session preserved: a timeout is transient, not a logout.
+      expect(storage.getAccessToken()).toBe('old_a');
+      expect(storage.getRefreshToken()).toBe('old_r');
+
+      // The shared refreshPromise was cleared, so a subsequent call refreshes
+      // again (a second /refresh fires) instead of re-awaiting the dead one.
+      fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+        if (url.endsWith('/v1/auth/refresh')) {
+          refreshCalls += 1;
+          return Promise.resolve(res(200, REFRESH_OK));
+        }
+        const auth = (init?.headers as Record<string, string>)?.['Authorization'];
+        return Promise.resolve(
+          auth === 'Bearer new_a'
+            ? res(200, { ok: true })
+            : res(401, { error: { message: 'expired' } }),
+        );
+      });
+
+      const second = await client.request('/v1/thing');
+      expect(second).toEqual({ ok: true });
+      expect(refreshCalls).toBe(2);
+      expect(storage.getAccessToken()).toBe('new_a');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('de-dupes concurrent refreshes: many 401s trigger a single /refresh', async () => {
