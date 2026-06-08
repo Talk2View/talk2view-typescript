@@ -70,6 +70,54 @@ describe('T2VTools.validateArgs', () => {
     expect(result.result).toContain('fast');
   });
 
+  it('accepts a differently-cased enum value and normalizes it to canonical casing', async () => {
+    const handler = vi.fn().mockResolvedValue('success');
+    const tool: ClientTool = {
+      ...sampleTool,
+      execute: handler,
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.executeToolCall('test_tool', {
+      name: 'test',
+      count: 1,
+      mode: 'FAST',
+    });
+    expect(result.isError).toBe(false);
+    expect(handler).toHaveBeenCalledOnce();
+    // Handler receives the schema's canonical casing, not the model's casing.
+    expect(handler.mock.calls[0][0]).toMatchObject({ mode: 'fast' });
+  });
+
+  it('still rejects an enum value that does not match any variant case-insensitively', async () => {
+    const tools = await setupTools([sampleTool]);
+    const result = await tools.executeToolCall('test_tool', {
+      name: 'test',
+      count: 1,
+      mode: 'Turbo',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.result).toContain('must be one of');
+    expect(result.result).toContain('fast');
+  });
+
+  it('leaves non-enum args untouched when normalizing enums', async () => {
+    const handler = vi.fn().mockResolvedValue('success');
+    const tool: ClientTool = {
+      ...sampleTool,
+      execute: handler,
+    };
+    const tools = await setupTools([tool]);
+    const result = await tools.executeToolCall('test_tool', {
+      name: 'KeepCase',
+      count: 7,
+      mode: 'Slow',
+    });
+    expect(result.isError).toBe(false);
+    expect(handler).toHaveBeenCalledOnce();
+    // Enum normalized, but the free-text "name" arg keeps its original casing.
+    expect(handler.mock.calls[0][0]).toMatchObject({ name: 'KeepCase', count: 7, mode: 'slow' });
+  });
+
   it('passes valid args through to the handler', async () => {
     const handler = vi.fn().mockResolvedValue('success');
     const tool: ClientTool = {

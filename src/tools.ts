@@ -73,9 +73,22 @@ export class T2VTools {
         return `Argument "${key}" expected type "${expectedType}", got ${typeof value}`;
       }
 
-      // Enum constraint
-      if (propSchema.enum && !propSchema.enum.includes(String(value))) {
-        return `Argument "${key}" must be one of: ${propSchema.enum.join(', ')}`;
+      // Enum constraint.
+      // For string-typed enums, match case-insensitively: models often echo a
+      // UI label like "Center" when the schema enum is "center", which would
+      // otherwise force a reject->retry round-trip. When a case-insensitive
+      // match is found, normalize the arg to the schema's canonical casing so
+      // downstream handlers always receive the exact enum value.
+      if (propSchema.enum) {
+        if (expectedType === 'string' && typeof value === 'string') {
+          const match = propSchema.enum.find((e) => e.toLowerCase() === value.toLowerCase());
+          if (match === undefined) {
+            return `Argument "${key}" must be one of: ${propSchema.enum.join(', ')}`;
+          }
+          args[key] = match;
+        } else if (!propSchema.enum.includes(String(value))) {
+          return `Argument "${key}" must be one of: ${propSchema.enum.join(', ')}`;
+        }
       }
     }
 
