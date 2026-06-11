@@ -58,9 +58,32 @@ export interface CreateSessionResponse {
   model: string;
 }
 
+// ── Attachments ──
+
+/** Metadata returned by POST /v1/attachments (Talk2View.uploadAttachment). */
+export interface Attachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+export interface TextContentPart {
+  type: 'text';
+  text: string;
+}
+
+/** References an uploaded attachment by id — the server resolves the bytes. */
+export interface AttachmentContentPart {
+  type: 'attachment';
+  attachment_id: string;
+}
+
+export type MessageContentPart = TextContentPart | AttachmentContentPart;
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  content: string | MessageContentPart[];
   tool_call_id?: string;
 }
 
@@ -290,6 +313,8 @@ export interface DisplayMessage {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  /** Files attached to a user message (rendered as chips in the bubble). */
+  attachments?: Attachment[];
   /** Markdown checklist from the agent's planning tool (write_todos). */
   plan?: string;
   /** Completed tool call steps (rendered as collapsible inline steps). */

@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { Paperclip } from 'lucide-react';
 import type { DisplayMessage } from '../../types';
 import { useChat } from '../context';
 import { LOGOS } from '../theme';
@@ -38,28 +39,64 @@ export function MessageBubble({ message, isLast, hideAvatar }: MessageBubbleProp
       <div
         style={{
           display: 'flex',
-          justifyContent: 'flex-end',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
           marginBottom: '12px',
           animation: 't2v-fade-in 0.2s ease-out',
         }}
       >
-        <div
-          style={{
-            maxWidth: '80%',
-            padding: '8px 14px',
-            borderRadius: 'var(--t2v-radius-xl)',
-            borderBottomRightRadius: 'var(--t2v-radius-sm)',
-            background: 'var(--t2v-user-bubble)',
-            color: 'var(--t2v-user-foreground)',
-            fontSize: '14px',
-            lineHeight: 1.5,
-            fontFamily: 'var(--t2v-font)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          {message.content}
-        </div>
+        {message.attachments && message.attachments.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
+              gap: '4px',
+              maxWidth: '80%',
+              marginBottom: '4px',
+            }}
+          >
+            {message.attachments.map((a) => (
+              <span
+                key={a.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: 'var(--t2v-radius-md)',
+                  border: '1px solid var(--t2v-border)',
+                  background: 'var(--t2v-surface)',
+                  fontSize: '12px',
+                  color: 'var(--t2v-foreground)',
+                  fontFamily: 'var(--t2v-font)',
+                }}
+              >
+                <Paperclip size={11} />
+                {a.filename}
+              </span>
+            ))}
+          </div>
+        )}
+        {message.content && (
+          <div
+            style={{
+              maxWidth: '80%',
+              padding: '8px 14px',
+              borderRadius: 'var(--t2v-radius-xl)',
+              borderBottomRightRadius: 'var(--t2v-radius-sm)',
+              background: 'var(--t2v-user-bubble)',
+              color: 'var(--t2v-user-foreground)',
+              fontSize: '14px',
+              lineHeight: 1.5,
+              fontFamily: 'var(--t2v-font)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {message.content}
+          </div>
+        )}
       </div>
     );
   }

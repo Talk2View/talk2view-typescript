@@ -33,13 +33,19 @@ import { T2VAuth } from './auth';
 import { T2VClient } from './client';
 import { TypedEventEmitter } from './event-emitter';
 import { getIsAnonymous, hasValidTokens } from './storage';
-import { T2VSession } from './sessions';
+import { T2VSession, buildUserContent } from './sessions';
 import { T2VSkills } from './skills';
 import { T2VTools, stripNullArgs } from './tools';
-import type { AgentStatus, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
+import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
 
 type SessionClearCallback = () => void;
 type SessionCreateCallback = (toolNames: string[]) => void;
+
+/** Short, debug-log-safe preview of message content (string or parts). */
+function previewContent(content: ChatMessage['content']): string {
+  if (typeof content !== 'string') return '[multimodal content]';
+  return content.slice(0, 80) + (content.length > 80 ? '...' : '');
+}
 
 export class Talk2View {
   readonly auth: T2VAuth;
@@ -70,6 +76,7 @@ export class Talk2View {
   private _threadId: string | null = null;
   private _alwaysAllowedTools = new Set<string>();
   private _lastUserMessage: string | null = null;
+  private _lastUserAttachments: Attachment[] | null = null;
   private _messageCounter = 0;
   /** Aborts the in-flight response stream when the user stops generation. */
   private _streamAbort: AbortController | null = null;
@@ -142,7 +149,13 @@ export class Talk2View {
    */
   async *chat(
     message: string,
-    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[]; signal?: AbortSignal },
+    options?: {
+      systemPrompt?: string;
+      model?: string;
+      history?: ChatMessage[];
+      signal?: AbortSignal;
+      attachments?: Attachment[];
+    },
   ): AsyncGenerator<ChatEvent> {
     // Auto-start an anonymous demo session if nothing is authenticated yet.
     if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
@@ -182,6 +195,27 @@ export class Talk2View {
    */
   async transcribe(formData: FormData): Promise<TranscriptionResponse> {
     return this.client.uploadRequest<TranscriptionResponse>('/v1/audio/transcriptions', formData);
+  }
+
+  /**
+   * Upload a file to attach to chat messages.
+   *
+   * Accepts images (png/jpeg/webp/gif) and PDFs up to the server's size limit.
+   * Pass the returned attachment via `sendMessage(content, { attachments })`.
+   */
+  async uploadAttachment(file: File | Blob, filename?: string): Promise<Attachment> {
+    // Uploads require auth — mirror chat()'s anonymous demo auto-start.
+    if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
+      try {
+        await this.auth.startAnonymous();
+      } catch (err) {
+        console.warn('[Talk2View] Anonymous auto-start failed:', err);
+      }
+    }
+    const formData = new FormData();
+    const name = filename ?? (file instanceof File ? file.name : 'file');
+    formData.append('file', file, name);
+    return this.client.uploadRequest<Attachment>('/v1/attachments', formData);
   }
 
   /**
@@ -551,27 +585,37 @@ export class Talk2View {
    * Adds user/assistant messages, starts streaming, and updates all state
    * (loading, error, status, etc.) as events arrive.
    */
-  async sendMessage(content: string, options?: { systemPrompt?: string; model?: string }): Promise<void> {
-    const userMsg: DisplayMessage = { id: this.nextMessageId(), role: 'user', content, timestamp: new Date() };
+  async sendMessage(
+    content: string,
+    options?: { systemPrompt?: string; model?: string; attachments?: Attachment[] },
+  ): Promise<void> {
+    const attachments = options?.attachments;
+    const userMsg: DisplayMessage = {
+      id: this.nextMessageId(), role: 'user', content, timestamp: new Date(),
+      ...(attachments?.length ? { attachments } : {}),
+    };
     const assistantMsg: DisplayMessage = { id: this.nextMessageId(), role: 'assistant', content: '', timestamp: new Date(), isStreaming: true };
     this._messages = [...this._messages, userMsg, assistantMsg];
     this.emitter.emit('messagesChange', this._messages);
     this._lastUserMessage = content;
+    this._lastUserAttachments = attachments ?? null;
     this.setLoading(true);
     this.setError(null);
 
     // Build history from prior turns (exclude current message — T2VSession.sendMessage appends it)
     const historySnapshot = [...this._conversationHistory];
-    // Record user turn in conversation history
-    this._conversationHistory.push({ role: 'user', content });
-    this.debug('sendMessage', { content, historyLength: this._conversationHistory.length });
-    this.debug('history →', JSON.stringify(this._conversationHistory.map((m) => ({ role: m.role, content: m.content.slice(0, 80) + (m.content.length > 80 ? '...' : '') }))));
+    // Record user turn in conversation history. With attachments the entry is
+    // structured content parts, so later turns replay the references and the
+    // model keeps seeing the files.
+    this._conversationHistory.push({ role: 'user', content: buildUserContent(content, attachments) });
+    this.debug('sendMessage', { content, attachments: attachments?.length ?? 0, historyLength: this._conversationHistory.length });
+    this.debug('history →', JSON.stringify(this._conversationHistory.map((m) => ({ role: m.role, content: previewContent(m.content) }))));
 
     const systemPrompt = options?.systemPrompt;
     const model = options?.model ?? this.config.model;
     this._streamAbort = new AbortController();
     this._stopped = false;
-    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal });
+    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal, attachments });
     await this.drainStream(stream, assistantMsg.id);
   }
 
@@ -609,6 +653,7 @@ export class Talk2View {
   async retryLastMessage(): Promise<void> {
     if (!this._lastUserMessage) return;
     const content = this._lastUserMessage;
+    const attachments = this._lastUserAttachments ?? undefined;
     const msgs = [...this._messages];
     while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'assistant') msgs.pop();
     while (msgs.length > 0 && msgs[msgs.length - 1]!.role === 'user') msgs.pop();
@@ -617,7 +662,7 @@ export class Talk2View {
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'assistant') this._conversationHistory.pop();
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'user') this._conversationHistory.pop();
     this.setError(null);
-    await this.sendMessage(content);
+    await this.sendMessage(content, attachments?.length ? { attachments } : undefined);
   }
 
   /**
@@ -632,6 +677,7 @@ export class Talk2View {
     this.setAgentStatus(null);
     this.setThreadId(null);
     this._lastUserMessage = null;
+    this._lastUserAttachments = null;
     this._alwaysAllowedTools = new Set();
     this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
     this.clearSession();
@@ -667,6 +713,10 @@ export type {
   T2VEventMap,
   T2VConfig,
   User,
+  Attachment,
+  AttachmentContentPart,
+  MessageContentPart,
+  TextContentPart,
   ChatEvent,
   ChatMessage,
   ClientTool,

@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { Talk2View as Talk2ViewClass } from '../index';
-import type { User, DisplayMessage, PendingApproval, HumanDecision } from '../types';
+import type { Attachment, User, DisplayMessage, PendingApproval, HumanDecision } from '../types';
 
 export interface Talk2ViewContextValue {
   t2v: Talk2ViewClass;
@@ -18,7 +18,7 @@ export interface ChatContextValue {
   agentStatus: { status: string; message: string } | null;
   threadId: string | null;
   alwaysAllowedTools: ReadonlySet<string>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, options?: { attachments?: Attachment[] }) => Promise<void>;
   approveToolCall: (decision: HumanDecision) => Promise<void>;
   retryLastMessage: () => Promise<void>;
   /** Stop the in-flight response; the partial text received so far is kept. */

@@ -12,11 +12,22 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Send, Square, Check, Loader2 } from 'lucide-react';
+import { Mic, Send, Square, Check, Loader2, Paperclip, X } from 'lucide-react';
 import { useChat } from '../context';
 import { useTalk2View } from '../context';
 import { useUserPreferences } from '../../react/useUserPreferences';
 import { usePartnerConfig } from '../../react/usePartnerConfig';
+import type { Attachment } from '../../types';
+
+const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,application/pdf';
+
+interface PendingAttachment {
+  /** Local key — stable across the upload lifecycle. */
+  localId: string;
+  filename: string;
+  status: 'uploading' | 'ready';
+  attachment?: Attachment;
+}
 
 export function Composer() {
   const { sendMessage, isLoading, stop } = useChat();
@@ -27,10 +38,13 @@ export function Composer() {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const localIdRef = useRef(0);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -40,12 +54,55 @@ export function Composer() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
 
+  const uploadsInFlight = pendingAttachments.some((p) => p.status === 'uploading');
+  const readyAttachments = pendingAttachments
+    .filter((p) => p.status === 'ready' && p.attachment)
+    .map((p) => p.attachment!);
+
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
+    if ((!trimmed && readyAttachments.length === 0) || isLoading || uploadsInFlight) return;
     setText('');
-    sendMessage(trimmed).catch(console.error);
-  }, [text, isLoading, sendMessage]);
+    setPendingAttachments([]);
+    if (readyAttachments.length > 0) {
+      sendMessage(trimmed, { attachments: readyAttachments }).catch(console.error);
+    } else {
+      sendMessage(trimmed).catch(console.error);
+    }
+  }, [text, isLoading, uploadsInFlight, readyAttachments, sendMessage]);
+
+  const handleFilesSelected = useCallback(
+    (files: FileList | null) => {
+      if (!files) return;
+      for (const file of Array.from(files)) {
+        const localId = `att-local-${++localIdRef.current}`;
+        setPendingAttachments((prev) => [
+          ...prev,
+          { localId, filename: file.name, status: 'uploading' },
+        ]);
+        t2v
+          .uploadAttachment(file)
+          .then((attachment: Attachment) => {
+            setPendingAttachments((prev) =>
+              prev.map((p) =>
+                p.localId === localId ? { ...p, status: 'ready' as const, attachment } : p,
+              ),
+            );
+          })
+          .catch((err: unknown) => {
+            console.error('Attachment upload failed:', err);
+            setPendingAttachments((prev) => prev.filter((p) => p.localId !== localId));
+          });
+      }
+      // Allow re-selecting the same file
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    },
+    [t2v],
+  );
+
+  const removeAttachment = useCallback((localId: string) => {
+    setPendingAttachments((prev) => prev.filter((p) => p.localId !== localId));
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -118,9 +175,55 @@ export function Composer() {
   }, [isRecording, t2v, preferences.sttModel, preferences.sttLanguage, partnerConfig?.default_stt_model]);
 
   const hasText = text.trim().length > 0;
+  const hasContent = hasText || readyAttachments.length > 0;
+  const canSend = hasContent && !uploadsInFlight;
 
   return (
     <div style={{ padding: '10px 12px', background: 'var(--t2v-bg)', fontFamily: 'var(--t2v-font)' }}>
+      {pendingAttachments.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingBottom: '8px' }}>
+          {pendingAttachments.map((p) => (
+            <span
+              key={p.localId}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 8px',
+                borderRadius: 'var(--t2v-radius-md)',
+                border: '1px solid var(--t2v-border)',
+                background: 'var(--t2v-surface)',
+                fontSize: '12px',
+                color: 'var(--t2v-foreground)',
+                opacity: p.status === 'uploading' ? 0.6 : 1,
+              }}
+            >
+              {p.status === 'uploading' ? (
+                <Loader2 size={12} style={{ animation: 't2v-spin 0.8s linear infinite' }} />
+              ) : (
+                <Paperclip size={12} />
+              )}
+              {p.filename}
+              <button
+                type="button"
+                onClick={() => removeAttachment(p.localId)}
+                aria-label={`Remove ${p.filename}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--t2v-muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div
         className="t2v-composer"
         style={{
@@ -160,6 +263,39 @@ export function Composer() {
           }}
         />
 
+        {/* Attach button + hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ATTACHMENT_ACCEPT}
+          onChange={(e) => handleFilesSelected(e.target.files)}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+          aria-label="Attach file"
+          title="Attach an image or PDF"
+          style={{
+            width: '32px',
+            height: '32px',
+            flexShrink: 0,
+            borderRadius: 'var(--t2v-radius-md)',
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--t2v-muted)',
+            cursor: isLoading ? 'default' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'color 0.15s',
+          }}
+        >
+          <Paperclip size={16} />
+        </button>
+
         {/* Mic button */}
         <button
           type="button"
@@ -192,7 +328,7 @@ export function Composer() {
         <button
           type="button"
           onClick={isLoading ? stop : handleSend}
-          disabled={!isLoading && !hasText}
+          disabled={!isLoading && !canSend}
           aria-label={isLoading ? 'Stop generating' : 'Send message'}
           title={isLoading ? 'Stop generating' : undefined}
           style={{
@@ -201,9 +337,9 @@ export function Composer() {
             flexShrink: 0,
             borderRadius: 'var(--t2v-radius-md)',
             border: 'none',
-            background: isLoading || hasText ? 'var(--t2v-foreground)' : 'transparent',
-            color: isLoading || hasText ? '#fff' : 'var(--t2v-muted)',
-            cursor: isLoading || hasText ? 'pointer' : 'default',
+            background: isLoading || canSend ? 'var(--t2v-foreground)' : 'transparent',
+            color: isLoading || canSend ? '#fff' : 'var(--t2v-muted)',
+            cursor: isLoading || canSend ? 'pointer' : 'default',
             opacity: 1,
             transition: 'background 0.15s, color 0.15s, opacity 0.15s',
             display: 'flex',

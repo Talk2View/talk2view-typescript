@@ -5,13 +5,30 @@
 import type { T2VClient } from './client';
 import type { T2VTools } from './tools';
 import type {
+  Attachment,
   ChatEvent,
   ChatMessage,
   CreateSessionResponse,
   HumanDecision,
+  MessageContentPart,
   PendingApproval,
   T2VConfig,
 } from './types';
+
+/**
+ * Build user message content — a plain string normally, structured content
+ * parts when attachments are present.
+ */
+export function buildUserContent(
+  content: string,
+  attachments?: Attachment[],
+): string | MessageContentPart[] {
+  if (!attachments?.length) return content;
+  const parts: MessageContentPart[] = [];
+  if (content) parts.push({ type: 'text', text: content });
+  parts.push(...attachments.map((a): MessageContentPart => ({ type: 'attachment', attachment_id: a.id })));
+  return parts;
+}
 
 export class T2VSession {
   readonly id: string;
@@ -37,7 +54,13 @@ export class T2VSession {
    */
   async *sendMessage(
     content: string,
-    options?: { systemPrompt?: string; model?: string; history?: ChatMessage[]; signal?: AbortSignal },
+    options?: {
+      systemPrompt?: string;
+      model?: string;
+      history?: ChatMessage[];
+      signal?: AbortSignal;
+      attachments?: Attachment[];
+    },
   ): AsyncGenerator<ChatEvent> {
     const messages: ChatMessage[] = [];
 
@@ -47,7 +70,7 @@ export class T2VSession {
     if (options?.history) {
       messages.push(...options.history);
     }
-    messages.push({ role: 'user', content });
+    messages.push({ role: 'user', content: buildUserContent(content, options?.attachments) });
 
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,

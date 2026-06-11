@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useT2V } from './T2VProvider';
-import type { DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types';
+import type { Attachment, DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types';
 
 export type { PendingApproval } from '../types';
 export type { DisplayMessage, ToolStep } from '../types';
@@ -22,7 +22,7 @@ export interface UseT2VChatResult {
   pendingApproval: PendingApproval | null;
   /** Tools that are auto-approved for the remainder of the session. */
   alwaysAllowedTools: ReadonlySet<string>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, sendOptions?: { attachments?: Attachment[] }) => Promise<void>;
   approveToolCall: (decision: HumanDecision) => Promise<void>;
   /** Retry the last failed message. Only available when error is set. */
   retryLastMessage: () => Promise<void>;
@@ -65,7 +65,8 @@ export function useT2VChat(options?: { systemPrompt?: string; model?: string }):
   }, [t2v]);
 
   const sendMessage = useCallback(
-    (content: string) => t2v.sendMessage(content, options),
+    (content: string, sendOptions?: { attachments?: Attachment[] }) =>
+      t2v.sendMessage(content, { ...options, ...sendOptions }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t2v, options?.systemPrompt, options?.model],
   );

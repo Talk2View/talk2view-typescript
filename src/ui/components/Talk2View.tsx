@@ -5,7 +5,7 @@ import { usePartnerConfig } from '../../react/usePartnerConfig';
 import { Talk2ViewContext, ChatContext } from '../context';
 import { injectTheme, injectFonts } from '../theme';
 import { injectComponentStyles } from '../styles';
-import type { Talk2ViewTheme, DisplayMessage, PendingApproval, HumanDecision, ClientTool, ClientToolSchema } from '../../types';
+import type { Attachment, Talk2ViewTheme, DisplayMessage, PendingApproval, HumanDecision, ClientTool, ClientToolSchema } from '../../types';
 
 export interface Talk2ViewProps {
   partnerKey: string;
@@ -111,7 +111,8 @@ function InnerProvider({
   }, [t2v, user]);
 
   const sendMessage = useCallback(
-    (content: string) => t2v.sendMessage(content, { systemPrompt, model: resolvedModel }),
+    (content: string, options?: { attachments?: Attachment[] }) =>
+      t2v.sendMessage(content, { systemPrompt, model: resolvedModel, ...options }),
     [t2v, systemPrompt, resolvedModel],
   );
   const approveToolCall = useCallback((d: HumanDecision) => t2v.approveToolCall(d), [t2v]);
