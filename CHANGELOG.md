@@ -2,6 +2,16 @@
 
 ## [Unreleased] — assistant-ui Integration
 
+### Fixed
+
+- **Anonymous → permanent conversion now re-authenticates.** `signup()` on
+  an anonymous session called `/v1/auth/convert` but kept the old anonymous
+  tokens. Setting a password during conversion revokes that session's
+  refresh token server-side (Supabase rotates tokens on credential change),
+  so the kept token was stale and the next refresh 401'd — the account
+  silently broke ~an hour after signup. `signup()` now follows convert with
+  a `login()` to obtain a fresh session (same `user_id` → history kept).
+
 ### Added
 
 #### New export path: `@talk2view/sdk/ui`

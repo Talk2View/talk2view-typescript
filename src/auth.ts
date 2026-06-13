@@ -90,24 +90,25 @@ export class T2VAuth {
    */
   async signup(email: string, password: string): Promise<User> {
     if (getIsAnonymous()) {
-      let converted: User;
       try {
-        converted = await this.client.request<User>(
+        await this.client.request<User>(
           '/v1/auth/convert',
           { method: 'POST', body: JSON.stringify({ email, password }) },
           true,
         );
       } catch (err) {
-        // Email already belongs to an existing account → log into it instead.
-        if (err instanceof T2VError && err.statusCode === 409) {
-          return await this.login(email, password);
+        // 409 = the email already belongs to another account; fall through
+        // and log into it. Anything else is a real failure.
+        if (!(err instanceof T2VError && err.statusCode === 409)) {
+          throw err;
         }
-        throw err;
       }
-      setIsAnonymous(false);
-      setUser(converted);
-      this.notifyListeners(converted);
-      return converted;
+      // Convert links the credentials but revokes the anonymous session's
+      // refresh token server-side (Supabase rotates tokens on credential
+      // change), so the tokens we still hold are stale — the next refresh
+      // would 401. Re-authenticate to land a fresh session (same user_id on
+      // a successful convert → chat history preserved).
+      return await this.login(email, password);
     }
 
     const request: SignupRequest = { email, password };
