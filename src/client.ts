@@ -134,6 +134,15 @@ export class T2VClient {
   }
 
   /**
+   * Top-level OAuth "start" URL for a login popup. The partner key travels as a
+   * query param because a popup navigation cannot set request headers.
+   */
+  oauthStartUrl(provider: string, params: Record<string, string>): string {
+    const q = new URLSearchParams({ partner_key: this.partnerKey, ...params });
+    return `${this.baseUrl}/v1/auth/oauth/${provider}/start?${q.toString()}`;
+  }
+
+  /**
    * Make an authenticated JSON request.
    */
   async request<T>(

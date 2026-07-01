@@ -147,6 +147,69 @@ export class T2VAuth {
     return user;
   }
 
+  /** Sign in with Google via a popup (engine-mediated OAuth). */
+  async signInWithGoogle(): Promise<User> {
+    return this.signInWithOAuth('google');
+  }
+
+  async signInWithOAuth(provider: string): Promise<User> {
+    if (typeof window === 'undefined') {
+      throw new T2VError('OAuth sign-in requires a browser environment');
+    }
+    const bytes = new Uint8Array(32); // 256-bit nonce
+    window.crypto.getRandomValues(bytes);
+    const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+    const startUrl = this.client.oauthStartUrl(provider, {
+      origin: window.location.origin,
+      nonce,
+    });
+    const popup = window.open(startUrl, 't2v-oauth', 'width=480,height=720');
+    if (!popup) {
+      throw new T2VError('Popup blocked. Please allow popups and try again.');
+    }
+    try {
+      const tokens = await this.pollOAuthExchange(nonce, popup);
+      this.storeTokens(tokens);
+      const user = tokens.user;
+      if (!user) throw new AuthenticationError('OAuth sign-in returned no user');
+      this.notifyListeners(user);
+      return user;
+    } finally {
+      if (!popup.closed) popup.close();
+    }
+  }
+
+  private async pollOAuthExchange(nonce: string, popup: Window): Promise<TokenResponse> {
+    const deadlineMs = Date.now() + 180_000;
+    let delay = 1000;
+    while (Date.now() < deadlineMs) {
+      let body: TokenResponse | { status: string };
+      try {
+        body = await this.client.request<TokenResponse | { status: string }>(
+          '/v1/auth/oauth/exchange',
+          { method: 'POST', body: JSON.stringify({ nonce }) },
+          false,
+        );
+      } catch (err) {
+        // 410 (expired/consumed) is terminal; surface it.
+        if (err instanceof T2VError && err.statusCode === 410) {
+          throw new AuthenticationError('Sign-in expired. Please try again.');
+        }
+        throw err;
+      }
+      if ((body as TokenResponse).access_token) {
+        return body as TokenResponse;
+      }
+      if (popup.closed) {
+        throw new AuthenticationError('Sign-in window was closed before completing.');
+      }
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 1.5, 4000);
+    }
+    throw new AuthenticationError('Google sign-in timed out.');
+  }
+
   /**
    * Sign out the current user.
    */

@@ -15,12 +15,15 @@ export interface UseT2VAuthResult {
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  signInWithGoogle: () => Promise<void>;
+  oauthLoading: boolean;
 }
 
 export function useT2VAuth(): UseT2VAuthResult {
   const { t2v, user, isAuthenticated } = useT2V();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -65,7 +68,32 @@ export function useT2VAuth(): UseT2VAuthResult {
     }
   }, [t2v]);
 
+  const signInWithGoogle = useCallback(async () => {
+    setOauthLoading(true);
+    setError(null);
+    try {
+      await t2v.auth.signInWithGoogle();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google sign-in failed';
+      setError(message);
+      throw err;
+    } finally {
+      setOauthLoading(false);
+    }
+  }, [t2v]);
+
   const clearError = useCallback(() => setError(null), []);
 
-  return { user, isAuthenticated, isLoading, error, login, signup, logout, clearError };
+  return {
+    user,
+    isAuthenticated,
+    isLoading,
+    error,
+    login,
+    signup,
+    logout,
+    clearError,
+    signInWithGoogle,
+    oauthLoading,
+  };
 }
