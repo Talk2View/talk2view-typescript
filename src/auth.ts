@@ -147,6 +147,11 @@ export class T2VAuth {
     return user;
   }
 
+  // Aborts the in-flight OAuth poll loop, if any. A new attempt cancels the
+  // previous one so its loop can't linger as a "zombie" and reject a later
+  // attempt with a stale "expired"/"window closed" error.
+  private oauthAbort?: AbortController;
+
   /** Sign in with Google via a popup (engine-mediated OAuth). */
   async signInWithGoogle(): Promise<User> {
     return this.signInWithOAuth('google');
@@ -156,6 +161,11 @@ export class T2VAuth {
     if (typeof window === 'undefined') {
       throw new T2VError('OAuth sign-in requires a browser environment');
     }
+    // Cancel any still-running attempt before starting a new one.
+    this.oauthAbort?.abort();
+    const abort = new AbortController();
+    this.oauthAbort = abort;
+
     const bytes = new Uint8Array(32); // 256-bit nonce
     window.crypto.getRandomValues(bytes);
     const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -164,12 +174,14 @@ export class T2VAuth {
       origin: window.location.origin,
       nonce,
     });
-    const popup = window.open(startUrl, 't2v-oauth', 'width=480,height=720');
+    // Unique window name per attempt. A fixed name makes a rapid re-click reuse
+    // (navigate) the SAME popup, stranding the previous attempt's poll loop.
+    const popup = window.open(startUrl, `t2v-oauth-${nonce.slice(0, 12)}`, 'width=480,height=720');
     if (!popup) {
       throw new T2VError('Popup blocked. Please allow popups and try again.');
     }
     try {
-      const tokens = await this.pollOAuthExchange(nonce, popup);
+      const tokens = await this.pollOAuthExchange(nonce, abort.signal);
       this.storeTokens(tokens);
       const user = tokens.user;
       if (!user) throw new AuthenticationError('OAuth sign-in returned no user');
@@ -177,37 +189,80 @@ export class T2VAuth {
       return user;
     } finally {
       if (!popup.closed) popup.close();
+      if (this.oauthAbort === abort) this.oauthAbort = undefined;
     }
   }
 
-  private async pollOAuthExchange(nonce: string, popup: Window): Promise<TokenResponse> {
+  private async pollOAuthExchange(
+    nonce: string,
+    signal: AbortSignal,
+  ): Promise<TokenResponse> {
     const deadlineMs = Date.now() + 180_000;
-    let delay = 1000;
+    let delay = 600;
+    // Has the txn ever been observed server-side? Distinguishes a benign early
+    // 410 ("/start hasn't created the row yet" — the first poll can beat the
+    // popup's redirect) from a real one ("the row existed and then expired").
+    //
+    // We deliberately do NOT gate on `popup.closed`. The popup navigates through
+    // pages that send Cross-Origin-Opener-Policy (the engine `/start` redirect,
+    // Supabase, and Google), which severs the opener↔popup link and makes
+    // `popup.closed` report `true` mid-flow — a false positive that would abort
+    // a perfectly live sign-in. The flow is poll-based (the session comes from
+    // the server, not the popup), so the handle isn't needed for correctness:
+    // we poll until ready, the txn expires (→ 410 after it was seen), or the
+    // 180s deadline (which matches the server-side txn TTL).
+    let sawTxn = false;
     while (Date.now() < deadlineMs) {
-      let body: TokenResponse | { status: string };
+      if (signal.aborted) throw new AuthenticationError('Sign-in was cancelled.');
+
+      let ready: TokenResponse | null = null;
+      let missing = false;
       try {
-        body = await this.client.request<TokenResponse | { status: string }>(
+        const body = await this.client.request<TokenResponse | { status: string }>(
           '/v1/auth/oauth/exchange',
           { method: 'POST', body: JSON.stringify({ nonce }) },
           false,
         );
-      } catch (err) {
-        // 410 (expired/consumed) is terminal; surface it.
-        if (err instanceof T2VError && err.statusCode === 410) {
-          throw new AuthenticationError('Sign-in expired. Please try again.');
+        if ((body as TokenResponse).access_token) {
+          ready = body as TokenResponse;
+        } else {
+          sawTxn = true; // 202 pending → the txn exists; keep waiting for it
         }
-        throw err;
+      } catch (err) {
+        if (err instanceof T2VError && err.statusCode === 410) {
+          // 410 after we've seen the txn = genuinely expired/consumed → terminal.
+          // 410 before that = the row isn't created yet (race) → keep polling.
+          if (sawTxn) throw new AuthenticationError('Sign-in expired. Please try again.');
+          missing = true;
+        } else {
+          throw err;
+        }
       }
-      if ((body as TokenResponse).access_token) {
-        return body as TokenResponse;
-      }
-      if (popup.closed) {
-        throw new AuthenticationError('Sign-in window was closed before completing.');
-      }
-      await new Promise((r) => setTimeout(r, delay));
-      delay = Math.min(delay * 1.5, 4000);
+      if (ready) return ready;
+
+      await this.sleep(missing ? 400 : delay, signal);
+      if (!missing) delay = Math.min(delay * 1.5, 4000);
     }
     throw new AuthenticationError('Google sign-in timed out.');
+  }
+
+  /** Abortable delay used by the OAuth poll loop. */
+  private sleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new AuthenticationError('Sign-in was cancelled.'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(new AuthenticationError('Sign-in was cancelled.'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   /**
