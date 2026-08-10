@@ -21,6 +21,35 @@ import type { LoginRequest, SignupRequest, TokenResponse, User } from './types';
 
 type AuthStateCallback = (user: User | null) => void;
 
+// Refresh a token this many seconds before it actually expires, so a request
+// fired right at the boundary doesn't race the expiry against clock skew.
+const TOKEN_EXPIRY_SKEW_SECONDS = 30;
+
+/**
+ * True when a JWT is expired or within the skew window of expiring. Returns
+ * false when the token can't be parsed or carries no numeric `exp` — we can't
+ * prove it's stale, so we let the reactive 401 path handle it rather than
+ * refresh on every call.
+ */
+function isExpiringSoon(token: string, skewSeconds = TOKEN_EXPIRY_SKEW_SECONDS): boolean {
+  const exp = decodeJwtExp(token);
+  if (exp === null) return false;
+  return exp - Date.now() / 1000 <= skewSeconds;
+}
+
+function decodeJwtExp(token: string): number | null {
+  const payloadPart = token.split('.')[1];
+  if (!payloadPart || typeof atob !== 'function') return null;
+  try {
+    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as { exp?: unknown };
+    return typeof payload.exp === 'number' ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
 export class T2VAuth {
   private listeners: Set<AuthStateCallback> = new Set();
 
@@ -301,6 +330,38 @@ export class T2VAuth {
    */
   isAuthenticated(): boolean {
     return hasValidTokens();
+  }
+
+  /**
+   * Return an access token valid *right now*, for a DIRECT request the SDK
+   * transport doesn't make for you — streaming straight to a third party, or a
+   * self-hosted backend on another origin. Proactively refreshes when the stored
+   * token is missing, expired, or within {@link TOKEN_EXPIRY_SKEW_SECONDS} of
+   * expiry; pass `forceRefresh` to refresh unconditionally (use that after a
+   * direct request still returns 401, e.g. clock skew or a server-side revoke).
+   *
+   * Refreshes are deduped with the SDK's own 401 handling, so a direct call and
+   * an in-flight SDK request never double-rotate the (rotating) refresh token.
+   * Returns null only when the session is genuinely dead (refresh token revoked
+   * or expired): auth is then cleared and listeners notified, so the app drops
+   * to logged-out. On a transient failure (network / 409 / 429) the existing
+   * token is returned so the caller can proceed or retry.
+   */
+  async getValidAccessToken(opts?: { forceRefresh?: boolean }): Promise<string | null> {
+    const current = getAccessToken();
+    const mustRefresh = opts?.forceRefresh === true || !current || isExpiringSoon(current);
+    if (!mustRefresh) return current;
+
+    const result = await this.client.refreshTokens();
+    if (result === 'refreshed') return getAccessToken();
+    if (result === 'invalid') {
+      // Genuinely dead session: clear + broadcast, same path as a 401 logout.
+      clearAuth();
+      this.notifyListeners(null);
+      return null;
+    }
+    // Transient (network / 409 / 429): keep the session, hand back what we have.
+    return current;
   }
 
   /**

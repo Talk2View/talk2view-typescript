@@ -242,6 +242,19 @@ export class T2VClient {
     }
   }
 
+  /**
+   * Force a token refresh, deduped with in-flight 401-triggered refreshes.
+   *
+   * Exposed so that DIRECT (non-SDK-transport) callers — a frontend streaming
+   * straight to a third party, or a self-hosted backend on another origin that
+   * this client doesn't proxy — can share this client's single refresh authority
+   * instead of POSTing `/v1/auth/refresh` themselves and racing the rotation.
+   * Prefer {@link T2VAuth.getValidAccessToken} over calling this directly.
+   */
+  async refreshTokens(): Promise<RefreshResult> {
+    return this.tryRefreshToken();
+  }
+
   private async tryRefreshToken(): Promise<RefreshResult> {
     if (this.isRefreshing) {
       return this.refreshPromise!;
