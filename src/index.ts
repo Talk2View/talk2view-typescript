@@ -54,6 +54,8 @@ export class Talk2View {
   private readonly client: T2VClient;
   readonly config: T2VConfig;
   private currentSession: T2VSession | null = null;
+  /** The signed-in user id the current session belongs to, to detect identity changes. */
+  private _authUserId: string | null = null;
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
@@ -102,10 +104,26 @@ export class Talk2View {
     this.tools = new T2VTools(this.client);
     this.skills = new T2VSkills(this.client);
 
-    // Config is auth-scoped: drop the cache whenever auth state changes
-    // (login, logout, anonymous start, user switch) so a stale partner config
-    // never leaks across users.
-    this.auth.onAuthStateChange(() => this.invalidateConfigCache());
+    // Seed the tracked identity from any session already restored at construction
+    // time, so an initial auth event that merely re-announces the same user does
+    // not spuriously reset a healthy session (dropping its thread mid-task).
+    this._authUserId = this.auth.getUser?.()?.id ?? null;
+
+    // Auth state changes (login, logout, anonymous start, user switch) drop the
+    // auth-scoped config cache so a stale partner config never leaks across users.
+    // They also reset the chat session when the *identity* changes: the server
+    // owns a session by user_id, so reusing an anonymous session after signing
+    // into a different account would 404 ("Session not found") and lose the task.
+    // Token refreshes don't fire this (only genuine identity events do), and a
+    // convert keeps the same id — so the create-account flow is left untouched.
+    this.auth.onAuthStateChange((user) => {
+      this.invalidateConfigCache();
+      const userId = user?.id ?? null;
+      if (userId !== this._authUserId) {
+        this._authUserId = userId;
+        this.resetSessionForIdentityChange();
+      }
+    });
   }
 
   /**
@@ -318,6 +336,25 @@ export class Talk2View {
     this.currentSession = null;
     for (const listener of this.sessionClearListeners) {
       listener();
+    }
+  }
+
+  /**
+   * Drop the cached session when the signed-in identity changes, so the next
+   * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
+   * this does NOT delete the old session on the server: it belongs to the previous
+   * identity (we no longer hold its token), and the retention sweep reclaims it.
+   * Messages/history are kept so the UI isn't wiped and an interrupted task can be
+   * resumed in the new session.
+   */
+  private resetSessionForIdentityChange(): void {
+    const hadSession = this.currentSession !== null;
+    this.currentSession = null;
+    this.setThreadId(null);
+    if (hadSession) {
+      for (const listener of this.sessionClearListeners) {
+        listener();
+      }
     }
   }
 

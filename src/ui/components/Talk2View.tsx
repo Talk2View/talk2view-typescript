@@ -101,14 +101,18 @@ function InnerProvider({
     return () => unsubs.forEach((u) => u());
   }, [t2v]);
 
-  // Recompute anonymity whenever auth changes. Once the user becomes a
-  // non-anonymous authenticated account (e.g. after converting), clear the
-  // demo-limit gate so the chat resumes.
+  // Recompute anonymity whenever auth changes. When the user signs in after the
+  // demo limit was hit, close the gate AND auto-resume the interrupted task: the
+  // core has already reset the orphaned anonymous session on the identity change,
+  // so the resend lands in a fresh session owned by the now-authenticated user.
   useEffect(() => {
     const anon = t2v.auth.isAnonymous();
     setIsAnonymous(anon);
-    if (user !== null && !anon) setDemoLimitReached(false);
-  }, [t2v, user]);
+    if (user !== null && !anon && demoLimitReached) {
+      setDemoLimitReached(false);
+      void t2v.retryLastMessage();
+    }
+  }, [t2v, user, demoLimitReached]);
 
   const sendMessage = useCallback(
     (content: string, options?: { attachments?: Attachment[] }) =>
