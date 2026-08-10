@@ -39,9 +39,15 @@ export async function* decodeSSEStream(
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
 
-        const data = trimmed.slice(6); // Remove "data: " prefix
+        // Strip the "data:" prefix, then a single optional leading space.
+        // Per the EventStream spec the space after the colon is optional and
+        // is removed if present, so "data:{json}" and "data: {json}" are
+        // equivalent. Matching only "data: " (with space) silently dropped
+        // spec-compliant unspaced lines.
+        let data = trimmed.slice(5);
+        if (data.startsWith(' ')) data = data.slice(1);
         if (data === '[DONE]') {
           return;
         }
