@@ -63,7 +63,7 @@ describe('Composer attachments', () => {
 
   it('renders an attach button and a hidden file input', () => {
     const { getByLabelText, container } = render(React.createElement(Composer));
-    expect(getByLabelText('Attach file')).toBeTruthy();
+    expect(getByLabelText(/Attach a file/)).toBeTruthy();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     expect(input.accept).toContain('image/png');
     expect(input.accept).toContain('application/pdf');
@@ -113,14 +113,24 @@ describe('Composer attachments', () => {
     expect(queryByText('scan.png')).toBeNull();
   });
 
-  it('drops the chip and logs when the upload fails', async () => {
-    uploadAttachment.mockRejectedValue(new Error('too big'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { container, queryByText } = render(React.createElement(Composer));
+  it('drops the chip and surfaces the server reason when the upload fails', async () => {
+    uploadAttachment.mockRejectedValue(new Error('File exceeds the 20MB limit'));
+    const { container, queryByText, findByText } = render(React.createElement(Composer));
     attachFile(container, new File([new Uint8Array(4)], 'bad.png', { type: 'image/png' }));
 
+    // The optimistic chip is removed…
     await waitFor(() => expect(queryByText('bad.png')).toBeNull());
-    expect(consoleError).toHaveBeenCalled();
-    consoleError.mockRestore();
+    // …and the server's reason is shown instead of failing silently.
+    expect(await findByText('File exceeds the 20MB limit')).toBeTruthy();
+  });
+
+  it('rejects an unsupported file with a hint and never uploads it', async () => {
+    const { container, findByText } = render(React.createElement(Composer));
+    attachFile(container, new File([new Uint8Array(4)], 'strategy.tex', { type: '' }));
+
+    expect(uploadAttachment).not.toHaveBeenCalled();
+    // Friendly notice names the rejected file and the supported types.
+    expect(await findByText(/strategy\.tex/)).toBeTruthy();
+    expect(await findByText(/PNG, JPEG, WebP, GIF, or PDF/)).toBeTruthy();
   });
 });

@@ -31,6 +31,8 @@
 
 import { T2VAuth } from './auth';
 import { T2VClient } from './client';
+import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants';
+import { T2VError } from './errors';
 import { TypedEventEmitter } from './event-emitter';
 import { getIsAnonymous, hasValidTokens } from './storage';
 import { T2VSession, buildUserContent } from './sessions';
@@ -220,8 +222,22 @@ export class Talk2View {
    *
    * Accepts images (png/jpeg/webp/gif) and PDFs up to the server's size limit.
    * Pass the returned attachment via `sendMessage(content, { attachments })`.
+   *
+   * @throws {T2VError} `unsupported_attachment_type` if `file.type` is not an
+   *   accepted attachment MIME type — rejected client-side (before any upload)
+   *   so every caller, including partners with their own composer, is guarded.
    */
   async uploadAttachment(file: File | Blob, filename?: string): Promise<Attachment> {
+    // Reject unsupported types up front — the native file dialog lets users
+    // bypass the `accept` hint, and this guards headless callers too, avoiding a
+    // wasted round-trip and a bare server 415.
+    if (!isAllowedAttachmentType(file.type)) {
+      throw new T2VError(
+        `Unsupported attachment type${file.type ? ` "${file.type}"` : ''}. ` +
+          `Talk2View supports ${ATTACHMENT_TYPES_LABEL}.`,
+        'unsupported_attachment_type',
+      );
+    }
     // Uploads require auth — mirror chat()'s anonymous demo auto-start.
     if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
       try {

@@ -12,14 +12,17 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Send, Square, Check, Loader2, Paperclip, X } from 'lucide-react';
+import { Mic, Send, Square, Check, Loader2, Paperclip, X, Info } from 'lucide-react';
 import { useChat } from '../context';
 import { useTalk2View } from '../context';
 import { useUserPreferences } from '../../react/useUserPreferences';
 import { usePartnerConfig } from '../../react/usePartnerConfig';
+import {
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_TYPES_LABEL,
+  isAllowedAttachmentType,
+} from '../../constants';
 import type { Attachment } from '../../types';
-
-const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,application/pdf';
 
 interface PendingAttachment {
   /** Local key — stable across the upload lifecycle. */
@@ -39,12 +42,16 @@ export function Composer() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  // Transient, friendly hint shown under the composer (unsupported pick, or a
+  // server rejection like size/quota). Auto-dismisses.
+  const [notice, setNotice] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const localIdRef = useRef(0);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -53,6 +60,20 @@ export function Composer() {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [text]);
+
+  // Clear any pending dismiss timer on unmount.
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    },
+    [],
+  );
+
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 6000);
+  }, []);
 
   const uploadsInFlight = pendingAttachments.some((p) => p.status === 'uploading');
   const readyAttachments = pendingAttachments
@@ -74,7 +95,15 @@ export function Composer() {
   const handleFilesSelected = useCallback(
     (files: FileList | null) => {
       if (!files) return;
+      const rejected: string[] = [];
       for (const file of Array.from(files)) {
+        // Bounce unsupported types before uploading, so the user gets an
+        // instant, friendly hint instead of a silent server 415. The public
+        // uploadAttachment() enforces the same whitelist for headless callers.
+        if (!isAllowedAttachmentType(file.type)) {
+          rejected.push(file.name);
+          continue;
+        }
         const localId = `att-local-${++localIdRef.current}`;
         setPendingAttachments((prev) => [
           ...prev,
@@ -90,14 +119,19 @@ export function Composer() {
             );
           })
           .catch((err: unknown) => {
-            console.error('Attachment upload failed:', err);
+            // Surface the server's reason (size/quota/content mismatch) rather
+            // than dropping the chip with no explanation.
+            showNotice(err instanceof Error ? err.message : 'Attachment upload failed.');
             setPendingAttachments((prev) => prev.filter((p) => p.localId !== localId));
           });
+      }
+      if (rejected.length > 0) {
+        showNotice(`Can't attach ${rejected.join(', ')} — Talk2View supports ${ATTACHMENT_TYPES_LABEL}.`);
       }
       // Allow re-selecting the same file
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
-    [t2v],
+    [t2v, showNotice],
   );
 
   const removeAttachment = useCallback((localId: string) => {
@@ -224,6 +258,23 @@ export function Composer() {
           ))}
         </div>
       )}
+      {notice && (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            paddingBottom: '8px',
+            fontSize: '12px',
+            lineHeight: 1.4,
+            color: 'var(--t2v-muted)',
+          }}
+        >
+          <Info size={13} style={{ flexShrink: 0 }} />
+          <span>{notice}</span>
+        </div>
+      )}
       <div
         className="t2v-composer"
         style={{
@@ -276,8 +327,8 @@ export function Composer() {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isLoading}
-          aria-label="Attach file"
-          title="Attach an image or PDF"
+          aria-label={`Attach a file — ${ATTACHMENT_TYPES_LABEL}`}
+          title={`Attach a file — ${ATTACHMENT_TYPES_LABEL}`}
           style={{
             width: '32px',
             height: '32px',

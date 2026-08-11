@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Talk2View } from '../../src/index';
+import { T2VError } from '../../src/errors';
 import { T2VSession } from '../../src/sessions';
 import type { T2VClient } from '../../src/client';
 import type { T2VTools } from '../../src/tools';
@@ -107,6 +108,23 @@ describe('Talk2View.uploadAttachment', () => {
     expect(formData).toBeInstanceOf(FormData);
     const file = formData.get('file') as File;
     expect(file.name).toBe('scan.png');
+    t2v.destroy();
+  });
+
+  it('rejects an unsupported file type client-side, before any upload', async () => {
+    // The guard lives in the public method, so partners with their own composer
+    // get it too — not just the bundled UI.
+    const t2v = new Talk2View({ partnerKey: 'pk_test', anonymousAutoStart: false });
+    const client = createMockClient();
+    (t2v as unknown as { client: T2VClient }).client = client;
+
+    const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'text/plain' });
+    const err = await t2v.uploadAttachment(blob, 'notes.txt').catch((e) => e);
+
+    expect(err).toBeInstanceOf(T2VError);
+    expect(err.type).toBe('unsupported_attachment_type');
+    expect(err.message).toContain('PNG, JPEG, WebP, GIF, or PDF');
+    expect(client.uploadRequest).not.toHaveBeenCalled();
     t2v.destroy();
   });
 });

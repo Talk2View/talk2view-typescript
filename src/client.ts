@@ -19,6 +19,9 @@ import type {
 
 const DEFAULT_BASE_URL = 'https://engine.talk2view.com';
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
+// Uploads (attachments, audio) move real bytes — a multi-MB file on a slow link
+// or a busy backend easily exceeds the 30s API timeout. Give them a wider window.
+const DEFAULT_UPLOAD_TIMEOUT = 120_000;
 
 // "refreshed": new tokens stored. "invalid": the refresh token was genuinely
 // rejected (revoked / expired) — log out. "transient": the refresh failed for a
@@ -45,9 +48,54 @@ export class T2VClient {
    * Create an AbortController that auto-aborts after the configured timeout.
    */
   private makeTimeoutSignal(timeout?: number): { signal: AbortSignal; clear: () => void } {
+    const ms = timeout ?? this.requestTimeout;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout ?? this.requestTimeout);
+    // Carry the real budget in the abort reason so the surfaced error names the
+    // actual timeout (e.g. 120000ms for uploads), not a hardcoded default.
+    const timer = setTimeout(
+      () => controller.abort(new DOMException(`Request timed out after ${ms}ms`, 'TimeoutError')),
+      ms,
+    );
     return { signal: controller.signal, clear: () => clearTimeout(timer) };
+  }
+
+  /**
+   * Turn an aborted request into a NetworkError. A timeout abort carries a
+   * `TimeoutError` reason naming the real budget; any other abort (e.g. a bare
+   * `controller.abort()` on user-stop) falls back to a sensible timeout message
+   * rather than surfacing the platform's "The operation was aborted." string.
+   */
+  private timeoutError(signal?: AbortSignal): NetworkError {
+    const reason = signal?.reason as { name?: string; message?: string } | undefined;
+    return new NetworkError(
+      reason?.name === 'TimeoutError' && typeof reason.message === 'string'
+        ? reason.message
+        : `Request timed out after ${this.requestTimeout}ms`,
+    );
+  }
+
+  /**
+   * Build a sanitized T2VError from a failed response.
+   *
+   * Only the structured, user-safe fields (`error.type` + `error.message`) and
+   * the HTTP status reach the thrown error's user-facing message. The server's
+   * raw `detail` (stack traces, DB errors, file paths) is kept on the separate
+   * `detail` property for debugging but never folded into `message`, so opaque
+   * HTML/text bodies or internal exception text cannot leak to end users.
+   */
+  private async errorFromResponse(response: Response): Promise<T2VError> {
+    const body = await response.json().catch(() => ({}));
+    // Server may wrap in { detail: { error: { ... } } } or { error: { ... } }.
+    const err = body?.detail?.error ?? body?.error ?? {};
+    const type = typeof err.type === 'string' ? err.type : undefined;
+    const safeMessage =
+      typeof err.message === 'string' && err.message
+        ? err.message
+        : `Request failed (HTTP ${response.status})`;
+    const code = typeof err.code === 'string' ? err.code : undefined;
+    // Keep the raw detail for debugging only — out of the user-facing message.
+    const detail = typeof err.detail === 'string' ? err.detail : undefined;
+    return new T2VError(safeMessage, type, response.status, code, detail);
   }
 
   /**
@@ -65,8 +113,10 @@ export class T2VClient {
     try {
       response = await fetch(`${this.baseUrl}${endpoint}`, fetchInit);
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        throw new NetworkError(`Request timed out after ${this.requestTimeout}ms`);
+      // An abort (with a custom reason) rejects with the reason, not a plain
+      // AbortError — so key off signal.aborted rather than the caught value.
+      if (signal?.aborted) {
+        throw this.timeoutError(signal);
       }
       throw new NetworkError(
         `Request failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
@@ -82,17 +132,15 @@ export class T2VClient {
         try {
           retryResponse = await fetch(`${this.baseUrl}${endpoint}`, retryInit);
         } catch (retryErr) {
-          if (retryErr instanceof DOMException && retryErr.name === 'AbortError') {
-            throw new NetworkError(`Request timed out after ${this.requestTimeout}ms`);
+          if (signal?.aborted) {
+            throw this.timeoutError(signal);
           }
           throw new NetworkError(
             `Request failed: ${retryErr instanceof Error ? retryErr.message : 'Unknown error'}`,
           );
         }
         if (!retryResponse.ok) {
-          const retryBody = await retryResponse.json().catch(() => ({}));
-          const retryErr = retryBody?.detail?.error ?? retryBody?.error ?? {};
-          throw new T2VError(retryErr.message ?? 'Request failed', retryErr.type, retryResponse.status, retryErr.code);
+          throw await this.errorFromResponse(retryResponse);
         }
         return retryResponse;
       }
@@ -107,10 +155,7 @@ export class T2VClient {
     }
 
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      // Server may wrap in { detail: { error: { ... } } } or { error: { ... } }
-      const err = body?.detail?.error ?? body?.error ?? {};
-      throw new T2VError(err.message ?? 'Request failed', err.type, response.status, err.code);
+      throw await this.errorFromResponse(response);
     }
 
     return response;
@@ -174,9 +219,10 @@ export class T2VClient {
     endpoint: string,
     formData: FormData,
     requiresAuth = true,
+    timeout: number = DEFAULT_UPLOAD_TIMEOUT,
   ): Promise<T> {
     const headers = this.buildHeaders(requiresAuth);
-    const { signal, clear } = this.makeTimeoutSignal();
+    const { signal, clear } = this.makeTimeoutSignal(timeout);
     try {
       const response = await this.fetchWithAuth(
         endpoint,
@@ -210,9 +256,17 @@ export class T2VClient {
     // One controller drives the fetch. It aborts on connection timeout OR when
     // the caller's external signal fires (user pressed "stop"). The timeout is
     // cleared once the response arrives, leaving the external signal to abort the
-    // long-lived SSE body.
+    // long-lived SSE body. The timeout aborts with a TimeoutError reason so a
+    // connect-timeout surfaces "Request timed out after Nms", not the platform's
+    // opaque "The operation was aborted." default.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.requestTimeout);
+    const timer = setTimeout(
+      () =>
+        controller.abort(
+          new DOMException(`Request timed out after ${this.requestTimeout}ms`, 'TimeoutError'),
+        ),
+      this.requestTimeout,
+    );
     const onExternalAbort = () => controller.abort();
     if (externalSignal) {
       if (externalSignal.aborted) controller.abort();
