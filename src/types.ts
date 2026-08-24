@@ -104,7 +104,7 @@ export interface ChatCompletionChunkDelta {
 export interface ChatCompletionChunkChoice {
   index: number;
   delta: ChatCompletionChunkDelta;
-  finish_reason: string | null;
+  finish_reason?: string | null;
 }
 
 export interface ToolCallInterrupt {
@@ -131,6 +131,20 @@ export interface ChunkError {
   detail?: string;
 }
 
+/**
+ * Lifecycle of one server-side platform tool call. Only present when the
+ * request set `supports_tool_events: true`. `display` is a tool-declared,
+ * render-safe object (e.g. `{kind: 'places', …}` from the Google Maps tools).
+ */
+export interface ToolEvent {
+  type: 'tool_start' | 'tool_end';
+  tool_name: string;
+  tool_call_id: string;
+  arguments?: Record<string, unknown>;
+  status?: 'ok' | 'error' | 'denied';
+  display?: Record<string, unknown>;
+}
+
 export interface ChatCompletionChunk {
   id: string;
   object: string;
@@ -140,6 +154,7 @@ export interface ChatCompletionChunk {
   thread_id?: string;
   interrupt?: ToolCallInterrupt;
   status?: AgentStatus;
+  tool_event?: ToolEvent;
   todos?: string;
   error?: ChunkError;
 }
