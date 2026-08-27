@@ -17,9 +17,15 @@ import {
   setRefreshToken,
   setUser,
 } from './storage';
-import type { LoginRequest, SignupRequest, TokenResponse, User } from './types';
+import type { LoginRequest, SignupOutcome, SignupRequest, TokenResponse, User } from './types';
 
 type AuthStateCallback = (user: User | null) => void;
+
+interface ConvertResponse {
+  id: string;
+  email: string | null;
+  confirmation_pending?: boolean;
+}
 
 // Refresh a token this many seconds before it actually expires, so a request
 // fired right at the boundary doesn't race the expiry against clock skew.
@@ -115,29 +121,27 @@ export class T2VAuth {
   }
 
   /**
-   * Create a new Talk2View account.
+   * Create a permanent account.
+   *
+   * From an anonymous session this CONVERTS in place (same user id — history
+   * and purchases stay). The server emails a confirmation link; until it is
+   * clicked the session remains anonymous and `confirmationRequired` is true.
+   * A 409 means the email already has an account → we sign into it instead.
    */
-  async signup(email: string, password: string): Promise<User> {
+  async signup(email: string, password: string): Promise<SignupOutcome> {
     if (getIsAnonymous()) {
       try {
-        await this.client.request<User>(
+        await this.client.request<ConvertResponse>(
           '/v1/auth/convert',
-          { method: 'POST', body: JSON.stringify({ email, password }) },
+          { method: 'POST', body: JSON.stringify({ email, password, client: 'web-sdk' }) },
           true,
         );
+        return { user: null, confirmationRequired: true };
       } catch (err) {
-        // 409 = the email already belongs to another account; fall through
-        // and log into it. Anything else is a real failure.
-        if (!(err instanceof T2VError && err.statusCode === 409)) {
-          throw err;
-        }
+        if (!(err instanceof T2VError && err.statusCode === 409)) throw err;
+        const user = await this.login(email, password);
+        return { user, confirmationRequired: false };
       }
-      // Convert links the credentials but revokes the anonymous session's
-      // refresh token server-side (Supabase rotates tokens on credential
-      // change), so the tokens we still hold are stale — the next refresh
-      // would 401. Re-authenticate to land a fresh session (same user_id on
-      // a successful convert → chat history preserved).
-      return await this.login(email, password);
     }
 
     const request: SignupRequest = { email, password };
@@ -146,14 +150,15 @@ export class T2VAuth {
       { method: 'POST', body: JSON.stringify(request) },
       false,
     );
-
-    this.storeTokens(response);
-
     const user = response.user;
     if (!user) throw new AuthenticationError('Signup succeeded but no user returned');
-
+    if (!response.access_token) {
+      // Email confirmation enabled: no session until the link is clicked.
+      return { user, confirmationRequired: true };
+    }
+    this.storeTokens(response);
     this.notifyListeners(user);
-    return user;
+    return { user, confirmationRequired: false };
   }
 
   /**

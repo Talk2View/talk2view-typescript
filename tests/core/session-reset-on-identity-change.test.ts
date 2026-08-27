@@ -62,7 +62,10 @@ describe('session reset on identity change', () => {
     const cleared = vi.fn();
     t2v.onSessionClear(cleared);
 
-    h.cb!({ id: 'anon-1', email: 'e@x.com' }); // anonymous -> permanent convert keeps the id
+    // Convert is confirmation-gated (no re-login): the anonymous session
+    // upgrades in place once the emailed link is clicked, same user id
+    // throughout — so the chat session must survive.
+    h.cb!({ id: 'anon-1', email: 'e@x.com' });
 
     expect(cleared).not.toHaveBeenCalled();
   });

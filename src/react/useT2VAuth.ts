@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import type { User } from '../types';
+import type { SignupOutcome, User } from '../types';
 import { useT2V } from './T2VProvider';
 
 export interface UseT2VAuthResult {
@@ -12,7 +12,7 @@ export interface UseT2VAuthResult {
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<SignupOutcome>;
   logout: () => Promise<void>;
   clearError: () => void;
   signInWithGoogle: () => Promise<void>;
@@ -47,7 +47,7 @@ export function useT2VAuth(): UseT2VAuthResult {
       setIsLoading(true);
       setError(null);
       try {
-        await t2v.auth.signup(email, password);
+        return await t2v.auth.signup(email, password);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Signup failed';
         setError(message);

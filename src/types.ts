@@ -43,6 +43,15 @@ export interface TokenResponse {
   key_pending?: boolean;
 }
 
+/** Result of {@link T2VAuth.signup}. */
+export interface SignupOutcome {
+  /** Set when a session exists (immediate sign-in or 409→login fallback). */
+  user: User | null;
+  /** True while the emailed confirmation link is unclicked. For a guest
+   *  convert the anonymous session stays live and upgrades in place. */
+  confirmationRequired: boolean;
+}
+
 export interface RefreshResponse {
   access_token: string;
   refresh_token: string;

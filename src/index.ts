@@ -10,8 +10,10 @@
  * // No login needed — chat() auto-starts an anonymous demo session.
  * // After the demo limit, listen for the prompt to sign up:
  * t2v.on('demoLimitReached', () => showSignupPrompt());
- * // Convert the demo into a real account (history is preserved):
- * await t2v.auth.signup('user@example.com', 'password');
+ * // Convert the demo into a real account (history is preserved). The
+ * // anonymous session stays live until the emailed confirmation link is
+ * // clicked — check `confirmationRequired` to prompt the user to check email:
+ * const { confirmationRequired } = await t2v.auth.signup('user@example.com', 'password');
  *
  * t2v.tools.handle('create_shape', async (args) => {
  *   return JSON.stringify(await myApp.createShape(args));
@@ -776,6 +778,7 @@ export type {
   ClientToolSchema,
   ToolHandler,
   TokenResponse,
+  SignupOutcome,
   ToolCallInterrupt,
   AgentStatus,
   ChatCompletionChunk,

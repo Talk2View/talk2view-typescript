@@ -42,37 +42,28 @@ describe('T2VAuth.startAnonymous', () => {
 });
 
 describe('T2VAuth.signup when anonymous', () => {
-  it('converts then re-authenticates for a fresh session', async () => {
+  it('converts in place — no re-login, session stays anonymous until confirmed', async () => {
     const requestMock = vi.fn()
       .mockResolvedValueOnce({  // startAnonymous
         access_token: 'a', refresh_token: 'r', token_type: 'bearer', expires_in: 3600,
         user: { id: 'anon-1', email: '' }, is_anonymous: true,
       })
-      .mockResolvedValueOnce({ id: 'anon-1', email: 'me@x.com' })  // convert returns UserInfo
-      .mockResolvedValueOnce({  // login — fresh session (convert revokes the old refresh token)
-        access_token: 'a2', refresh_token: 'r2', token_type: 'bearer', expires_in: 3600,
-        user: { id: 'anon-1', email: 'me@x.com' }, is_anonymous: false,
+      .mockResolvedValueOnce({  // convert → pending
+        id: 'anon-1', email: null, user_metadata: {}, confirmation_pending: true,
       });
     const client = { request: requestMock } as unknown as T2VClient;
     const auth = new T2VAuth(client);
 
     await auth.startAnonymous();
-    const user = await auth.signup('me@x.com', 'supersecret');
+    const outcome = await auth.signup('me@x.com', 'supersecret');
 
-    expect(user.email).toBe('me@x.com');
-    // Convert is called, then login lands the fresh session.
-    expect(requestMock).toHaveBeenNthCalledWith(
-      2,
-      '/v1/auth/convert',
-      expect.objectContaining({ method: 'POST' }),
-      true,
-    );
+    expect(outcome.confirmationRequired).toBe(true);
+    expect(outcome.user).toBeNull();
+    expect(requestMock).toHaveBeenCalledTimes(2);      // no login call
     expect(requestMock).toHaveBeenLastCalledWith(
-      '/v1/auth/login',
-      expect.objectContaining({ method: 'POST' }),
-      false,
+      '/v1/auth/convert', expect.objectContaining({ method: 'POST' }), true,
     );
-    expect(auth.isAnonymous()).toBe(false);
+    expect(auth.isAnonymous()).toBe(true);             // upgrades on confirmation
   });
 
   it('falls back to login when convert returns 409 (email already exists)', async () => {
@@ -81,10 +72,8 @@ describe('T2VAuth.signup when anonymous', () => {
         access_token: 'a', refresh_token: 'r', token_type: 'bearer', expires_in: 3600,
         user: { id: 'anon-1', email: '' }, is_anonymous: true,
       })
-      .mockRejectedValueOnce(  // convert → 409 conflict
-        new T2VError('Email already exists', 'conflict', 409),
-      )
-      .mockResolvedValueOnce({  // login
+      .mockRejectedValueOnce(new T2VError('Email already exists', 'conflict', 409))
+      .mockResolvedValueOnce({
         access_token: 'a2', refresh_token: 'r2', token_type: 'bearer', expires_in: 3600,
         user: { id: 'real-1', email: 'me@x.com' }, is_anonymous: false,
       });
@@ -92,16 +81,10 @@ describe('T2VAuth.signup when anonymous', () => {
     const auth = new T2VAuth(client);
 
     await auth.startAnonymous();
-    const user = await auth.signup('me@x.com', 'supersecret');
+    const outcome = await auth.signup('me@x.com', 'supersecret');
 
-    expect(user.id).toBe('real-1');
-    expect(user.email).toBe('me@x.com');
-    // Last call should be the login fallback, not signup.
-    expect(requestMock).toHaveBeenLastCalledWith(
-      '/v1/auth/login',
-      expect.objectContaining({ method: 'POST' }),
-      false,
-    );
+    expect(outcome.confirmationRequired).toBe(false);
+    expect(outcome.user?.id).toBe('real-1');
     expect(auth.isAnonymous()).toBe(false);
   });
 
