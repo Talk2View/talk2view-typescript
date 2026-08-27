@@ -280,6 +280,11 @@ export interface Model {
   object: string;
   created: number;
   owned_by: string;
+  /**
+   * Human-friendly display name (e.g. "Qwen: Qwen3.8 Flash"). Null or absent
+   * when the catalog has none — render `name ?? id`.
+   */
+  name?: string | null;
 }
 
 export interface ModelsResponse {

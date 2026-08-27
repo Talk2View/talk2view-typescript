@@ -217,7 +217,7 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
               {modelGroups.map((group) => (
                 <optgroup key={group.key} label={group.title}>
                   {group.models.map((m) => (
-                    <option key={m.id} value={m.id}>{m.id}</option>
+                    <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
                   ))}
                 </optgroup>
               ))}
@@ -266,7 +266,7 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
                 <option value="">Select a model</option>
               )}
               {sttModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
+                <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
               ))}
             </select>
           )}
