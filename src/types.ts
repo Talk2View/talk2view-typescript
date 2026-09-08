@@ -108,6 +108,8 @@ export interface SendMessageRequest {
 export interface ChatCompletionChunkDelta {
   role?: string;
   content?: string;
+  /** The model's reasoning (Gemini thought summaries, Claude thinking); only when the request set supports_reasoning. */
+  reasoning_content?: string;
 }
 
 export interface ChatCompletionChunkChoice {
