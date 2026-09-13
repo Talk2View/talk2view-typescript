@@ -408,6 +408,7 @@ export interface ImageModelsResponse {
 export interface PartnerConfig {
   default_llm_model: string | null;
   default_stt_model: string | null;
+  default_image_model: string | null;
   system_prompt: string | null;
 }
 
