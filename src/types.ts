@@ -101,6 +101,28 @@ export interface SendMessageRequest {
   stream?: boolean;
   temperature?: number;
   model?: string;
+  /**
+   * The client renders platform-tool activity, so the server emits tool_event
+   * chunks (tool_start / tool_end) for its server-side tools. Defaults to
+   * false: omit it and no tool_event reaches the client. Also accepted on
+   * /resume.
+   */
+  supports_tool_events?: boolean;
+  /**
+   * The client can render generated images. Gates REGISTRATION of the
+   * generate_image tool — omit it and the model has no image tool at all.
+   * Send it together with `supports_tool_events: true`, because the images
+   * themselves arrive as tool_event display kinds ('image' / 'image_failure',
+   * see ImageToolDisplay), whose bytes you then fetch from
+   * GET /v1/attachments/{id}/content. Also accepted on /resume.
+   */
+  supports_image_generation?: boolean;
+  /**
+   * Image model id (mode image_generation, see GET /v1/images/models). Omit for
+   * the partner's default, then the platform default. Unknown → 400
+   * image_model_unknown.
+   */
+  image_model?: string;
 }
 
 // ── Streaming ──
@@ -145,7 +167,7 @@ export interface ChunkError {
 /**
  * Lifecycle of one server-side platform tool call. Only present when the
  * request set `supports_tool_events: true`. `display` is a tool-declared,
- * render-safe object (e.g. `{kind: 'places', …}` from the Google Maps tools).
+ * render-safe object (e.g. `{kind: 'places', …}` from the Google Maps tools, `{kind: 'image', …}` / `{kind: 'image_failure', …}` from generate_image — see ImageToolDisplay).
  */
 export interface ToolEvent {
   type: 'tool_start' | 'tool_end';
@@ -155,6 +177,33 @@ export interface ToolEvent {
   status?: 'ok' | 'error' | 'denied';
   display?: Record<string, unknown>;
 }
+
+/**
+ * `display` of a successful `generate_image` tool_end (`kind: 'image'`).
+ * `image` is a path relative to the engine base URL — fetch it with your normal
+ * auth headers (it is owner-scoped; 404 when missing, expired or foreign).
+ * `width`/`height` are null when the header could not be read.
+ */
+export interface GeneratedImageDisplay {
+  kind: 'image';
+  attachment_id: string;
+  image: string;
+  filename: string;
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  prompt: string;
+  model: string;
+  source_image_id: string | null;
+}
+
+/** `display` of a failed `generate_image` tool_end (`status: 'error'`). Unknown reasons render generically. */
+export interface ImageFailureDisplay {
+  kind: 'image_failure';
+  reason: 'content_filter' | 'provider_error' | 'timeout' | 'budget_exceeded' | (string & {});
+}
+
+export type ImageToolDisplay = GeneratedImageDisplay | ImageFailureDisplay;
 
 export interface ChatCompletionChunk {
   id: string;
@@ -301,6 +350,58 @@ export interface TranscriptionResponse {
 }
 
 export type AudioModelsResponse = ModelsResponse;
+
+// ── Images (OpenAI Images API shape) ──
+
+export interface ImageGenerationRequest {
+  model?: string;
+  prompt: string;
+  /** Only 1 is supported; anything else → 400 unsupported_parameter. */
+  n?: 1;
+  /** OpenAI WxH size; mapped to aspect_ratio when aspect_ratio is omitted. */
+  size?: string;
+  response_format?: 'url' | 'b64_json';
+  aspect_ratio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+}
+
+export interface ImageEditRequest {
+  model?: string;
+  prompt: string;
+  /** An attachment the user owns (an upload or a previously generated image). */
+  source_attachment_id: string;
+  response_format?: 'url' | 'b64_json';
+}
+
+export interface ImageData {
+  /** Attachment content path, relative to the engine base URL. */
+  url: string;
+  b64_json?: string | null;
+  revised_prompt?: string | null;
+  attachment_id: string;
+  width?: number | null;
+  height?: number | null;
+}
+
+export interface ImagesResponse {
+  created: number;
+  data: ImageData[];
+  usage: Record<string, unknown>;
+}
+
+export interface ImageModel {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+  name?: string | null;
+  description?: string | null;
+  cost_tier?: string | null;
+}
+
+export interface ImageModelsResponse {
+  object: string;
+  data: ImageModel[];
+}
 
 // ── Partner Config ──
 
