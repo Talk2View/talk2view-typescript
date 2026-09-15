@@ -32,4 +32,5 @@ export { THEME_DEFAULTS, LOGOS } from './theme';
 
 // Utilities
 export { groupModelsByProvider, providerTitle, UNKNOWN_PROVIDER_KEY } from './utils';
+export { renderSafeMarkdown } from './safeMarkdown';
 export type { ModelGroup } from './utils';

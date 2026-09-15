@@ -2,6 +2,17 @@
 
 ## [Unreleased] — assistant-ui Integration
 
+### Security
+
+- **Model replies render as markdown only** (`docs/adr/0009-model-replies-render-as-markdown-only.md`). `<ChatPanel>` and the new `renderSafeMarkdown()` export from `@talk2view/sdk/ui` now:
+  - show raw HTML in a reply as text (a bare `<br>` still breaks lines inside table cells);
+  - turn images into links the end-user opens themselves, so nothing loads when the reply appears;
+  - open web links in a new tab with `noopener noreferrer`;
+  - drop any link destination that isn't `http(s)` or `mailto`.
+
+  A prompt-injected reply can no longer leak conversation data through an image URL, or draw a fake password form or full-screen overlay over your app.
+- **`MarkdownRenderer` renders immediately** instead of staying blank until its sanitizer loads. It also no longer adds hooks to your app's own DOMPurify.
+
 ### Changed
 
 - **A partner can refuse anonymous sign-in.** Anonymous access is now a partner

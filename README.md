@@ -523,6 +523,26 @@ To mitigate this:
 
 ---
 
+## Rendering model replies
+
+Treat every model reply as untrusted. Prompt injection through web search, documents, email or tool results can make the model write anything. `<ChatPanel>` renders replies as markdown only, and never loads remote content on its own:
+
+- **Raw HTML** in a reply is shown as text, apart from a bare `<br>`, which is kept so a GFM table cell can break a line (a cell can't hold a literal newline).
+- **Images** become links (`Image: <alt> (<host>)`) that the end-user can choose to open.
+- **Links** open in a new tab with `noopener noreferrer`, and only `http(s)` and `mailto` link destinations are kept.
+
+If you build your own chat UI, render replies the same way:
+
+```tsx
+import { renderSafeMarkdown } from '@talk2view/sdk/ui';
+
+<div dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(reply) }} />
+```
+
+Never pass model output to `innerHTML` or a markdown library's raw HTML output without it.
+
+Call it in the browser (client components): without a DOM it returns the reply as escaped plain text.
+
 ## Error Handling
 
 The SDK throws typed errors:
