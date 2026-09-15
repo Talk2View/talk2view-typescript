@@ -42,6 +42,24 @@ import { T2VSkills } from './skills';
 import { T2VTools, stripNullArgs } from './tools';
 import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
 
+/**
+ * Refusals from POST /v1/auth/anonymous that only signing in — or Talk2View
+ * finishing setup for the partner — can get past: the partner offers no
+ * anonymous access, today's daily anonymous cap is used up, the partner
+ * requires a Turnstile token this client didn't send, or Turnstile isn't
+ * configured yet for a partner that requires it. `anonymous_unavailable` (the
+ * claim RPC failing) is deliberately NOT here: it's a transient 503, and
+ * sticking on it would flip the sign-in form on for the rest of the session
+ * over a momentary blip. It falls through to the `console.warn` retry path.
+ */
+const ANONYMOUS_UNAVAILABLE_TYPES = new Set([
+  'anonymous_access_disabled',
+  'anonymous_daily_cap_reached',
+  'captcha_required',
+  'captcha_invalid',
+  'captcha_unavailable',
+]);
+
 type SessionClearCallback = () => void;
 type SessionCreateCallback = (toolNames: string[]) => void;
 
@@ -164,6 +182,26 @@ export class Talk2View {
   }
 
   /**
+   * Start an anonymous session when nothing is signed in and auto-start is on.
+   * Returns false when the server refused anonymous sign-in for a reason only
+   * signing in can fix: `anonymousUnavailable` is emitted, and the caller must
+   * not send anything.
+   */
+  private async autoStartAnonymous(): Promise<boolean> {
+    if (hasValidTokens() || this.config.anonymousAutoStart === false) return true;
+    try {
+      await this.auth.startAnonymous();
+    } catch (err) {
+      if (err instanceof T2VError && ANONYMOUS_UNAVAILABLE_TYPES.has(err.type)) {
+        this.emitter.emit('anonymousUnavailable', err.type);
+        return false;
+      }
+      console.warn('[Talk2View] Anonymous auto-start failed:', err);
+    }
+    return true;
+  }
+
+  /**
    * Send a message with automatic session management and tool handling.
    *
    * Creates a session if one doesn't exist. Tool calls are handled
@@ -179,14 +217,8 @@ export class Talk2View {
       attachments?: Attachment[];
     },
   ): AsyncGenerator<ChatEvent> {
-    // Auto-start an anonymous demo session if nothing is authenticated yet.
-    if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
-      try {
-        await this.auth.startAnonymous();
-      } catch (err) {
-        console.warn('[Talk2View] Anonymous auto-start failed:', err);
-      }
-    }
+    // Auto-start an anonymous session if nothing is authenticated yet.
+    if (!(await this.autoStartAnonymous())) return;
 
     if (!this.currentSession) {
       await this.createSession();
@@ -240,13 +272,9 @@ export class Talk2View {
         'unsupported_attachment_type',
       );
     }
-    // Uploads require auth — mirror chat()'s anonymous demo auto-start.
-    if (!hasValidTokens() && this.config.anonymousAutoStart !== false) {
-      try {
-        await this.auth.startAnonymous();
-      } catch (err) {
-        console.warn('[Talk2View] Anonymous auto-start failed:', err);
-      }
+    // Uploads require auth — mirror chat()'s anonymous auto-start.
+    if (!(await this.autoStartAnonymous())) {
+      throw new T2VError('Sign in to upload files.', 'sign_in_required');
     }
     const formData = new FormData();
     const name = filename ?? (file instanceof File ? file.name : 'file');

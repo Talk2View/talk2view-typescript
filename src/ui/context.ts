@@ -8,6 +8,8 @@ export interface Talk2ViewContextValue {
   isAuthenticated: boolean;
   isAnonymous: boolean;
   demoLimitReached: boolean;
+  /** True once anonymous sign-in was refused; the chat shows sign-in instead. */
+  anonymousUnavailable: boolean;
 }
 
 export interface ChatContextValue {

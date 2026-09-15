@@ -52,7 +52,7 @@ export function ChatPanel({
   destructiveWarning,
   groupAssistantMessages,
 }: ChatPanelProps) {
-  const { isAuthenticated, isAnonymous, demoLimitReached, t2v } = useTalk2View();
+  const { isAuthenticated, isAnonymous, demoLimitReached, anonymousUnavailable, t2v } = useTalk2View();
   const { messages, clearMessages, error, clearError, pendingApproval } = useChat();
   const { preferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
@@ -62,9 +62,11 @@ export function ChatPanel({
   // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`.
   const modelDisplay = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
 
-  // Show the login gate only when anonymous demos are disallowed for a
-  // logged-out visitor, or once an anonymous visitor exhausts the demo budget.
-  const showLoginGate = (!isAuthenticated && !allowAnonymous) || demoLimitReached;
+  // Show the login gate when a logged-out visitor can't use anonymous access
+  // (the app disallows it, or the partner refused anonymous sign-in), or once an
+  // anonymous visitor exhausts the demo budget.
+  const showLoginGate =
+    (!isAuthenticated && (!allowAnonymous || anonymousUnavailable)) || demoLimitReached;
   const inChat = !showLoginGate;
 
   useEffect(() => { if (!isAuthenticated) setView('chat'); }, [isAuthenticated]);

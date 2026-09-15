@@ -146,3 +146,63 @@ describe('Talk2View demo-limit gate (budget_exceeded error chunk)', () => {
     expect(t2v.error).toBe('You have reached your usage limit.');
   });
 });
+
+describe('Talk2View anonymous auto-start refused by the partner', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('emits anonymousUnavailable and sends nothing', async () => {
+    vi.spyOn(storage, 'hasValidTokens').mockReturnValue(false);
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123' });
+    vi.spyOn(t2v.auth, 'startAnonymous').mockRejectedValue(
+      new T2VError("This app doesn't offer anonymous access.", 'anonymous_access_disabled', 403),
+    );
+    const createSession = vi.spyOn(t2v, 'createSession');
+    const reasons: string[] = [];
+    t2v.on('anonymousUnavailable', (reason) => { reasons.push(reason); });
+
+    const events: ChatEvent[] = [];
+    for await (const event of t2v.chat('hi')) events.push(event);
+
+    expect(reasons).toEqual(['anonymous_access_disabled']);
+    expect(events).toEqual([]);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('still sends when auto-start fails for another reason', async () => {
+    vi.spyOn(storage, 'hasValidTokens').mockReturnValue(false);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123' });
+    vi.spyOn(t2v.auth, 'startAnonymous').mockRejectedValue(new Error('network down'));
+    const createSession = vi
+      .spyOn(t2v, 'createSession')
+      .mockRejectedValue(new Error('reached createSession'));
+    const reasons: string[] = [];
+    t2v.on('anonymousUnavailable', (reason) => { reasons.push(reason); });
+
+    await expect(t2v.chat('hi').next()).rejects.toThrow('reached createSession');
+    expect(createSession).toHaveBeenCalled();
+    expect(reasons).toEqual([]);
+  });
+
+  it('retries instead of sticking on a transient anonymous_unavailable 503', async () => {
+    // Minor #6: anonymous_unavailable is the claim RPC failing transiently —
+    // it must not flip the SDK to the sign-in form for the rest of the session.
+    vi.spyOn(storage, 'hasValidTokens').mockReturnValue(false);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123' });
+    vi.spyOn(t2v.auth, 'startAnonymous').mockRejectedValue(
+      new T2VError('Anonymous sign-in is temporarily unavailable.', 'anonymous_unavailable', 503),
+    );
+    const createSession = vi
+      .spyOn(t2v, 'createSession')
+      .mockRejectedValue(new Error('reached createSession'));
+    const reasons: string[] = [];
+    t2v.on('anonymousUnavailable', (reason) => { reasons.push(reason); });
+
+    await expect(t2v.chat('hi').next()).rejects.toThrow('reached createSession');
+    expect(createSession).toHaveBeenCalled();
+    expect(reasons).toEqual([]);
+  });
+});

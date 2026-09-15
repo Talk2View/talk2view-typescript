@@ -86,6 +86,7 @@ function InnerProvider({
   const [alwaysAllowedTools, setAlwaysAllowedTools] = useState<ReadonlySet<string>>(t2v.alwaysAllowedTools);
   const [isAnonymous, setIsAnonymous] = useState(() => t2v.auth.isAnonymous());
   const [demoLimitReached, setDemoLimitReached] = useState(false);
+  const [anonymousUnavailable, setAnonymousUnavailable] = useState(false);
 
   useEffect(() => {
     const unsubs = [
@@ -97,22 +98,25 @@ function InnerProvider({
       t2v.on('threadIdChange', setThreadId),
       t2v.on('alwaysAllowedChange', setAlwaysAllowedTools),
       t2v.on('demoLimitReached', () => setDemoLimitReached(true)),
+      t2v.on('anonymousUnavailable', () => setAnonymousUnavailable(true)),
     ];
     return () => unsubs.forEach((u) => u());
   }, [t2v]);
 
   // Recompute anonymity whenever auth changes. When the user signs in after the
-  // demo limit was hit, close the gate AND auto-resume the interrupted task: the
-  // core has already reset the orphaned anonymous session on the identity change,
-  // so the resend lands in a fresh session owned by the now-authenticated user.
+  // demo limit was hit or anonymous sign-in was refused, close the gate AND
+  // auto-resume the interrupted task: the core has already reset the orphaned
+  // anonymous session on the identity change, so the resend lands in a fresh
+  // session owned by the now-authenticated user.
   useEffect(() => {
     const anon = t2v.auth.isAnonymous();
     setIsAnonymous(anon);
-    if (user !== null && !anon && demoLimitReached) {
+    if (user !== null && !anon && (demoLimitReached || anonymousUnavailable)) {
       setDemoLimitReached(false);
+      setAnonymousUnavailable(false);
       void t2v.retryLastMessage();
     }
-  }, [t2v, user, demoLimitReached]);
+  }, [t2v, user, demoLimitReached, anonymousUnavailable]);
 
   const sendMessage = useCallback(
     (content: string, options?: { attachments?: Attachment[] }) =>
@@ -126,8 +130,8 @@ function InnerProvider({
   const clearError = useCallback(() => t2v.clearError(), [t2v]);
 
   const t2vValue = useMemo(
-    () => ({ t2v, user, isAuthenticated, isAnonymous, demoLimitReached }),
-    [t2v, user, isAuthenticated, isAnonymous, demoLimitReached],
+    () => ({ t2v, user, isAuthenticated, isAnonymous, demoLimitReached, anonymousUnavailable }),
+    [t2v, user, isAuthenticated, isAnonymous, demoLimitReached, anonymousUnavailable],
   );
   const chatValue = useMemo(() => ({
     messages, isLoading, error, pendingApproval, agentStatus, threadId, alwaysAllowedTools,

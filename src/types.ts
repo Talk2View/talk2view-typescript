@@ -464,6 +464,8 @@ export interface T2VEventMap {
   threadIdChange: [string | null];
   alwaysAllowedChange: [ReadonlySet<string>];
   demoLimitReached: [];
+  /** Anonymous sign-in was refused (partner setting, daily anonymous cap, or captcha). */
+  anonymousUnavailable: [reason: string];
 }
 
 // ── Theme ──

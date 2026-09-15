@@ -2,6 +2,16 @@
 
 ## [Unreleased] — assistant-ui Integration
 
+### Changed
+
+- **A partner can refuse anonymous sign-in.** Anonymous access is now a partner
+  setting with a daily anonymous cap. When `POST /v1/auth/anonymous` refuses
+  (`anonymous_access_disabled`, `anonymous_daily_cap_reached`, or a captcha the
+  client didn't send), `chat()` no longer carries on into a 401: it emits
+  `anonymousUnavailable` with the reason and sends nothing, and `<ChatPanel>`
+  shows its sign-in form. The message is retried once the visitor signs in.
+  `uploadAttachment()` throws `sign_in_required` in the same case.
+
 ### Fixed
 
 - **Anonymous → permanent conversion now re-authenticates.** `signup()` on
