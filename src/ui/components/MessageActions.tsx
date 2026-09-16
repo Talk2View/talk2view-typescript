@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, RefreshCw } from 'lucide-react';
-import { useChat } from '../context';
+import { useChat } from '../context.js';
 
 export interface MessageActionsProps {
   content: string;

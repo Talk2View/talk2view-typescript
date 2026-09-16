@@ -2,7 +2,7 @@
  * Tools module — register client tools and handle tool call execution.
  */
 
-import type { T2VClient } from './client';
+import type { T2VClient } from './client.js';
 import type {
   ClientTool,
   ClientToolSchema,
@@ -10,7 +10,7 @@ import type {
   RegisterToolsResponse,
   ToolHandler,
   ToolPermissionCallback,
-} from './types';
+} from './types.js';
 
 /**
  * Strip null/undefined — and empty objects — from tool args.

@@ -9,10 +9,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown } from 'lucide-react';
-import { useChat } from '../context';
-import { MessageBubble } from './MessageBubble';
-import { Shimmer } from './Shimmer';
-import { LOGOS } from '../theme';
+import { useChat } from '../context.js';
+import { MessageBubble } from './MessageBubble.js';
+import { Shimmer } from './Shimmer.js';
+import { LOGOS } from '../theme.js';
 
 export interface MessageListProps {
   /**

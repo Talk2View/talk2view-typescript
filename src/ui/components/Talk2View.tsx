@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { T2VProvider, useT2V } from '../../react/T2VProvider';
-import { useUserPreferences } from '../../react/useUserPreferences';
-import { usePartnerConfig } from '../../react/usePartnerConfig';
-import { Talk2ViewContext, ChatContext } from '../context';
-import { injectTheme, injectFonts } from '../theme';
-import { injectComponentStyles } from '../styles';
-import type { Attachment, Talk2ViewTheme, DisplayMessage, PendingApproval, HumanDecision, ClientTool, ClientToolSchema } from '../../types';
+import { T2VProvider, useT2V } from '../../react/T2VProvider.js';
+import { useUserPreferences } from '../../react/useUserPreferences.js';
+import { usePartnerConfig } from '../../react/usePartnerConfig.js';
+import { Talk2ViewContext, ChatContext } from '../context.js';
+import { injectTheme, injectFonts } from '../theme.js';
+import { injectComponentStyles } from '../styles.js';
+import type { Attachment, Talk2ViewTheme, DisplayMessage, PendingApproval, HumanDecision, ClientTool, ClientToolSchema } from '../../types.js';
 
 export interface Talk2ViewProps {
   partnerKey: string;

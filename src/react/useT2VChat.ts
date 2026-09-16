@@ -6,11 +6,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useT2V } from './T2VProvider';
-import type { Attachment, DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types';
+import { useT2V } from './T2VProvider.js';
+import type { Attachment, DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types.js';
 
-export type { PendingApproval } from '../types';
-export type { DisplayMessage, ToolStep } from '../types';
+export type { PendingApproval } from '../types.js';
+export type { DisplayMessage, ToolStep } from '../types.js';
 
 export interface UseT2VChatResult {
   messages: DisplayMessage[];

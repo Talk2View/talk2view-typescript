@@ -6,8 +6,8 @@
  */
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Talk2View } from '../index';
-import type { T2VConfig, User } from '../types';
+import { Talk2View } from '../index.js';
+import type { T2VConfig, User } from '../types.js';
 
 interface T2VContextValue {
   t2v: Talk2View;

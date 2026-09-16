@@ -10,16 +10,16 @@
 
 import React from 'react';
 import { Paperclip } from 'lucide-react';
-import type { DisplayMessage } from '../../types';
-import { useChat } from '../context';
-import { LOGOS } from '../theme';
-import { MarkdownRenderer } from './MarkdownRenderer';
-import { ThinkingBlock } from './ThinkingBlock';
-import { ToolStepGroup } from './ToolDisplay';
-import { ApprovalCard } from './ApprovalCard';
-import { MessageActions } from './MessageActions';
-import { Shimmer } from './Shimmer';
-import { useSmoothText } from '../useSmoothText';
+import type { DisplayMessage } from '../../types.js';
+import { useChat } from '../context.js';
+import { LOGOS } from '../theme.js';
+import { MarkdownRenderer } from './MarkdownRenderer.js';
+import { ThinkingBlock } from './ThinkingBlock.js';
+import { ToolStepGroup } from './ToolDisplay.js';
+import { ApprovalCard } from './ApprovalCard.js';
+import { MessageActions } from './MessageActions.js';
+import { Shimmer } from './Shimmer.js';
+import { useSmoothText } from '../useSmoothText.js';
 
 export interface MessageBubbleProps {
   message: DisplayMessage;

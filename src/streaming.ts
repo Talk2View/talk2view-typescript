@@ -2,7 +2,7 @@
  * SSE stream decoder — parses Server-Sent Events into typed chunks.
  */
 
-import type { ChatCompletionChunk } from './types';
+import type { ChatCompletionChunk } from './types.js';
 
 /**
  * Decode an SSE response body into an async generator of ChatCompletionChunk.

@@ -6,8 +6,8 @@
  * and sent to the server at session start.
  */
 
-import type { T2VClient } from './client';
-import type { RegisterSkillsResponse, UserSkill } from './types';
+import type { T2VClient } from './client.js';
+import type { RegisterSkillsResponse, UserSkill } from './types.js';
 
 const STORAGE_KEY = 't2v_user_skills';
 

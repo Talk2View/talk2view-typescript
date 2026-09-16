@@ -4,11 +4,11 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import type { Model, UserPreferences } from '../../types';
-import { useTalk2View } from '../context';
-import { useUserPreferences } from '../../react/useUserPreferences';
-import { usePartnerConfig } from '../../react/usePartnerConfig';
-import { groupModelsByProvider } from '../utils';
+import type { Model, UserPreferences } from '../../types.js';
+import { useTalk2View } from '../context.js';
+import { useUserPreferences } from '../../react/useUserPreferences.js';
+import { usePartnerConfig } from '../../react/usePartnerConfig.js';
+import { groupModelsByProvider } from '../utils.js';
 
 export interface SettingsPanelProps {
   onBack?: () => void;

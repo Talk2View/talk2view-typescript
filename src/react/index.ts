@@ -13,23 +13,23 @@
  */
 
 // ── Provider ──
-export { T2VProvider, useT2V } from './T2VProvider';
+export { T2VProvider, useT2V } from './T2VProvider.js';
 
 // ── Hooks ──
-export { useT2VAuth } from './useT2VAuth';
-export { useT2VChat } from './useT2VChat';
-export { useT2VTools } from './useT2VTools';
-export { useUserPreferences } from './useUserPreferences';
-export { usePartnerConfig } from './usePartnerConfig';
+export { useT2VAuth } from './useT2VAuth.js';
+export { useT2VChat } from './useT2VChat.js';
+export { useT2VTools } from './useT2VTools.js';
+export { useUserPreferences } from './useUserPreferences.js';
+export { usePartnerConfig } from './usePartnerConfig.js';
 
 // ── Theme utilities ──
-export { T2V_VARS } from './theme';
+export { T2V_VARS } from './theme.js';
 
 // ── Types ──
-export type { T2VProviderProps } from './T2VProvider';
-export type { UseT2VAuthResult } from './useT2VAuth';
-export type { UseT2VChatResult, PendingApproval } from './useT2VChat';
-export type { DisplayMessage, ToolStep } from '../types';
-export type { UseT2VToolsResult } from './useT2VTools';
-export type { UseUserPreferencesResult } from './useUserPreferences';
-export type { UsePartnerConfigResult } from './usePartnerConfig';
+export type { T2VProviderProps } from './T2VProvider.js';
+export type { UseT2VAuthResult } from './useT2VAuth.js';
+export type { UseT2VChatResult, PendingApproval } from './useT2VChat.js';
+export type { DisplayMessage, ToolStep } from '../types.js';
+export type { UseT2VToolsResult } from './useT2VTools.js';
+export type { UseUserPreferencesResult } from './useUserPreferences.js';
+export type { UsePartnerConfigResult } from './usePartnerConfig.js';

@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Shield, Check, CheckCheck, X, ChevronDown } from 'lucide-react';
-import type { HumanDecision } from '../../types';
+import type { HumanDecision } from '../../types.js';
 
 export interface ApprovalCardProps {
   toolName: string;

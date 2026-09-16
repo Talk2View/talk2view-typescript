@@ -2,8 +2,8 @@
  * Auth module — login, signup, refresh, logout, auth state management.
  */
 
-import type { T2VClient } from './client';
-import { AuthenticationError, T2VError } from './errors';
+import type { T2VClient } from './client.js';
+import { AuthenticationError, T2VError } from './errors.js';
 import {
   ACCESS_TOKEN_STORAGE_KEY,
   clearAuth,
@@ -16,8 +16,8 @@ import {
   setUserApiKey,
   setRefreshToken,
   setUser,
-} from './storage';
-import type { LoginRequest, SignupOutcome, SignupRequest, TokenResponse, User } from './types';
+} from './storage.js';
+import type { LoginRequest, SignupOutcome, SignupRequest, TokenResponse, User } from './types.js';
 
 type AuthStateCallback = (user: User | null) => void;
 

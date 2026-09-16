@@ -13,7 +13,7 @@ npm install @talk2view/sdk
 ### React (recommended)
 
 ```tsx
-import { T2VProvider, ChatPanel } from '@talk2view/sdk/react';
+import { Talk2View, ChatPanel } from '@talk2view/sdk/ui';
 import type { ClientTool } from '@talk2view/sdk';
 
 const tools: ClientTool[] = [
@@ -36,16 +36,20 @@ const tools: ClientTool[] = [
 
 function App() {
   return (
-    <T2VProvider partnerKey="pk_live_..." baseUrl="https://api.talk2view.com">
-      <ChatPanel tools={tools} systemPrompt="You control a canvas." />
-    </T2VProvider>
+    <Talk2View partnerKey="pk_live_..." tools={tools} systemPrompt="You control a canvas.">
+      <ChatPanel />
+    </Talk2View>
   );
 }
 ```
 
-That's it. The `ChatPanel` handles login, tool registration, streaming chat, and tool execution automatically.
+That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
+
+A logged-out visitor gets an anonymous demo session automatically, so there is nothing to wire up before the first reply. Pass `allowAnonymous={false}` to `<ChatPanel>` to ask people to sign in first.
 
 ### Vanilla JavaScript
+
+The package root exports a `Talk2View` **class** — the framework-agnostic client. It shares a name with the `<Talk2View>` provider component from `/ui` above; if you need both in one file, alias one of them.
 
 ```typescript
 import { Talk2View } from '@talk2view/sdk';
@@ -69,9 +73,10 @@ await t2v.tools.register([
 ]);
 
 // 3. Chat — tool calls are handled automatically
+let reply = '';
 for await (const event of t2v.chat('What time is it?')) {
-  if (event.type === 'text') process.stdout.write(event.content);
-  if (event.type === 'done') console.log('\n');
+  if (event.type === 'text') reply += event.content;
+  if (event.type === 'done') console.log(reply);
 }
 ```
 
@@ -124,49 +129,77 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 
 ## React API
 
-### `<T2VProvider>`
+There are two React entry points, and they do different jobs:
 
-Context provider that initializes the Talk2View client. Wrap your app (or the section that uses Talk2View) with this.
+- **`@talk2view/sdk/ui`** — the chat UI: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. Start here.
+- **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
+
+### `<Talk2View>` (from `/ui`)
+
+The root provider for the UI components. It creates the client, registers your tools, injects the theme, and holds the chat state every `/ui` component reads.
+
+```tsx
+<Talk2View
+  partnerKey="pk_live_..."          // Required
+  tools={myTools}                    // Optional — ClientTool[] (with execute) or schemas
+  systemPrompt="You are..."          // Optional — sent with every message
+  baseUrl="https://engine.talk2view.com"  // Optional, this is the default
+  model="gpt-4.1-mini"               // Optional, falls back to your partner default
+  theme={{ accent: '#26C8B8' }}      // Optional
+  debug={false}                      // Optional — log to the browser console
+>
+  {children}
+</Talk2View>
+```
+
+### `<ChatPanel>` (from `/ui`)
+
+The full chat surface: header, message list, composer, sign-in, tool approvals. It takes its client and state from `<Talk2View>`, so it must be rendered inside one — on its own it throws `useTalk2View must be used within <Talk2View>`. Note that `tools` and `systemPrompt` belong on `<Talk2View>`, not here.
+
+```tsx
+<ChatPanel
+  welcome={{ heading: 'Ask about this document', suggestions: ['Summarise it'] }}
+  allowAnonymous={true}          // Default. false = require sign-in before chatting
+  signupUrl="https://..."        // Link shown on the sign-in form
+  resetPasswordUrl="https://..." // Adds a "Forgot password?" link
+  resetPasswordTarget="_blank"   // Default. '_self' opens in your own app
+  describeToolActivity={(name, args) => (name === 'set_color' ? 'Recolouring' : null)}
+  isToolDestructive={(name) => name.startsWith('delete_')}
+  groupAssistantMessages={false}
+/>
+```
+
+By default a logged-out visitor is signed into an anonymous demo session rather than being shown a login form. The sign-in form appears when `allowAnonymous` is `false`, when your partner account has anonymous access switched off or its daily cap is spent, or when the demo budget for that visitor runs out.
+
+### `<LoginForm>` (from `/ui`)
+
+The sign-in form on its own, if you want to place it yourself. It renders unconditionally — you decide when to show it (check `isAuthenticated` from `useTalk2View()`, the `/ui` hook).
+
+```tsx
+<LoginForm
+  heading="Sign in"
+  subheading="to keep your chat history"
+  defaultMode="login"            // or 'signup'
+  signupUrl="https://talk2view.com/auth?signup"
+  resetPasswordUrl="https://..."
+  termsUrl="https://..."
+  privacyUrl="https://..."
+/>
+```
+
+### `<T2VProvider>` (from `/react`)
+
+The headless provider. Use it when you are building your own UI on the hooks below; `<Talk2View>` already includes it, so you never need both.
 
 ```tsx
 <T2VProvider
   partnerKey="pk_live_..."   // Required
-  baseUrl="https://api.talk2view.com"  // Optional, defaults to localhost:8100
-  model="gpt-4.1-mini"      // Optional, uses server default
+  baseUrl="https://engine.talk2view.com"  // Optional, this is the default
+  model="gpt-4.1-mini"      // Optional, uses your partner default
 >
   {children}
 </T2VProvider>
 ```
-
-### `<ChatPanel>`
-
-Self-contained chat UI with built-in login, tool registration, message list, and input. Drop this in and it works.
-
-```tsx
-<ChatPanel
-  tools={myTools}            // ClientTool[] — tools with execute handlers
-  systemPrompt="You are..."  // Optional system prompt
-  signupUrl="https://..."    // Optional, link shown on login form
-  className="my-chat"        // Optional CSS class
-  style={{ height: '100%' }} // Optional inline styles
-/>
-```
-
-If the user isn't logged in, `ChatPanel` shows a login form automatically. After login, it registers the provided tools and enables the chat input.
-
-### `<LoginModal>`
-
-Standalone login form. Use this if you want to control placement separately from the chat UI.
-
-```tsx
-<LoginModal
-  signupUrl="https://talk2view.com/auth?signup"  // Optional
-  onSuccess={() => console.log('Logged in!')}     // Optional callback
-  className="my-login"                             // Optional CSS class
-/>
-```
-
-Returns `null` if the user is already authenticated.
 
 ### `useT2V()`
 
@@ -187,11 +220,15 @@ const {
   isLoading,         // boolean
   error,             // string | null
   login,             // (email: string, password: string) => Promise<void>
-  signup,            // (email: string, password: string) => Promise<void>
+  signup,            // (email, password) => Promise<{ user, confirmationRequired }>
   logout,            // () => Promise<void>
   clearError,        // () => void
+  signInWithGoogle,  // () => Promise<void> — opens the Google sign-in flow
+  oauthLoading,      // boolean — true while that flow is open
 } = useT2VAuth();
 ```
+
+`signup()` resolves to a `SignupOutcome`: `{ user: User | null; confirmationRequired: boolean }`. When your project has email confirmation switched on, `confirmationRequired` is `true` and `user` is `null` until the person clicks the link in their inbox.
 
 ### `useT2VChat()`
 
@@ -199,17 +236,23 @@ Chat state and message sending.
 
 ```tsx
 const {
-  messages,          // DisplayMessage[]
-  isLoading,         // boolean — true while streaming
-  error,             // string | null
-  threadId,          // string | null
-  agentStatus,       // { type: string; message: string } | null — real-time agent status
-  todos,             // string — agent's current todo/plan text
-  sendMessage,       // (content: string) => Promise<void>
-  clearMessages,     // () => void
-  clearError,        // () => void
+  messages,            // DisplayMessage[]
+  isLoading,           // boolean — true while streaming
+  error,               // string | null
+  threadId,            // string | null
+  agentStatus,         // { status: string; message: string } | null
+  pendingApproval,     // PendingApproval | null — a tool call awaiting a decision
+  alwaysAllowedTools,  // ReadonlySet<string> — approved for the rest of the session
+  sendMessage,         // (content, { attachments? }) => Promise<void>
+  approveToolCall,     // (decision: HumanDecision) => Promise<void>
+  retryLastMessage,    // () => Promise<void> — only meaningful while error is set
+  stop,                // () => void — ends the reply, keeps the text so far
+  clearMessages,       // () => void
+  clearError,          // () => void
 } = useT2VChat({ systemPrompt: 'You are a helpful assistant.' });
 ```
+
+When a tool is registered with `permission: true`, the agent pauses and `pendingApproval` fills in. Show it, then call `approveToolCall({ action: 'once' | 'always' | 'deny' })` — `'always'` adds the tool to `alwaysAllowedTools` for the rest of the session. `<ChatPanel>` already does all of this; you only need it when building your own UI.
 
 `DisplayMessage` shape:
 ```typescript
@@ -218,7 +261,10 @@ const {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
-  isStreaming?: boolean  // true while the assistant is still generating
+  isStreaming?: boolean   // true while the assistant is still generating
+  attachments?: Attachment[]  // files sent with a user message
+  plan?: string           // markdown checklist from the agent's planning tool
+  steps?: ToolStep[]      // completed tool calls, rendered as inline steps
 }
 ```
 
@@ -245,7 +291,7 @@ Main entry point. Use this directly for vanilla JS or non-React frameworks.
 ```typescript
 const t2v = new Talk2View({
   partnerKey: 'pk_live_...',          // Required
-  baseUrl: 'https://api.talk2view.com', // Optional
+  baseUrl: 'https://engine.talk2view.com', // Optional, this is the default
   model: 'gpt-4.1-mini',             // Optional
 });
 ```
@@ -254,7 +300,7 @@ const t2v = new Talk2View({
 
 ```typescript
 await t2v.auth.login(email, password)    // Returns User
-await t2v.auth.signup(email, password)   // Returns User
+await t2v.auth.signup(email, password)   // Returns { user, confirmationRequired }
 await t2v.auth.logout()
 t2v.auth.getUser()                       // Returns User | null
 t2v.auth.isAuthenticated()               // Returns boolean
@@ -379,8 +425,15 @@ const audioModels = await t2v.listAudioModels(); // Speech-to-text models
 
 Transcribe an audio file using the server's speech-to-text service:
 
+Takes a `FormData`, with the fields the engine's `/v1/audio/transcriptions` endpoint accepts (`file`, `model`, and optionally `language`, `translate_to`, `translation_guidance`):
+
 ```typescript
-const result = await t2v.transcribe(audioBlob, 'whisper-1', 'en');
+const form = new FormData();
+form.append('file', audioBlob, 'recording.webm');
+form.append('model', 'faster-whisper-large-turbo-gcp'); // one of listAudioModels()
+form.append('language', 'en');        // optional
+
+const result = await t2v.transcribe(form);
 console.log(result.text);
 ```
 
@@ -492,7 +545,7 @@ Use `enum` to restrict string values:
 The `execute` function receives the AI's arguments as a `Record<string, unknown>` and must return a `Promise<string>`. The returned string is sent back to the AI as the tool's result.
 
 - Return `JSON.stringify(...)` for structured results
-- Throw an error or return an error string if the tool fails — the SDK catches errors and sends them back to the AI as `{ result: "Error: ...", is_error: true }`
+- Throw an error or return an error string if the tool fails — the SDK catches it and sends the message back to the AI as `{ result: '{"error":"..."}', is_error: true }`, so the agent can explain or try something else
 
 ---
 
@@ -561,18 +614,24 @@ This is why `sendMessage()` and `chat()` take the conversation history: the engi
 
 The SDK throws typed errors:
 
-| Error Class | When |
-|-------------|------|
-| `AuthenticationError` | Invalid credentials, expired token |
-| `PartnerKeyError` | Invalid or inactive partner API key |
-| `SessionError` | Session not found or creation failed |
-| `NetworkError` | Network failure, server unreachable |
-| `T2VError` | Base class for all SDK errors |
+| Error Class | When | `err.type` |
+|-------------|------|------------|
+| `AuthenticationError` | Bad credentials, expired or rejected token | `authentication_error` |
+| `PartnerKeyError` | Unknown or inactive partner key | `partner_key_error` |
+| `NetworkError` | Network failure, server unreachable, request timed out | `network_error` |
+| `T2VError` | Base class — and what everything else arrives as | the engine's own type |
+| `SessionError` | Reserved — see below | `session_not_found` |
 
-All errors extend `T2VError`, which exposes `message`, `type`, `statusCode`, and `code`:
+Every error carries the engine's machine-readable `type`, so `err.type` is the precise test; the classes above are a convenience for the common cases. Types worth knowing that arrive as a plain `T2VError`: `origin_not_allowed` (403 — the request's Origin isn't on your key's allow-list), `not_found` (404), and `rate_limit_exceeded` (429).
+
+Some failures never reach a `catch` at all, because they arrive inside the chat stream rather than as a rejected request: a spent anonymous demo budget comes through as an `error` event with `errorType: 'budget_exceeded'`, which the SDK turns into a `demoLimitReached` event rather than an error state. Listen for that instead of trying to catch it.
+
+**On lost chat sessions:** `SessionError` is reserved for a dedicated engine type that isn't in use yet — today a chat session that no longer exists comes back as a `T2VError` with `type: 'not_found'` and `statusCode: 404`. You shouldn't need to catch it: the SDK recovers the session itself where that is safe, and otherwise reports an `error` event with `errorType: 'session_lost'`. See [Chat sessions and deploys](#chat-sessions-and-deploys).
+
+All errors extend `T2VError`, which exposes `message`, `type`, `statusCode`, `code`, and `detail` (the server's raw diagnostic text, kept out of `message` so it never reaches an end-user by accident):
 
 ```typescript
-import { T2VError, AuthenticationError, NetworkError, SessionError } from '@talk2view/sdk';
+import { T2VError, AuthenticationError, NetworkError, PartnerKeyError } from '@talk2view/sdk';
 
 try {
   await t2v.auth.login(email, password);
@@ -581,8 +640,8 @@ try {
     console.log('Bad credentials');
   } else if (err instanceof NetworkError) {
     console.log('Server unreachable');
-  } else if (err instanceof SessionError) {
-    console.log('Session issue:', err.message);
+  } else if (err instanceof PartnerKeyError) {
+    console.log('Check your partner key:', err.message);
   } else if (err instanceof T2VError) {
     // Access the error code for programmatic handling
     console.log(`Error [${err.code}]: ${err.message} (HTTP ${err.statusCode})`);
@@ -609,18 +668,25 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
 | `partnerKey` | `string` | Yes | — | Your partner API key |
-| `baseUrl` | `string` | No | `'http://localhost:8100'` | Talk2View API server URL |
+| `baseUrl` | `string` | No | `'https://engine.talk2view.com'` | Talk2View engine URL |
 | `model` | `string` | No | Server default | LLM model to use |
 | `requestTimeout` | `number` | No | `30000` | HTTP request timeout in ms. Does not apply to SSE streams after connection. |
+| `anonymousAutoStart` | `boolean` | No | `true` | Start an anonymous demo session on the first `chat()` when nobody is signed in. Set `false` to require sign-in. |
+| `debug` | `boolean` | No | `false` | Log streaming events, tool calls, history and state changes to the console. |
 
 ---
 
 ## System Prompts
 
-System prompts set the AI's behavior and context for your application. Pass them to `ChatPanel` or `useT2VChat`:
+System prompts set the AI's behavior and context for your application. Pass one to `<Talk2View>` (the UI components) or to `useT2VChat` (the hooks):
 
 ```tsx
-<ChatPanel systemPrompt="You are a medical imaging assistant. Use the provided tools to control the DICOM viewer." />
+<Talk2View
+  partnerKey="pk_live_..."
+  systemPrompt="You are a medical imaging assistant. Use the provided tools to control the DICOM viewer."
+>
+  <ChatPanel />
+</Talk2View>
 ```
 
 Best practices:
@@ -637,7 +703,7 @@ Here's a complete example integrating Talk2View into a hypothetical drawing app:
 
 ```tsx
 import React, { useRef, useMemo } from 'react';
-import { T2VProvider, ChatPanel } from '@talk2view/sdk/react';
+import { Talk2View, ChatPanel } from '@talk2view/sdk/ui';
 import type { ClientTool } from '@talk2view/sdk';
 import { Canvas } from './Canvas';
 
@@ -690,16 +756,18 @@ function App() {
   ], []);
 
   return (
-    <T2VProvider partnerKey="pk_live_..." baseUrl="https://api.talk2view.com">
+    <Talk2View
+      partnerKey="pk_live_..."
+      tools={tools}
+      systemPrompt="You control a drawing canvas. Use the tools to draw shapes and manage the canvas."
+    >
       <div style={{ display: 'flex', height: '100vh' }}>
         <Canvas ref={canvasRef} style={{ flex: 1 }} />
-        <ChatPanel
-          tools={tools}
-          systemPrompt="You control a drawing canvas. Use the tools to draw shapes and manage the canvas."
-          style={{ width: 360 }}
-        />
+        <div style={{ width: 360 }}>
+          <ChatPanel welcome={{ heading: 'What should I draw?' }} />
+        </div>
       </div>
-    </T2VProvider>
+    </Talk2View>
   );
 }
 ```
@@ -728,16 +796,25 @@ import type {
   RegisterSkillsResponse,
 } from '@talk2view/sdk';
 
-// React types
+// Headless React types
 import type {
   T2VProviderProps,
   UseT2VAuthResult,
   UseT2VChatResult,
   UseT2VToolsResult,
+  UsePartnerConfigResult,
+  UseUserPreferencesResult,
   DisplayMessage,
-  ChatPanelProps,
-  LoginModalProps,
+  ToolStep,
+  PendingApproval,
 } from '@talk2view/sdk/react';
+
+// UI component types
+import type {
+  Talk2ViewProps,
+  ChatPanelProps,
+  ChatWidgetProps,
+} from '@talk2view/sdk/ui';
 ```
 
 ## Publishing

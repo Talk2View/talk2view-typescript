@@ -2,8 +2,8 @@
  * Sessions module — create sessions, send messages with streaming, resume after tool calls.
  */
 
-import type { T2VClient } from './client';
-import type { T2VTools } from './tools';
+import type { T2VClient } from './client.js';
+import type { T2VTools } from './tools.js';
 import type {
   Attachment,
   ChatEvent,
@@ -13,7 +13,7 @@ import type {
   MessageContentPart,
   PendingApproval,
   T2VConfig,
-} from './types';
+} from './types.js';
 
 /**
  * Build user message content — a plain string normally, structured content

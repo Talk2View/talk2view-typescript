@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { renderSafeMarkdown } from '../safeMarkdown';
+import { renderSafeMarkdown } from '../safeMarkdown.js';
 
 export interface MarkdownRendererProps {
   content: string;

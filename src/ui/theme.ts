@@ -1,4 +1,4 @@
-import type { Talk2ViewTheme } from '../types';
+import type { Talk2ViewTheme } from '../types.js';
 
 export const THEME_DEFAULTS: Required<Talk2ViewTheme> = {
   accent: '#40D4B6',

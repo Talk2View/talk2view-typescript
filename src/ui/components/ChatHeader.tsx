@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Settings, LogOut, LogIn, PenLine, ArrowLeft, MoreVertical } from 'lucide-react';
-import { LOGOS } from '../theme';
+import { LOGOS } from '../theme.js';
 
 export interface ChatHeaderProps {
   view: 'chat' | 'settings' | 'login';

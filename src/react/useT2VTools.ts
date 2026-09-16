@@ -3,8 +3,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { ClientTool, ClientToolSchema, RegisterToolsResponse } from '../types';
-import { useT2V } from './T2VProvider';
+import type { ClientTool, ClientToolSchema, RegisterToolsResponse } from '../types.js';
+import { useT2V } from './T2VProvider.js';
 
 export interface UseT2VToolsResult {
   registerTools: (tools: (ClientToolSchema | ClientTool)[]) => Promise<RegisterToolsResponse>;

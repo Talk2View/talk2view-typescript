@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useT2VAuth } from '../../react/useT2VAuth';
-import { LOGOS } from '../theme';
+import { useT2VAuth } from '../../react/useT2VAuth.js';
+import { LOGOS } from '../theme.js';
 
 export interface LoginFormProps {
   signupUrl?: string;

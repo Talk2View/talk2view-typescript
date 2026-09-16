@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
-import type { Talk2View as Talk2ViewClass } from '../index';
-import type { Attachment, User, DisplayMessage, PendingApproval, HumanDecision } from '../types';
+import type { Talk2View as Talk2ViewClass } from '../index.js';
+import type { Attachment, User, DisplayMessage, PendingApproval, HumanDecision } from '../types.js';
 
 export interface Talk2ViewContextValue {
   t2v: Talk2ViewClass;

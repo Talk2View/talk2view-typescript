@@ -13,16 +13,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Send, Square, Check, Loader2, Paperclip, X, Info } from 'lucide-react';
-import { useChat } from '../context';
-import { useTalk2View } from '../context';
-import { useUserPreferences } from '../../react/useUserPreferences';
-import { usePartnerConfig } from '../../react/usePartnerConfig';
+import { useChat } from '../context.js';
+import { useTalk2View } from '../context.js';
+import { useUserPreferences } from '../../react/useUserPreferences.js';
+import { usePartnerConfig } from '../../react/usePartnerConfig.js';
 import {
   ATTACHMENT_ACCEPT,
   ATTACHMENT_TYPES_LABEL,
   isAllowedAttachmentType,
-} from '../../constants';
-import type { Attachment } from '../../types';
+} from '../../constants.js';
+import type { Attachment } from '../../types.js';
 
 interface PendingAttachment {
   /** Local key — stable across the upload lifecycle. */

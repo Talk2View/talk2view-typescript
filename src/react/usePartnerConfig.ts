@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { PartnerConfig } from '../types';
-import { useT2V } from './T2VProvider';
+import type { PartnerConfig } from '../types.js';
+import { useT2V } from './T2VProvider.js';
 
 export interface UsePartnerConfigResult {
   config: PartnerConfig | null;

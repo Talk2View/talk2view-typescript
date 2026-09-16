@@ -31,16 +31,16 @@
  * ```
  */
 
-import { T2VAuth } from './auth';
-import { T2VClient } from './client';
-import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants';
-import { T2VError } from './errors';
-import { TypedEventEmitter } from './event-emitter';
-import { getIsAnonymous, hasValidTokens } from './storage';
-import { T2VSession, buildUserContent } from './sessions';
-import { T2VSkills } from './skills';
-import { T2VTools, stripNullArgs } from './tools';
-import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types';
+import { T2VAuth } from './auth.js';
+import { T2VClient } from './client.js';
+import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
+import { T2VError } from './errors.js';
+import { TypedEventEmitter } from './event-emitter.js';
+import { getIsAnonymous, hasValidTokens } from './storage.js';
+import { T2VSession, buildUserContent } from './sessions.js';
+import { T2VSkills } from './skills.js';
+import { T2VTools, stripNullArgs } from './tools.js';
+import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
  * Refusals from POST /v1/auth/anonymous that only signing in — or Talk2View
@@ -889,13 +889,13 @@ export class Talk2View {
 }
 
 // Re-export types and classes for consumers
-export { T2VAuth } from './auth';
-export { T2VClient } from './client';
-export { T2VSession } from './sessions';
-export { T2VSkills } from './skills';
-export { T2VTools } from './tools';
-export { TypedEventEmitter } from './event-emitter';
-export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors';
+export { T2VAuth } from './auth.js';
+export { T2VClient } from './client.js';
+export { T2VSession } from './sessions.js';
+export { T2VSkills } from './skills.js';
+export { T2VTools } from './tools.js';
+export { TypedEventEmitter } from './event-emitter.js';
+export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
 export type {
   T2VEventMap,
   T2VConfig,
@@ -939,4 +939,4 @@ export type {
   UserPreferences,
   DisplayMessage,
   ToolStep,
-} from './types';
+} from './types.js';

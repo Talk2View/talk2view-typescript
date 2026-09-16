@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { DisplayMessage } from '../../types';
-import { useTalk2View, useChat } from '../context';
-import { ChatHeader } from './ChatHeader';
-import { LoginForm } from './LoginForm';
-import { MessageList } from './MessageList';
-import { Composer } from './Composer';
-import { WelcomeScreen } from './WelcomeScreen';
-import { SettingsPanel } from './SettingsPanel';
-import { useUserPreferences } from '../../react/useUserPreferences';
-import { usePartnerConfig } from '../../react/usePartnerConfig';
+import type { DisplayMessage } from '../../types.js';
+import { useTalk2View, useChat } from '../context.js';
+import { ChatHeader } from './ChatHeader.js';
+import { LoginForm } from './LoginForm.js';
+import { MessageList } from './MessageList.js';
+import { Composer } from './Composer.js';
+import { WelcomeScreen } from './WelcomeScreen.js';
+import { SettingsPanel } from './SettingsPanel.js';
+import { useUserPreferences } from '../../react/useUserPreferences.js';
+import { usePartnerConfig } from '../../react/usePartnerConfig.js';
 
 const FONT_SCALE: Record<string, number> = { small: 0.75, medium: 0.875, large: 1 };
 

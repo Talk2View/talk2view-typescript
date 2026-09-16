@@ -1,36 +1,36 @@
 // Components
-export { Talk2View } from './components/Talk2View';
-export type { Talk2ViewProps } from './components/Talk2View';
-export { ChatPanel } from './components/ChatPanel';
-export type { ChatPanelProps } from './components/ChatPanel';
-export { ChatWidget } from './components/ChatWidget';
-export type { ChatWidgetProps } from './components/ChatWidget';
+export { Talk2View } from './components/Talk2View.js';
+export type { Talk2ViewProps } from './components/Talk2View.js';
+export { ChatPanel } from './components/ChatPanel.js';
+export type { ChatPanelProps } from './components/ChatPanel.js';
+export { ChatWidget } from './components/ChatWidget.js';
+export type { ChatWidgetProps } from './components/ChatWidget.js';
 
 // Context hooks (for advanced custom UI)
-export { useChat, useTalk2View } from './context';
-export type { ChatContextValue, Talk2ViewContextValue } from './context';
+export { useChat, useTalk2View } from './context.js';
+export type { ChatContextValue, Talk2ViewContextValue } from './context.js';
 
 // Individual components (for composition)
-export { MessageList } from './components/MessageList';
-export { MessageBubble } from './components/MessageBubble';
-export { Composer } from './components/Composer';
-export { WelcomeScreen } from './components/WelcomeScreen';
-export { LoginForm } from './components/LoginForm';
-export { ChatHeader } from './components/ChatHeader';
-export { SettingsPanel } from './components/SettingsPanel';
-export { ApprovalCard } from './components/ApprovalCard';
-export { ToolDisplay, ToolStepGroup } from './components/ToolDisplay';
-export type { ToolDisplayProps, ToolStepGroupProps } from './components/ToolDisplay';
-export { MarkdownRenderer } from './components/MarkdownRenderer';
-export { CodeBlock } from './components/CodeBlock';
-export { ThinkingBlock } from './components/ThinkingBlock';
-export { MessageActions } from './components/MessageActions';
-export { Shimmer } from './components/Shimmer';
+export { MessageList } from './components/MessageList.js';
+export { MessageBubble } from './components/MessageBubble.js';
+export { Composer } from './components/Composer.js';
+export { WelcomeScreen } from './components/WelcomeScreen.js';
+export { LoginForm } from './components/LoginForm.js';
+export { ChatHeader } from './components/ChatHeader.js';
+export { SettingsPanel } from './components/SettingsPanel.js';
+export { ApprovalCard } from './components/ApprovalCard.js';
+export { ToolDisplay, ToolStepGroup } from './components/ToolDisplay.js';
+export type { ToolDisplayProps, ToolStepGroupProps } from './components/ToolDisplay.js';
+export { MarkdownRenderer } from './components/MarkdownRenderer.js';
+export { CodeBlock } from './components/CodeBlock.js';
+export { ThinkingBlock } from './components/ThinkingBlock.js';
+export { MessageActions } from './components/MessageActions.js';
+export { Shimmer } from './components/Shimmer.js';
 
 // Theme
-export { THEME_DEFAULTS, LOGOS } from './theme';
+export { THEME_DEFAULTS, LOGOS } from './theme.js';
 
 // Utilities
-export { groupModelsByProvider, providerTitle, UNKNOWN_PROVIDER_KEY } from './utils';
-export { renderSafeMarkdown } from './safeMarkdown';
-export type { ModelGroup } from './utils';
+export { groupModelsByProvider, providerTitle, UNKNOWN_PROVIDER_KEY } from './utils.js';
+export { renderSafeMarkdown } from './safeMarkdown.js';
+export type { ModelGroup } from './utils.js';

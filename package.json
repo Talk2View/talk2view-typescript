@@ -22,6 +22,16 @@
       "default": "./dist/ui/index.js"
     }
   },
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react/index.d.ts"
+      ],
+      "ui": [
+        "./dist/ui/index.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],

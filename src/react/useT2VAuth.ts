@@ -3,8 +3,8 @@
  */
 
 import { useCallback, useState } from 'react';
-import type { SignupOutcome, User } from '../types';
-import { useT2V } from './T2VProvider';
+import type { SignupOutcome, User } from '../types.js';
+import { useT2V } from './T2VProvider.js';
 
 export interface UseT2VAuthResult {
   user: User | null;

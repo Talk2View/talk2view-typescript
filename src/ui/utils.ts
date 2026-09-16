@@ -1,4 +1,4 @@
-import type { Model } from '../types';
+import type { Model } from '../types.js';
 
 /**
  * Group the engine's flat model list into provider sections for the settings

@@ -1,6 +1,6 @@
 import React from 'react';
-import { useChat } from '../context';
-import { LOGOS } from '../theme';
+import { useChat } from '../context.js';
+import { LOGOS } from '../theme.js';
 
 export interface WelcomeScreenProps {
   heading?: string;

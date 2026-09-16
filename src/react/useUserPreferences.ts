@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { getUserPreferences, setUserPreferences } from '../storage';
-import type { UserPreferences } from '../types';
+import { getUserPreferences, setUserPreferences } from '../storage.js';
+import type { UserPreferences } from '../types.js';
 
 const SYNC_EVENT = 'talk2view_preferences_changed';
 

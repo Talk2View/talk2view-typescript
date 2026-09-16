@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — assistant-ui Integration
+## [Unreleased]
 
 ### Security
 
@@ -25,6 +25,10 @@
 
 ### Fixed
 
+- **The package loads in Node.** `"type": "module"` was set but the build emitted extensionless relative imports, so `import '@talk2view/sdk'` failed with `ERR_MODULE_NOT_FOUND` anywhere without a bundler — plain Node, an Electron main process, SSR. Every emitted specifier now carries its `.js` extension, and the compiler is on NodeNext resolution so a missing one is a build error rather than a partner's runtime crash.
+- **`/react` and `/ui` resolve for TypeScript apps on the older `moduleResolution: "node"`.** The subpaths are declared through `exports`, which that setting ignores, so those imports failed with TS2307 ("There are types at dist/react/index.d.ts, but this result could not be resolved under your current 'moduleResolution' setting") — while the root import worked, which made it look like a broken package rather than a tsconfig mismatch. A `typesVersions` map now covers it.
+- **The error classes the SDK exports are now the ones it throws.** `AuthenticationError` and `PartnerKeyError` were exported and documented, but every failed request threw a plain `T2VError`, so `catch (err) { if (err instanceof AuthenticationError) … }` never matched. The engine's `authentication_error` and `partner_key_error` now arrive as those classes, carrying the server's `type`, `statusCode`, `code` and `detail`. Everything else is still a `T2VError` — `err.type` remains the precise test. `SessionError` stays reserved: the engine reports a dead chat session as a generic `not_found`, which the SDK handles itself (`sessionRecovered`, or an `error` event with `errorType: 'session_lost'`).
+- **The README's code runs.** The React quick start imported `ChatPanel` from `/react` (which doesn't export it), wrapped it in `<T2VProvider>` (which makes it throw `useTalk2View must be used within <Talk2View>`), and passed `tools`/`systemPrompt` props it doesn't have. The quick start is now the real `<Talk2View>` + `<ChatPanel>` composition from `/ui`, covered by a test that renders it. Also corrected: the dead `api.talk2view.com` host (the default is `https://engine.talk2view.com`), a `<LoginModal>` component that does not exist, the `useT2VChat`/`useT2VAuth` result shapes, `transcribe()`'s signature, and the claim that a logged-out visitor sees a login form (they get an anonymous demo session).
 - **A Talk2View deploy no longer breaks an open chat that hasn't started replying.** When the engine has lost the chat session before any part of the reply has arrived, `chat()` and `sendMessage()` open a new one, re-register your tools and resend the turn with its history, instead of failing every later message with "Session not found". A new `sessionRecovered` event carries the new session id. If the session is instead lost after the reply has started, or while a tool result is being sent back — including answering an approval after the session died — the SDK doesn't resend: the tool handler may already have run, so it reports one `error` event with `errorType: 'session_lost'` instead, and clears any pending approval.
 - **Anonymous → permanent conversion now re-authenticates.** `signup()` on
   an anonymous session called `/v1/auth/convert` but kept the old anonymous
@@ -37,31 +41,18 @@
 ### Added
 
 #### New export path: `@talk2view/sdk/ui`
-Pre-styled chat UI powered by [assistant-ui](https://github.com/assistant-ui/assistant-ui). Requires Tailwind CSS + assistant-ui peer dependencies.
+The chat UI, with no peer dependencies beyond React — no Tailwind, no assistant-ui. (An earlier draft of this entry listed a `T2V*` assistant-ui surface that was never shipped; these are the real exports.)
 
-**Components:**
-- `T2VAssistantProvider` — Combined provider (auth + client + tools + runtime + AssistantRuntimeProvider)
-- `T2VThread` — Inline chat thread with header, settings, login gate, and font scaling
-- `T2VAssistantModal` — Floating chat widget (bottom-right trigger button + popover)
-- `T2VLoginGate` — Shows login form when unauthenticated, renders children when authenticated
-- `T2VToolFallback` — Inline tool call UI: approval card (requires-action) + step indicators (completed)
-- `T2VComposer` — Custom Composer with mic button for speech-to-text via Talk2View's STT endpoint
-- `T2VChatHeader` — Shared header bar with logo, settings dropdown, and sign-out
+**Provider and surfaces:**
+- `Talk2View` — root provider: creates the client, registers tools, injects the theme, holds chat state
+- `ChatPanel` — the full chat surface (header, messages, composer, sign-in, tool approvals)
+- `ChatWidget` — floating launcher + popover wrapper around `ChatPanel`
 
-**Hooks:**
-- `useT2VRuntime` — ExternalStoreRuntime bridge between `useT2VChat` and assistant-ui
+**Components:** `MessageList`, `MessageBubble`, `Composer`, `WelcomeScreen`, `LoginForm`, `ChatHeader`, `SettingsPanel`, `ApprovalCard`, `ToolDisplay`, `ToolStepGroup`, `MarkdownRenderer`, `CodeBlock`, `ThinkingBlock`, `MessageActions`, `Shimmer`
 
-**Adapters:**
-- `T2VDictationAdapter` — MediaRecorder-based adapter implementing assistant-ui's DictationAdapter interface
+**Hooks:** `useTalk2View`, `useChat`
 
-**Utilities:**
-- `convertDisplayMessage` — Converts `DisplayMessage` → `ThreadMessageLike` (assistant-ui format)
-- `t2vPreset` — Tailwind CSS preset with Talk2View brand colors and fonts
-
-#### New peer dependencies (all optional)
-- `@assistant-ui/react@^0.12.19`
-- `@assistant-ui/react-ui@^0.2.1`
-- `@assistant-ui/react-markdown@^0.12.6`
+**Utilities:** `renderSafeMarkdown`, `groupModelsByProvider`, `providerTitle`, `UNKNOWN_PROVIDER_KEY`, `THEME_DEFAULTS`, `LOGOS`
 
 #### Core SDK additions
 - `useT2VChat` now accepts `model` option to override the LLM model per-session
@@ -80,16 +71,16 @@ Pre-styled chat UI powered by [assistant-ui](https://github.com/assistant-ui/ass
 - `T2V_PROXY_SERVER_BASE_URL` updated from `t2v4-staging.talk2view.com` to `llm.talk2view.com`
 
 ### Removed
-- `ChatPanel` — replaced by `T2VThread` / `T2VAssistantModal`
-- `ChatMessage` — assistant-ui handles message rendering
-- `ChatInput` — assistant-ui Composer handles input
-- `ApprovalCard` (standalone) — functionality inlined into `T2VToolFallback`
+- `ChatMessage` and `ChatInput` from `@talk2view/sdk/react` — the `/ui` components (`MessageBubble`, `Composer`) replace them.
+- The assistant-ui dependency and its `T2V*` wrapper surface. `/ui` is now first-party components with no peer dependencies beyond React.
 
 ---
 
-## Modifications on top of assistant-ui
+## Historical: modifications on top of assistant-ui
 
-The SDK uses assistant-ui as a rendering layer via `ExternalStoreRuntime`. The following customizations were made on top of the stock assistant-ui components:
+**This section describes the 0.4-era assistant-ui integration, which was removed. None of the `T2V*` names below exist in the package today** — it is kept as a record of what that layer did, for whenever the integration is revisited.
+
+The SDK used assistant-ui as a rendering layer via `ExternalStoreRuntime`. The following customizations were made on top of the stock assistant-ui components:
 
 ### Runtime bridge (`useT2VRuntime`)
 - Uses `useExternalStoreRuntime()` to feed `useT2VChat` state into assistant-ui

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { ChatPanel, type ChatPanelProps } from './ChatPanel';
-import { LOGOS } from '../theme';
+import { ChatPanel, type ChatPanelProps } from './ChatPanel.js';
+import { LOGOS } from '../theme.js';
 
 export interface ChatWidgetProps extends ChatPanelProps {}
 

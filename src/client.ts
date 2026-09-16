@@ -2,20 +2,20 @@
  * HTTP/SSE API client with two-tier auth (partner key + user JWT).
  */
 
-import { AuthenticationError, NetworkError, T2VError } from './errors';
+import { AuthenticationError, NetworkError, T2VError, errorForType } from './errors.js';
 import {
   clearAuth,
   getAccessToken,
   getRefreshToken,
   setAccessToken,
   setRefreshToken,
-} from './storage';
-import { decodeSSEStream } from './streaming';
+} from './storage.js';
+import { decodeSSEStream } from './streaming.js';
 import type {
   ChatCompletionChunk,
   RefreshResponse,
   T2VConfig,
-} from './types';
+} from './types.js';
 
 const DEFAULT_BASE_URL = 'https://engine.talk2view.com';
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
@@ -95,7 +95,7 @@ export class T2VClient {
     const code = typeof err.code === 'string' ? err.code : undefined;
     // Keep the raw detail for debugging only — out of the user-facing message.
     const detail = typeof err.detail === 'string' ? err.detail : undefined;
-    return new T2VError(safeMessage, type, response.status, code, detail);
+    return errorForType(safeMessage, type, response.status, code, detail);
   }
 
   /**

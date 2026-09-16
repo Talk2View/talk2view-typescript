@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Brain, ChevronDown } from 'lucide-react';
-import { Shimmer } from './Shimmer';
-import { MarkdownRenderer } from './MarkdownRenderer';
+import { Shimmer } from './Shimmer.js';
+import { MarkdownRenderer } from './MarkdownRenderer.js';
 
 export interface ThinkingBlockProps {
   content: string;
