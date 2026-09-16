@@ -543,6 +543,20 @@ Never pass model output to `innerHTML` or a markdown library's raw HTML output w
 
 Call it in the browser (client components): without a DOM it returns the reply as escaped plain text.
 
+## Chat sessions and deploys
+
+A chat session lives in the engine's memory, so a Talk2View deploy, a restart, or eviction under load can end it. The SDK handles most of that for you:
+
+- **Sending a message:** if the session is gone before the reply has started, the SDK opens a new one, re-registers your tools and resends the turn with the conversation so far — nothing from that turn is lost. It emits `sessionRecovered` with the new session id, which you can log.
+- **Answering an approval:** the SDK can't safely resend the tool result, because your handler has already run. It emits one `error` event with `errorType: 'session_lost'` and clears the pending approval, so the end-user can send their message again.
+- **Mid-reply or mid-tool-resume:** if the chat session is lost after the reply has started, or while a tool result is being sent back, the SDK reports `session_lost` and doesn't resend, because the tool handler may already have run.
+
+```ts
+t2v.on('sessionRecovered', (sessionId) => console.info('reconnected', sessionId));
+```
+
+This is why `sendMessage()` and `chat()` take the conversation history: the engine works out which messages are new, so a fresh session continues where the old one stopped.
+
 ## Error Handling
 
 The SDK throws typed errors:

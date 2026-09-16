@@ -60,6 +60,35 @@ const ANONYMOUS_UNAVAILABLE_TYPES = new Set([
   'captcha_unavailable',
 ]);
 
+/**
+ * The engine's "Session not found": chat sessions live in its memory, so a
+ * deploy, a restart or an eviction loses them (ADR 0005 — sessions are
+ * disposable and the client's chat history is authoritative). `not_found` is
+ * the engine's generic catch-all error type on both `/messages` and `/resume`
+ * today — the only 404 type either endpoint raises for a dead session.
+ * `session_not_found` is also accepted: it's the engine's dedicated
+ * `SessionNotFoundError` type, not raised there yet, but matching it too
+ * means a future rename to the specific type doesn't silently stop recovery.
+ */
+function isSessionGone(err: unknown): boolean {
+  return (
+    err instanceof T2VError &&
+    err.statusCode === 404 &&
+    (err.type === 'not_found' || err.type === 'session_not_found')
+  );
+}
+
+/**
+ * Shown when the engine lost the chat session mid-turn: nothing is resent,
+ * because the tool handler has already run on this side.
+ */
+const SESSION_LOST_MESSAGE =
+  'The chat session ended before that step could be confirmed, so the assistant never got the result. It may already have been applied — check before sending your message again.';
+
+/** Shown when the end-user denied the call, so nothing ran and there's nothing to check. */
+const SESSION_LOST_AFTER_DENY_MESSAGE =
+  'The chat session ended before that step could be confirmed, so the assistant never got your answer. Send your message again.';
+
 type SessionClearCallback = () => void;
 type SessionCreateCallback = (toolNames: string[]) => void;
 
@@ -181,6 +210,11 @@ export class Talk2View {
     return session;
   }
 
+  /** Whether `session` is still the live session — false if clearSession() or an identity change replaced it since. */
+  private isCurrentSession(session: T2VSession): boolean {
+    return this.currentSession?.id === session.id;
+  }
+
   /**
    * Start an anonymous session when nothing is signed in and auto-start is on.
    * Returns false when the server refused anonymous sign-in for a reason only
@@ -224,7 +258,62 @@ export class Talk2View {
       await this.createSession();
     }
 
-    yield* this.currentSession!.sendMessage(message, options);
+    yield* this.sendWithSessionRecovery(this.currentSession!, message, options);
+  }
+
+  /**
+   * Send a turn, and recover once if the engine has lost the chat session.
+   *
+   * A deploy or an eviction leaves the id dead, and every later turn on it
+   * fails. A new session rebuilds the conversation from the history this turn
+   * replays, so resending is safe — but only before any event has been yielded:
+   * once the reply has started, a failure mid-stream may have had side effects.
+   */
+  private async *sendWithSessionRecovery(
+    session: T2VSession,
+    message: string,
+    options?: {
+      systemPrompt?: string;
+      model?: string;
+      history?: ChatMessage[];
+      signal?: AbortSignal;
+      attachments?: Attachment[];
+    },
+  ): AsyncGenerator<ChatEvent> {
+    let started = false;
+    try {
+      for await (const event of session.sendMessage(message, options)) {
+        started = true;
+        yield event;
+      }
+      return;
+    } catch (err) {
+      if (!isSessionGone(err)) throw err;
+      if (started) {
+        // The reply (or a tool resume within it) had already begun, so a
+        // handler on the client side may already have run — resending the
+        // turn risks running it twice. Report the loss instead.
+        this.currentSession = null;
+        yield { type: 'error', message: SESSION_LOST_MESSAGE, errorType: 'session_lost' };
+        return;
+      }
+      // The end-user pressed stop between the 404 and here — don't recover
+      // into a turn nobody wants anymore.
+      if (options?.signal?.aborted) throw err;
+      this.debug('chat session gone; creating a new one and resending the turn');
+    }
+
+    this.currentSession = null;
+    const newSession = await this.createSession();
+    // createSession() awaits tool re-registration before returning, and
+    // during that window clearSession() or an identity change may have run —
+    // possibly after already being clobbered back to a session object by
+    // createSession()'s own assignment. Only resend if this recovery's session
+    // is still the one in play; otherwise the turn belongs to a chat that's
+    // gone, and resending it would land in the wrong (or no) chat.
+    if (!this.isCurrentSession(newSession)) return;
+    this.emitter.emit('sessionRecovered', newSession.id);
+    yield* newSession.sendMessage(message, options);
   }
 
   /**
@@ -359,7 +448,22 @@ export class Talk2View {
     if (!this.currentSession) {
       throw new Error('No active session. Start a conversation first.');
     }
-    yield* this.currentSession.respondToApproval(approval, decision, signal);
+    const session = this.currentSession;
+    try {
+      yield* session.respondToApproval(approval, decision, signal);
+    } catch (err) {
+      if (!isSessionGone(err)) throw err;
+      // The engine lost the chat session between the approval and the resume.
+      // For an allowed tool the client has already run it, so resending the turn
+      // could run it twice: drop the session and let the end-user decide.
+      this.currentSession = null;
+      this.setPendingApproval(null);
+      yield {
+        type: 'error',
+        message: decision.action === 'deny' ? SESSION_LOST_AFTER_DENY_MESSAGE : SESSION_LOST_MESSAGE,
+        errorType: 'session_lost',
+      };
+    }
   }
 
   /**

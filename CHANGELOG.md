@@ -25,6 +25,7 @@
 
 ### Fixed
 
+- **A Talk2View deploy no longer breaks an open chat that hasn't started replying.** When the engine has lost the chat session before any part of the reply has arrived, `chat()` and `sendMessage()` open a new one, re-register your tools and resend the turn with its history, instead of failing every later message with "Session not found". A new `sessionRecovered` event carries the new session id. If the session is instead lost after the reply has started, or while a tool result is being sent back — including answering an approval after the session died — the SDK doesn't resend: the tool handler may already have run, so it reports one `error` event with `errorType: 'session_lost'` instead, and clears any pending approval.
 - **Anonymous → permanent conversion now re-authenticates.** `signup()` on
   an anonymous session called `/v1/auth/convert` but kept the old anonymous
   tokens. Setting a password during conversion revokes that session's

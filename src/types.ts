@@ -228,7 +228,19 @@ export type ChatEvent =
   | { type: 'approval_result'; toolName: string; decision: HumanDecision['action'] }
   | { type: 'todos'; content: string }
   | { type: 'done'; threadId: string }
-  | { type: 'error'; message: string; errorType?: string; detail?: string }
+  | {
+      type: 'error';
+      message: string;
+      /**
+       * Machine-readable error category. Most values are engine-emitted, e.g.
+       * `budget_exceeded` (anonymous demo budget exhausted). One is SDK-emitted:
+       * `session_lost` — the chat session was lost mid-turn, or while a tool
+       * result or approval resume was in flight, and the SDK deliberately did
+       * not resend, because a client tool handler may already have run.
+       */
+      errorType?: string;
+      detail?: string;
+    }
   | { type: 'status'; status: string; message: string };
 
 // ── Human-in-the-Loop ──
@@ -466,6 +478,8 @@ export interface T2VEventMap {
   demoLimitReached: [];
   /** Anonymous sign-in was refused (partner setting, daily anonymous cap, or captcha). */
   anonymousUnavailable: [reason: string];
+  /** A lost chat session was replaced; the turn was resent on the new one. */
+  sessionRecovered: [sessionId: string];
 }
 
 // ── Theme ──
