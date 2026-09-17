@@ -191,6 +191,16 @@ export class T2VAuth {
     return this.signInWithOAuth('google');
   }
 
+  /**
+   * Sign in with Apple via a popup (engine-mediated OAuth). An account made
+   * with Apple in a native app has no password, so on the web this is its only
+   * way in. Needs an engine that offers Apple in the popup flow; an older one
+   * answers the popup with 404 and this rejects when the attempt expires.
+   */
+  async signInWithApple(): Promise<User> {
+    return this.signInWithOAuth('apple');
+  }
+
   async signInWithOAuth(provider: string): Promise<User> {
     if (typeof window === 'undefined') {
       throw new T2VError('OAuth sign-in requires a browser environment');

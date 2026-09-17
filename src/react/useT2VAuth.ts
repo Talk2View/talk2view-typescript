@@ -16,7 +16,11 @@ export interface UseT2VAuthResult {
   logout: () => Promise<void>;
   clearError: () => void;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  /** True while any popup sign-in is open. */
   oauthLoading: boolean;
+  /** Which popup sign-in is open, so a form can mark the right button. */
+  oauthProvider: 'google' | 'apple' | null;
 }
 
 export function useT2VAuth(): UseT2VAuthResult {
@@ -68,19 +72,26 @@ export function useT2VAuth(): UseT2VAuthResult {
     }
   }, [t2v]);
 
-  const signInWithGoogle = useCallback(async () => {
+  const [oauthProvider, setOauthProvider] = useState<'google' | 'apple' | null>(null);
+
+  const signInWithPopup = useCallback(async (provider: 'google' | 'apple') => {
     setOauthLoading(true);
+    setOauthProvider(provider);
     setError(null);
     try {
-      await t2v.auth.signInWithGoogle();
+      await (provider === 'apple' ? t2v.auth.signInWithApple() : t2v.auth.signInWithGoogle());
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Google sign-in failed';
-      setError(message);
+      const fallback = provider === 'apple' ? 'Apple sign-in failed' : 'Google sign-in failed';
+      setError(err instanceof Error ? err.message : fallback);
       throw err;
     } finally {
       setOauthLoading(false);
+      setOauthProvider(null);
     }
   }, [t2v]);
+
+  const signInWithGoogle = useCallback(() => signInWithPopup('google'), [signInWithPopup]);
+  const signInWithApple = useCallback(() => signInWithPopup('apple'), [signInWithPopup]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -94,6 +105,8 @@ export function useT2VAuth(): UseT2VAuthResult {
     logout,
     clearError,
     signInWithGoogle,
+    signInWithApple,
     oauthLoading,
+    oauthProvider,
   };
 }

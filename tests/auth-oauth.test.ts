@@ -71,6 +71,15 @@ describe('signInWithGoogle', () => {
     expect(auth.isAuthenticated()).toBe(true);
   });
 
+  it('signInWithApple opens the Apple start URL and resolves the same way', async () => {
+    stubPopup();
+    const { auth } = makeAuth(['pending', 'ready']);
+    const user = await auth.signInWithApple();
+    const url = String((globalThis.open as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0]);
+    expect(url).toContain('/v1/auth/oauth/apple/start');
+    expect(user.id).toBe('u1');
+  });
+
   it('throws if the popup is blocked', async () => {
     // @ts-expect-error test stub
     globalThis.open = vi.fn(() => null);

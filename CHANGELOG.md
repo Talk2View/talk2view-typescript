@@ -40,6 +40,9 @@
 
 ### Added
 
+#### Sign in with Apple on the web
+`t2v.auth.signInWithApple()`, `signInWithApple` / `oauthProvider` on `useT2VAuth()`, and a "Continue with Apple" button in `<LoginForm>` (above Google, in Apple's black style). An end-user who made their account with Apple in a native app has no password, so this is their only way into a web chat. Needs an engine that offers Apple in the popup flow.
+
 #### New export path: `@talk2view/sdk/ui`
 The chat UI, with no peer dependencies beyond React — no Tailwind, no assistant-ui. (An earlier draft of this entry listed a `T2V*` assistant-ui surface that was never shipped; these are the real exports.)
 

@@ -224,8 +224,10 @@ const {
   signup,            // (email, password) => Promise<{ user, confirmationRequired }>
   logout,            // () => Promise<void>
   clearError,        // () => void
-  signInWithGoogle,  // () => Promise<void> — opens the Google sign-in flow
-  oauthLoading,      // boolean — true while that flow is open
+  signInWithGoogle,  // () => Promise<void> — opens the Google sign-in popup
+  signInWithApple,   // () => Promise<void> — opens the Apple sign-in popup
+  oauthLoading,      // boolean — true while either popup is open
+  oauthProvider,     // 'google' | 'apple' | null — which one
 } = useT2VAuth();
 ```
 
