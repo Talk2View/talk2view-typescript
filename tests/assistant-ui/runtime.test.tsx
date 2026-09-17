@@ -340,6 +340,55 @@ describe('the Talk2View runtime under assistant-ui primitives', () => {
     expect(t2v.tools.register).toHaveBeenCalledTimes(1);
   });
 
+  it('sends the chosen model with each message without recreating the client', async () => {
+    scripted(t2v, [[text('a'), done()], [text('b'), done()]]);
+    const sendSpy = vi.spyOn(t2v, 'sendMessage');
+    let runtime!: AssistantRuntime;
+    function WithModel({ model }: { model?: string }) {
+      const r = useTalk2ViewRuntimeForClient(t2v, { model });
+      useEffect(() => { runtime = r; }, [r]);
+      return (
+        <AssistantRuntimeProvider runtime={r}>
+          <ThreadPrimitive.Root><ThreadPrimitive.Messages components={{ Message }} /></ThreadPrimitive.Root>
+        </AssistantRuntimeProvider>
+      );
+    }
+    const view = render(<WithModel model="gemini-3.8-flash" />);
+    await send(runtime, 'one');
+    await waitFor(() => expect(sendSpy).toHaveBeenLastCalledWith('one', { model: 'gemini-3.8-flash' }));
+    await waitFor(() => expect(runtime.thread.getState().isRunning).toBe(false));
+
+    // The end-user picks another model in settings: same chat, next message uses it.
+    view.rerender(<WithModel model="claude-sonnet-5" />);
+    await send(runtime, 'two');
+    await waitFor(() => expect(sendSpy).toHaveBeenLastCalledWith('two', { model: 'claude-sonnet-5' }));
+    expect(runtime.thread.getState().messages.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('offers dictation to assistant-ui only when asked to', async () => {
+    let runtime!: AssistantRuntime;
+    function WithDictation({ on }: { on: boolean }) {
+      const r = useTalk2ViewRuntimeForClient(t2v, { dictation: on });
+      useEffect(() => { runtime = r; }, [r]);
+      return <AssistantRuntimeProvider runtime={r}><ThreadPrimitive.Root /></AssistantRuntimeProvider>;
+    }
+    const view = render(<WithDictation on={false} />);
+    await waitFor(() => expect(runtime.thread.getState().capabilities.dictation).toBe(false));
+    view.rerender(<WithDictation on />);
+    // The stock Thread renders its mic button off this capability.
+    await waitFor(() => expect(runtime.thread.getState().capabilities.dictation).toBe(true));
+  });
+
+  it('warms the key on the first character typed, once, and not on mount', async () => {
+    const warmUp = vi.spyOn(t2v, 'warmUp').mockResolvedValue(undefined);
+    const { runtime } = mount(t2v);
+    expect(warmUp).not.toHaveBeenCalled();
+
+    act(() => runtime().thread.composer.setText('W'));
+    act(() => runtime().thread.composer.setText('Wh'));
+    expect(warmUp).toHaveBeenCalledTimes(1);
+  });
+
   it('uploads composer attachments and sends them by id', async () => {
     scripted(t2v, [[text('Nice scan.'), done()]]);
     const stored: Attachment = { id: 'att-1', filename: 'scan.png', mime_type: 'image/png', size_bytes: 3 };

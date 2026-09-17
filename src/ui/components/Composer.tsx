@@ -157,6 +157,9 @@ export function Composer() {
       return;
     }
 
+    // Starting to dictate = intent. (Not on the stop tap above.)
+    void t2v.warmUp();
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -292,7 +295,11 @@ export function Composer() {
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            // First character typed = intent; warmUp() dedupes itself.
+            if (!text && e.target.value) void t2v.warmUp();
+            setText(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
           placeholder="Type a message…"

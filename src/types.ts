@@ -361,7 +361,21 @@ export interface TranscriptionResponse {
   text: string;
 }
 
-export type AudioModelsResponse = ModelsResponse;
+/** A speech-to-text model, as listed by GET /v1/audio/models. */
+export interface AudioModel extends Model {
+  /**
+   * ISO 639-1 codes the model can transcribe. Null or absent means
+   * unrestricted — offer your full language list.
+   */
+  supported_languages?: string[] | null;
+  /** Short human blurb (e.g. "Fast voice typing"); null or absent when none. */
+  description?: string | null;
+}
+
+export interface AudioModelsResponse {
+  object: string;
+  data: AudioModel[];
+}
 
 // ── Images (OpenAI Images API shape) ──
 

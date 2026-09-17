@@ -48,9 +48,13 @@ import type {
   T2VConfig,
 } from '../types.js';
 import { toHumanDecision, toThreadMessage } from './convert.js';
+import { createTalk2ViewDictationAdapter, type Talk2ViewDictationOptions } from './dictation.js';
+export type { Talk2ViewDictationClient, Talk2ViewDictationPhase } from './dictation.js';
 
 export { toThreadMessage, toHumanDecision, APPROVAL_OPTION_IDS } from './convert.js';
 export type { ConvertContext } from './convert.js';
+export { createTalk2ViewDictationAdapter, DEFAULT_DICTATION_MODEL } from './dictation.js';
+export type { Talk2ViewDictationOptions } from './dictation.js';
 
 /** Options shared by both forms of the hook. */
 export interface Talk2ViewRuntimeOptions {
@@ -62,6 +66,16 @@ export interface Talk2ViewRuntimeOptions {
    * so an inline array is fine).
    */
   tools?: (ClientToolSchema | ClientTool)[];
+  /**
+   * Model for the next message — for example the end-user's choice from a
+   * settings screen. Unlike the client's `model`, changing it keeps the chat.
+   */
+  model?: string;
+  /**
+   * Turn on assistant-ui's mic button, transcribed by Talk2View. `true` uses
+   * the default speech-to-text model; pass `{ model, language }` to choose.
+   */
+  dictation?: boolean | Talk2ViewDictationOptions;
 }
 
 export interface UseTalk2ViewRuntimeOptions extends T2VConfig, Talk2ViewRuntimeOptions {}
@@ -71,14 +85,16 @@ const CANCELLED_APPROVAL_FEEDBACK = 'Cancelled by the user';
 
 /** Create a Talk2View client and expose it as an assistant-ui runtime. */
 export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): AssistantRuntime {
-  const { systemPrompt, tools, ...config } = options;
-  // Same idea as <T2VProvider>: a new client only when the connection details change.
+  const { systemPrompt, tools, model: messageModel, dictation, ...config } = options;
+  // A new client only when the connection details change. `model` is not one
+  // of them here: it travels with each message, so an end-user can switch
+  // models from a settings screen without losing the chat.
   const t2v = useMemo(
     () => new Talk2View(config),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config.partnerKey, config.baseUrl, config.model, config.debug, config.anonymousAutoStart],
+    [config.partnerKey, config.baseUrl, config.debug, config.anonymousAutoStart],
   );
-  const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools });
+  const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools, model: messageModel, dictation });
   // Declared after the subscriptions above so, on a client swap or unmount,
   // React runs their cleanup first and destroys the client last.
   useEffect(() => () => t2v.destroy(), [t2v]);
@@ -88,7 +104,7 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
 /** Expose an existing client (for example the one from `useT2V()`) as an assistant-ui runtime. */
 export function useTalk2ViewRuntimeForClient(
   t2v: Talk2View,
-  { systemPrompt, tools }: Talk2ViewRuntimeOptions = {},
+  { systemPrompt, tools, model, dictation }: Talk2ViewRuntimeOptions = {},
 ): AssistantRuntime {
   const [messages, setMessages] = useState<DisplayMessage[]>(t2v.messages);
   const [isLoading, setIsLoading] = useState(t2v.isLoading);
@@ -168,6 +184,16 @@ export function useTalk2ViewRuntimeForClient(
     [t2v],
   );
 
+  // One adapter per client; the options are read when a clip is sent, so a
+  // settings change applies to the next dictation without a new runtime.
+  const dictationOptions = useRef<Talk2ViewDictationOptions>({});
+  dictationOptions.current = typeof dictation === 'object' ? dictation : {};
+  const dictationEnabled = Boolean(dictation);
+  const dictationAdapter = useMemo(
+    () => (dictationEnabled ? createTalk2ViewDictationAdapter(t2v, () => dictationOptions.current) : null),
+    [t2v, dictationEnabled],
+  );
+
   // A turn that fails before its first text chunk leaves no assistant message
   // behind (the SDK drops the empty one), and assistant-ui can only show an
   // error on an assistant message — so give it one to show it on.
@@ -200,10 +226,11 @@ export function useTalk2ViewRuntimeForClient(
       });
       await t2v.sendMessage(text, {
         ...(systemPrompt ? { systemPrompt } : {}),
+        ...(model ? { model } : {}),
         ...(files.length ? { attachments: files } : {}),
       });
     },
-    [t2v, systemPrompt],
+    [t2v, systemPrompt, model],
   );
 
   // assistant-ui puts a reload action on every assistant message; the SDK
@@ -246,12 +273,31 @@ export function useTalk2ViewRuntimeForClient(
         if (response.approvalId !== t2v.pendingApproval?.toolCallId) return;
         await t2v.approveToolCall(toHumanDecision(response));
       },
-      adapters: { attachments },
+      adapters: { attachments, ...(dictationAdapter ? { dictation: dictationAdapter } : {}) },
     }),
-    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments],
+    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, dictationAdapter],
   );
 
-  return useExternalStoreRuntime(adapter);
+  const runtime = useExternalStoreRuntime(adapter);
+
+  // First character typed = intent. Mint the end-user's key while they finish
+  // the sentence. Not on mount and not on focus: the composer autofocuses when a
+  // chat opens, and a visitor who opens it and leaves should cost nothing.
+  // A ref, not a local: the effect re-runs under StrictMode and must not
+  // re-arm. It remembers which client it warmed, so a new client gets its own.
+  const warmedFor = useRef<unknown>(null);
+  useEffect(() => {
+    const composer = runtime.thread.composer;
+    const check = () => {
+      if (warmedFor.current === t2v || !composer.getState().text) return;
+      warmedFor.current = t2v;
+      void t2v.warmUp();
+    };
+    check();
+    return composer.subscribe(check);
+  }, [runtime, t2v]);
+
+  return runtime;
 }
 
 let pendingCounter = 0;

@@ -317,7 +317,7 @@ function Chat() {
 }
 ```
 
-`useTalk2ViewRuntime(options)` takes the same connection options as `<T2VProvider>` (`partnerKey`, `baseUrl`, `model`, `debug`, `anonymousAutoStart`) plus `tools` and `systemPrompt`, and creates its own `Talk2View` client — a new one only when one of those five connection options changes (`requestTimeout` is read once, at creation). `tools` are registered with the engine when their schemas change, compared by value, so an inline array is fine.
+`useTalk2ViewRuntime(options)` takes the same connection options as `<T2VProvider>` (`partnerKey`, `baseUrl`, `model`, `debug`, `anonymousAutoStart`) plus `tools` and `systemPrompt`, and creates its own `Talk2View` client — a new one only when `partnerKey`, `baseUrl`, `debug` or `anonymousAutoStart` changes (`requestTimeout` is read once, at creation). `model` is sent with each message rather than baked into the client, so an end-user can switch models from a settings screen without losing the chat. `tools` are registered with the engine when their schemas change, compared by value, so an inline array is fine.
 
 ### `useTalk2ViewRuntimeForClient`
 
@@ -484,6 +484,24 @@ for await (const event of t2v.chat('Zoom in please')) {
   }
 }
 ```
+
+#### `t2v.warmUp()`
+
+A new end-user's first AI call is slower than the rest: the engine sets up their
+account with the model proxy on first use, which takes a few seconds. Call
+`warmUp()` at the first sign they are going to use the chat — their first
+keystroke, a tap on the mic — and that setup happens while they are still typing.
+
+```ts
+input.addEventListener('input', () => t2v.warmUp(), { once: true });
+```
+
+It is safe to call repeatedly (one request per signed-in end-user), never
+throws, and is a no-op against an engine that predates it. Don't call it when
+the chat merely opens: for a logged-out visitor it starts an anonymous session,
+which counts toward your daily anonymous cap.
+
+`<ChatWidget>`, `<ChatPanel>` and the assistant-ui runtime already do this.
 
 #### `t2v.clearSession()`
 

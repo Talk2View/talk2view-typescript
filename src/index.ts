@@ -171,6 +171,7 @@ export class Talk2View {
       this.invalidateConfigCache();
       const userId = user?.id ?? null;
       if (userId !== this._authUserId) {
+        this._warmUp = null; // a different end-user has a different key
         this._authUserId = userId;
         this.resetSessionForIdentityChange();
       }
@@ -221,8 +222,66 @@ export class Talk2View {
    * signing in can fix: `anonymousUnavailable` is emitted, and the caller must
    * not send anything.
    */
-  private async autoStartAnonymous(): Promise<boolean> {
-    if (hasValidTokens() || this.config.anonymousAutoStart === false) return true;
+  private autoStartAnonymous(): Promise<boolean> {
+    if (hasValidTokens() || this.config.anonymousAutoStart === false) return Promise.resolve(true);
+    // Shared: callers that arrive together (the two model lists, a message and
+    // an upload) must not each create a guest account.
+    this._anonymousStart ??= this.startAnonymousOnce().finally(() => {
+      this._anonymousStart = null;
+    });
+    return this._anonymousStart;
+  }
+
+  private _anonymousStart: Promise<boolean> | null = null;
+
+  /**
+   * Make sure there is a session to send with — starting the anonymous one if
+   * nothing is signed in and auto-start is on. Every call that needs auth does
+   * this itself; call it early (when a mic or a composer opens) to take the
+   * round trip off the end-user's first real action. Resolves false when the
+   * partner refuses anonymous access and the end-user has to sign in.
+   */
+  ensureSession(): Promise<boolean> {
+    return this.autoStartAnonymous();
+  }
+
+  private _warmUp: Promise<void> | null = null;
+
+  /**
+   * Ask the engine to get this end-user ready for their first AI call. A new
+   * end-user's virtual key is minted on first use and that takes seconds; call
+   * this at the first sign of intent — a first keystroke, a mic tap — so it
+   * happens while they are still typing or talking. Not on chat open: a visitor
+   * who opens the chat and leaves should cost nothing.
+   *
+   * Safe to call as often as you like: one request per signed-in identity, and
+   * it never rejects (an engine without the endpoint is a silent no-op).
+   */
+  warmUp(): Promise<void> {
+    if (this._warmUp) return this._warmUp;
+    // Declared first so the body can name its own promise; it only does so
+    // after an await, by which time the assignment below has happened.
+    let run!: Promise<void>;
+    run = (async () => {
+      try {
+        const loggedOut = !hasValidTokens();
+        if (loggedOut && this.config.anonymousAutoStart === false) return;
+        if (!(await this.autoStartAnonymous())) return;
+        // Starting logged out, our own anonymous sign-in just fired the
+        // identity-change handler, which forgot this run; it is still the run
+        // for this end-user. Already signed in, nothing of ours fires it — so a
+        // cleared cache there means a genuinely different end-user: leave it.
+        if (loggedOut) this._warmUp = run;
+        await this.client.request('/v1/account/warm', { method: 'POST' });
+      } catch {
+        // Best effort. The first real request mints the key itself.
+      }
+    })();
+    this._warmUp = run;
+    return this._warmUp;
+  }
+
+  private async startAnonymousOnce(): Promise<boolean> {
     try {
       await this.auth.startAnonymous();
     } catch (err) {
@@ -327,9 +386,20 @@ export class Talk2View {
   }
 
   /**
+   * The model lists need auth, and a settings screen can be the first thing a
+   * logged-out visitor opens — mirror chat()'s anonymous auto-start.
+   */
+  private async requireSessionForList(): Promise<void> {
+    if (!(await this.autoStartAnonymous())) {
+      throw new T2VError('Sign in to see the available models.', 'sign_in_required');
+    }
+  }
+
+  /**
    * List available LLM models.
    */
   async listModels(): Promise<ModelsResponse> {
+    await this.requireSessionForList();
     return this.client.request<ModelsResponse>('/v1/models');
   }
 
@@ -337,6 +407,11 @@ export class Talk2View {
    * Transcribe audio via the engine's /v1/audio/transcriptions endpoint.
    */
   async transcribe(formData: FormData): Promise<TranscriptionResponse> {
+    // Transcription needs auth, and the mic can be a visitor's first action —
+    // mirror chat()'s and uploadAttachment()'s anonymous auto-start.
+    if (!(await this.autoStartAnonymous())) {
+      throw new T2VError('Sign in to use dictation.', 'sign_in_required');
+    }
     return this.client.uploadRequest<TranscriptionResponse>('/v1/audio/transcriptions', formData);
   }
 
@@ -375,6 +450,7 @@ export class Talk2View {
    * List available speech-to-text models.
    */
   async listAudioModels(): Promise<AudioModelsResponse> {
+    await this.requireSessionForList();
     return this.client.request<AudioModelsResponse>('/v1/audio/models');
   }
 
@@ -923,6 +999,7 @@ export type {
   PermissionCheckResult,
   ToolPermissionCallback,
   Model,
+  AudioModel,
   ModelsResponse,
   TranscriptionResponse,
   AudioModelsResponse,

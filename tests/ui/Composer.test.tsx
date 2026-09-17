@@ -5,11 +5,12 @@ import { vi } from 'vitest';
 const stop = vi.fn();
 const sendMessage = vi.fn();
 const uploadAttachment = vi.fn();
+const warmUp = vi.fn();
 let isLoading = false;
 
 vi.mock('../../src/ui/context', () => ({
   useChat: () => ({ sendMessage, isLoading, stop }),
-  useTalk2View: () => ({ t2v: { transcribe: vi.fn(), uploadAttachment } }),
+  useTalk2View: () => ({ t2v: { transcribe: vi.fn(), uploadAttachment, warmUp } }),
 }));
 vi.mock('../../src/react/useUserPreferences', () => ({
   useUserPreferences: () => ({ preferences: {} }),
@@ -24,6 +25,16 @@ describe('Composer send/stop button', () => {
   beforeEach(() => {
     stop.mockClear();
     sendMessage.mockClear();
+    warmUp.mockClear();
+  });
+
+  it('warms the key on the first character typed, once, and not on render', () => {
+    const { getByRole } = render(React.createElement(Composer));
+    expect(warmUp).not.toHaveBeenCalled();
+    const box = getByRole('textbox');
+    fireEvent.change(box, { target: { value: 'W' } });
+    fireEvent.change(box, { target: { value: 'Wh' } });
+    expect(warmUp).toHaveBeenCalledTimes(1);
   });
 
   it('shows a Send button (not Stop) when idle', () => {

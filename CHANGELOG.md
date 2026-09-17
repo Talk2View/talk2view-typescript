@@ -62,6 +62,10 @@ A runtime for [assistant-ui](https://www.assistant-ui.com), separate from `/ui`'
 - `Talk2View.chat()` and `T2VSession.sendMessage()` accept `model` option
 - Model priority chain: user preference > partner default > provider prop > server default
 - `SettingsView` accepts `hideHeader` prop for embedding in containers with their own header
+- `t2v.warmUp()` — sets a new end-user up with the model proxy ahead of their first AI call, so that call no longer waits 2–5 s for it. The first-party UI and the assistant-ui runtime call it on the first keystroke and on mic tap. Needs an engine with `POST /v1/account/warm`; a no-op otherwise.
+- `t2v.ensureSession()` — start the anonymous session early.
+- assistant-ui dictation: `onPhaseChange` (`listening` / `transcribing` / `idle`), the partner's default voice model when none is chosen, and the microphone released as soon as recording stops.
+- `AudioModel.supported_languages` / `description` on `listAudioModels()`.
 
 ### Changed
 
