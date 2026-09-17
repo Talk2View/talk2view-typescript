@@ -1,27 +1,21 @@
 /**
- * Talk2View + assistant-ui integration example.
+ * Talk2View + stock assistant-ui integration example.
  *
- * Demonstrates:
- * 1. Talk2View — combined provider (auth + runtime + tools)
- * 2. T2VLoginGate — shows login form when unauthenticated
- * 3. ChatPanel — inline chat thread
- * 4. ChatWidget — floating chat widget (bottom-right button)
- * 5. Client-side tools with human-in-the-loop approval
- *
- * Toggle between Thread (inline) and Modal (floating widget) modes
- * using the buttons at the top.
+ * The point of this example: nothing here is Talk2View UI. `<Thread />` is
+ * the unmodified assistant-ui component the shadcn registry generated
+ * (`src/components/assistant-ui/`) — the same component any assistant-ui
+ * app would render. `useTalk2ViewRuntime` is the only Talk2View-specific
+ * line: it plugs the SDK in at assistant-ui's runtime seam so the stock
+ * Thread streams replies, runs client tools, and shows tool approvals
+ * without any custom rendering code.
  */
 
-import { useState } from 'react';
-import {
-  Talk2View,
-  ChatPanel,
-  ChatWidget,
-} from '@talk2view/sdk/ui';
+import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { useTalk2ViewRuntime } from '@talk2view/sdk/assistant-ui';
 import type { ClientTool } from '@talk2view/sdk';
+import { Thread } from '@/components/assistant-ui/elements/thread.aui';
 
-// ── Client-side tools ──
-
+// Define tools that the AI agent can call in your application
 const tools: ClientTool[] = [
   {
     name: 'show_notification',
@@ -31,15 +25,12 @@ const tools: ClientTool[] = [
       properties: {
         title: { type: 'string', description: 'Notification title' },
         message: { type: 'string', description: 'Notification message' },
-        type: {
-          type: 'string',
-          description: 'Notification type',
-          enum: ['info', 'success', 'warning', 'error'],
-        },
+        type: { type: 'string', description: 'Notification type', enum: ['info', 'success', 'warning', 'error'] },
       },
       required: ['title', 'message'],
     },
     execute: async (args) => {
+      // This runs in YOUR application — do whatever you want
       alert(`${args.title}: ${args.message}`);
       return JSON.stringify({ success: true, message: 'Notification shown' });
     },
@@ -60,6 +51,7 @@ const tools: ClientTool[] = [
     },
   },
   {
+    // Static permission: always requires human approval (shows approval card)
     name: 'send_email',
     description: 'Send an email on behalf of the user',
     parameters: {
@@ -71,91 +63,30 @@ const tools: ClientTool[] = [
       },
       required: ['to', 'subject', 'body'],
     },
-    permission: true, // Always requires human approval
+    permission: true,
     execute: async (args) => {
+      // In a real app, this would send an email via your backend
       console.log('Sending email to:', args.to, 'subject:', args.subject);
       return JSON.stringify({ success: true, sent_to: args.to });
     },
   },
 ];
 
-// ── App ──
-
-type Mode = 'modal' | 'thread';
+const partnerKey = import.meta.env.VITE_T2V_PARTNER_KEY ?? 'pk_test_example';
+const baseUrl = import.meta.env.VITE_T2V_BASE_URL;
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>('modal');
+  const runtime = useTalk2ViewRuntime({
+    partnerKey,
+    ...(baseUrl ? { baseUrl } : {}),
+    tools,
+  });
 
   return (
-    <Talk2View
-      partnerKey="pk_test_ex_reactbasic_local_dev_12345"
-      baseUrl=""
-      tools={tools}
-    >
-      <div style={{ fontFamily: 'system-ui, sans-serif', height: '100vh', display: 'flex' }}>
-        {/* Left panel — your app */}
-        <div style={{ flex: 1, padding: '32px', overflow: 'auto' }}>
-          <h1 style={{ marginTop: 0 }}>My Application</h1>
-          <p style={{ color: '#666' }}>
-            {mode === 'modal'
-              ? 'Click the chat button in the bottom-right corner to open Talk2View.'
-              : 'The Talk2View chat thread is inline on the right.'}
-          </p>
-
-          {/* Mode toggle */}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '24px' }}>
-            <button
-              onClick={() => setMode('modal')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '6px',
-                border: '1px solid #e0e0e0',
-                background: mode === 'modal' ? '#40D4B6' : '#fff',
-                color: mode === 'modal' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              Floating Modal
-            </button>
-            <button
-              onClick={() => setMode('thread')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '6px',
-                border: '1px solid #e0e0e0',
-                background: mode === 'thread' ? '#40D4B6' : '#fff',
-                color: mode === 'thread' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              Inline Thread
-            </button>
-          </div>
-
-          <div style={{ marginTop: '24px', color: '#888', fontSize: '14px' }}>
-            <p>Try asking the agent to:</p>
-            <ul>
-              <li>Show a notification</li>
-              <li>Get the current page info</li>
-              <li>Send an email (requires approval)</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Right panel — inline ChatPanel mode */}
-        {mode === 'thread' && (
-          <div style={{ width: '420px', borderLeft: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column' }}>
-            <ChatPanel welcome={{ heading: 'Hi! I can show notifications, check the page, or send emails. What would you like?' }} />
-          </div>
-        )}
-      </div>
-
-      {/* Floating modal — renders a fixed-position button + popover */}
-      {mode === 'modal' && (
-        <ChatWidget welcome={{ heading: 'Hi! I can show notifications, check the page, or send emails.' }} />
-      )}
-    </Talk2View>
+    <div style={{ height: '100vh' }}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <Thread />
+      </AssistantRuntimeProvider>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 {
   "name": "@talk2view/sdk",
   "version": "0.14.0",
-  "description": "Talk2View SDK — Add AI-powered natural language control to any application",
+  "description": "Talk2View SDK \u2014 Add AI-powered natural language control to any application",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,6 +20,11 @@
       "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
+    },
+    "./assistant-ui": {
+      "types": "./dist/assistant-ui/index.d.ts",
+      "import": "./dist/assistant-ui/index.js",
+      "default": "./dist/assistant-ui/index.js"
     }
   },
   "typesVersions": {
@@ -29,6 +34,9 @@
       ],
       "ui": [
         "./dist/ui/index.d.ts"
+      ],
+      "assistant-ui": [
+        "./dist/assistant-ui/index.d.ts"
       ]
     }
   },
@@ -42,6 +50,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e:assistant-ui": "playwright test --config playwright.assistant-ui.config.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
@@ -56,6 +65,7 @@
     "rollup": "^4.62.0"
   },
   "devDependencies": {
+    "@assistant-ui/react": "^0.15.20",
     "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.0.0",
     "@types/dompurify": "^3.0.5",
@@ -68,13 +78,17 @@
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "@assistant-ui/react": "^0.15.0"
   },
   "peerDependenciesMeta": {
     "react": {
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "@assistant-ui/react": {
       "optional": true
     }
   },

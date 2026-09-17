@@ -54,6 +54,9 @@ The chat UI, with no peer dependencies beyond React — no Tailwind, no assistan
 
 **Utilities:** `renderSafeMarkdown`, `groupModelsByProvider`, `providerTitle`, `UNKNOWN_PROVIDER_KEY`, `THEME_DEFAULTS`, `LOGOS`
 
+#### New export path: `@talk2view/sdk/assistant-ui`
+A runtime for [assistant-ui](https://www.assistant-ui.com), separate from `/ui`'s own chat components: `useTalk2ViewRuntime(options)` and `useTalk2ViewRuntimeForClient(t2v, options)` return an `AssistantRuntime` (built on `useExternalStoreRuntime`) so the stock `<Thread />` — installed from assistant-ui's shadcn registry, unmodified — renders Talk2View's streaming replies, client tools, tool approvals (`allow-once`/`allow-always`/`reject-once` plus a free-form reason), attachments, stop and retry. `@assistant-ui/react` (`^0.15.0`) is an optional peer dependency, loaded only by this entry point — the root, `/react` and `/ui` bundles are unchanged. This is a different, minimal integration from the `T2V*` assistant-ui wrapper surface removed below: no custom components, just the runtime seam. See `examples/react-assistant-ui` and the README's "assistant-ui" section.
+
 #### Core SDK additions
 - `useT2VChat` now accepts `model` option to override the LLM model per-session
 - `Talk2View.chat()` and `T2VSession.sendMessage()` accept `model` option

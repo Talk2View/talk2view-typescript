@@ -102,6 +102,23 @@ export async function mockAllApiRoutes(page: Page): Promise<MockControls> {
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
+  // POST /v1/auth/anonymous — used by apps (like the assistant-ui example)
+  // that never render a login form: Talk2View.chat() auto-starts an
+  // anonymous session on the first message when nothing is authenticated.
+  await page.route('**/v1/auth/anonymous', (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: 'fake_anonymous_access_token',
+        refresh_token: 'fake_anonymous_refresh_token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        user: { id: 'anon_1', email: '' },
+      }),
+    });
+  });
+
   // GET /v1/config
   await page.route('**/v1/config', (route) => {
     route.fulfill({
