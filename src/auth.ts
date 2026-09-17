@@ -21,6 +21,8 @@ import type { LoginRequest, SignupOutcome, SignupRequest, TokenResponse, User } 
 
 type AuthStateCallback = (user: User | null) => void;
 
+export type PopupProvider = 'google' | 'apple';
+
 interface ConvertResponse {
   id: string;
   email: string | null;
@@ -186,6 +188,61 @@ export class T2VAuth {
   // attempt with a stale "expired"/"window closed" error.
   private oauthAbort?: AbortController;
 
+  // Cached across calls so mounting several forms on one page only asks the
+  // engine once. Never reset — the answer for this page load doesn't change.
+  private popupProviders: Promise<PopupProvider[]> | null = null;
+
+  /**
+   * Which popup sign-ins work from this page. They work on any https:// website;
+   * on one the partner has not registered, the end-user first sees a Talk2View
+   * screen naming the site (the partner's key is public — this is what stops
+   * another site quietly using it). Partners who only allow their registered
+   * websites get an empty list elsewhere. Never rejects.
+   */
+  getPopupProviders(): Promise<PopupProvider[]> {
+    this.popupProviders ??= this.client
+      .request<{ providers: PopupProvider[]; listed?: boolean; reason: string | null }>(
+        '/v1/auth/oauth/providers',
+        {},
+        false,
+      )
+      .then((res) => {
+        if (typeof window !== 'undefined') {
+          const here = window.location.origin;
+          const where = 'Settings → Allowed websites in the Talk2View dashboard';
+          if (res.providers.length === 0 && res.reason === 'referrer_blocked') {
+            console.info(
+              `[Talk2View] Google and Apple sign-in are hidden on ${here}: this page sends no Referer ` +
+                'header, and the engine uses it to confirm which website opened the sign-in window. ' +
+                'Set `Referrer-Policy: strict-origin-when-cross-origin` (the browser default) on the ' +
+                'page that hosts the chat. Email and password sign-in is unaffected.',
+            );
+          } else if (res.providers.length === 0 && res.reason === 'origin_not_registered') {
+            console.info(
+              `[Talk2View] Google and Apple sign-in are hidden on ${here}. Popup sign-in needs an ` +
+                `https:// website (never localhost), and this partner only allows the websites it has ` +
+                `registered — add this one under ${where}. Email and password sign-in is unaffected.`,
+            );
+          } else if (res.providers.length > 0 && res.listed === false) {
+            console.info(
+              `[Talk2View] Google and Apple sign-in work on ${here}, but your users first see a ` +
+                `Talk2View screen asking them to confirm this website. Add it under ${where} to remove that screen.`,
+            );
+          }
+        }
+        return res.providers;
+      })
+      .catch((err: unknown): PopupProvider[] => {
+        // An engine that predates this endpoint offered Google unconditionally.
+        if (err instanceof T2VError && err.statusCode === 404) return ['google'];
+        // Anything else (offline, a 5xx) says nothing about this website: offer
+        // nothing now, but let the next form that mounts ask again.
+        this.popupProviders = null;
+        return [];
+      });
+    return this.popupProviders;
+  }
+
   /** Sign in with Google via a popup (engine-mediated OAuth). */
   async signInWithGoogle(): Promise<User> {
     return this.signInWithOAuth('google');
@@ -256,8 +313,15 @@ export class T2VAuth {
     // we poll until ready, the txn expires (→ 410 after it was seen), or the
     // 180s deadline (which matches the server-side txn TTL).
     let sawTxn = false;
+    // A sign-in that never starts — the popup was refused, or closed on the
+    // engine's check screen — never gets a transaction, so every poll is a 410.
+    // Long enough to read the check screen; far short of the full deadline.
+    const neverStartedMs = Date.now() + 90_000;
     while (Date.now() < deadlineMs) {
       if (signal.aborted) throw new AuthenticationError('Sign-in was cancelled.');
+      if (!sawTxn && Date.now() > neverStartedMs) {
+        throw new AuthenticationError('Sign-in didn’t start. Close the sign-in window and try again.');
+      }
 
       let ready: TokenResponse | null = null;
       let missing = false;
@@ -287,7 +351,7 @@ export class T2VAuth {
       await this.sleep(missing ? 400 : delay, signal);
       if (!missing) delay = Math.min(delay * 1.5, 4000);
     }
-    throw new AuthenticationError('Google sign-in timed out.');
+    throw new AuthenticationError('Sign-in timed out. Please try again.');
   }
 
   /** Abortable delay used by the OAuth poll loop. */

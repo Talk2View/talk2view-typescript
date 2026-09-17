@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Google / Apple sign-in work on every website by default. On a website the partner has not registered, the end-user first sees a Talk2View screen naming the site; registering it (dashboard → Settings → Allowed websites) removes that screen. `<LoginForm>` asks the engine what is available from the current page (`t2v.auth.getPopupProviders()`, `oauthProviders` on `useT2VAuth()`), hides the buttons only where the partner allows registered websites alone, and logs one console line telling the developer what to register.
+
 ### Security
 
 - **Model replies render as markdown only** (`docs/adr/0009-model-replies-render-as-markdown-only.md`). `<ChatPanel>` and the new `renderSafeMarkdown()` export from `@talk2view/sdk/ui` now:

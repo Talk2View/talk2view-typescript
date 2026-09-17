@@ -29,10 +29,18 @@ export function LoginForm({
   termsUrl = 'https://talk2view.com/legal/terms-of-use',
   privacyUrl = 'https://talk2view.com/legal/privacy-policy',
 }: LoginFormProps) {
-  const { login, signup, isLoading, error, clearError, signInWithGoogle, signInWithApple, oauthLoading, oauthProvider } = useT2VAuth();
+  const { login, signup, isLoading, error, clearError, signInWithGoogle, signInWithApple, oauthLoading, oauthProvider, oauthProviders } = useT2VAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>(defaultMode ?? 'login');
+
+  // `oauthProviders` is null while the SDK is still asking the engine which
+  // popups can work on this website. Render neither button during that beat —
+  // a form that grows a button a moment later beats one that shows it and then
+  // takes it away. Treat undefined (an older/incomplete mock) the same as null.
+  const showApple = oauthProviders?.includes('apple') ?? false;
+  const showGoogle = oauthProviders?.includes('google') ?? false;
+  const showOAuthSection = showApple || showGoogle;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,53 +79,61 @@ export function LoginForm({
         </div>
       )}
       {/* Apple first: its guidelines ask that it be no less prominent than any
-          other sign-in option, and their black button style is mandatory. */}
-      <button
-        type="button"
-        onClick={() => { clearError(); void signInWithApple().catch(() => {}); }}
-        disabled={oauthLoading || isLoading}
-        className="t2v-btn"
-        style={{
-          width: '100%', maxWidth: 280, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', gap: 8, padding: '10px',
-          border: '1.5px solid #000', borderRadius: 'var(--t2v-radius-sm)',
-          background: '#000', color: '#fff',
-          fontFamily: 'var(--t2v-font)', fontSize: 14, fontWeight: 500,
-          cursor: oauthLoading ? 'wait' : 'pointer', opacity: oauthLoading ? 0.6 : 1,
-        }}
-      >
-        <svg width="14" height="17" viewBox="0 0 14 17" aria-hidden="true" fill="currentColor">
-          <path d="M11.62 9.03c-.02-1.9 1.55-2.81 1.62-2.86-.88-1.29-2.26-1.47-2.75-1.49-1.17-.12-2.28.69-2.88.69-.59 0-1.51-.67-2.48-.65-1.28.02-2.45.74-3.11 1.88-1.33 2.3-.34 5.7.95 7.57.63.91 1.38 1.94 2.37 1.9.95-.04 1.31-.61 2.46-.61 1.15 0 1.47.61 2.48.59 1.02-.02 1.67-.93 2.3-1.85.72-1.06 1.02-2.08 1.04-2.13-.02-.01-1.99-.76-2.01-3.04zM9.73 3.43c.52-.64.88-1.52.78-2.4-.76.03-1.67.5-2.21 1.14-.49.56-.91 1.46-.8 2.32.84.07 1.71-.43 2.23-1.06z"/>
-        </svg>
-        {oauthProvider === 'apple' ? 'Opening…' : 'Continue with Apple'}
-      </button>
-      <button
-        type="button"
-        onClick={() => { clearError(); void signInWithGoogle().catch(() => {}); }}
-        disabled={oauthLoading || isLoading}
-        className="t2v-btn"
-        style={{
-          width: '100%', maxWidth: 280, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', gap: 8, padding: '10px',
-          border: '1.5px solid var(--t2v-border)', borderRadius: 'var(--t2v-radius-sm)',
-          background: 'var(--t2v-bg)', color: 'var(--t2v-foreground)',
-          fontFamily: 'var(--t2v-font)', fontSize: 14, fontWeight: 500,
-          cursor: oauthLoading ? 'wait' : 'pointer', opacity: oauthLoading ? 0.6 : 1,
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
-          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-        </svg>
-        {oauthProvider === 'google' ? 'Opening…' : 'Continue with Google'}
-      </button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 280 }}>
-        <span style={{ flex: 1, height: 1, background: 'var(--t2v-border)' }} />
-        <span style={{ fontSize: 12, color: 'var(--t2v-muted)' }}>or</span>
-        <span style={{ flex: 1, height: 1, background: 'var(--t2v-border)' }} />
-      </div>
+          other sign-in option, and their black button style is mandatory.
+          Rendered only once we know Apple sign-in works from this website —
+          the engine only allows the popup from a registered origin. */}
+      {showApple && (
+        <button
+          type="button"
+          onClick={() => { clearError(); void signInWithApple().catch(() => {}); }}
+          disabled={oauthLoading || isLoading}
+          className="t2v-btn"
+          style={{
+            width: '100%', maxWidth: 280, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 8, padding: '10px',
+            border: '1.5px solid #000', borderRadius: 'var(--t2v-radius-sm)',
+            background: '#000', color: '#fff',
+            fontFamily: 'var(--t2v-font)', fontSize: 14, fontWeight: 500,
+            cursor: oauthLoading ? 'wait' : 'pointer', opacity: oauthLoading ? 0.6 : 1,
+          }}
+        >
+          <svg width="14" height="17" viewBox="0 0 14 17" aria-hidden="true" fill="currentColor">
+            <path d="M11.62 9.03c-.02-1.9 1.55-2.81 1.62-2.86-.88-1.29-2.26-1.47-2.75-1.49-1.17-.12-2.28.69-2.88.69-.59 0-1.51-.67-2.48-.65-1.28.02-2.45.74-3.11 1.88-1.33 2.3-.34 5.7.95 7.57.63.91 1.38 1.94 2.37 1.9.95-.04 1.31-.61 2.46-.61 1.15 0 1.47.61 2.48.59 1.02-.02 1.67-.93 2.3-1.85.72-1.06 1.02-2.08 1.04-2.13-.02-.01-1.99-.76-2.01-3.04zM9.73 3.43c.52-.64.88-1.52.78-2.4-.76.03-1.67.5-2.21 1.14-.49.56-.91 1.46-.8 2.32.84.07 1.71-.43 2.23-1.06z"/>
+          </svg>
+          {oauthProvider === 'apple' ? 'Opening…' : 'Continue with Apple'}
+        </button>
+      )}
+      {showGoogle && (
+        <button
+          type="button"
+          onClick={() => { clearError(); void signInWithGoogle().catch(() => {}); }}
+          disabled={oauthLoading || isLoading}
+          className="t2v-btn"
+          style={{
+            width: '100%', maxWidth: 280, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 8, padding: '10px',
+            border: '1.5px solid var(--t2v-border)', borderRadius: 'var(--t2v-radius-sm)',
+            background: 'var(--t2v-bg)', color: 'var(--t2v-foreground)',
+            fontFamily: 'var(--t2v-font)', fontSize: 14, fontWeight: 500,
+            cursor: oauthLoading ? 'wait' : 'pointer', opacity: oauthLoading ? 0.6 : 1,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          {oauthProvider === 'google' ? 'Opening…' : 'Continue with Google'}
+        </button>
+      )}
+      {showOAuthSection && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 280 }}>
+          <span style={{ flex: 1, height: 1, background: 'var(--t2v-border)' }} />
+          <span style={{ fontSize: 12, color: 'var(--t2v-muted)' }}>or</span>
+          <span style={{ flex: 1, height: 1, background: 'var(--t2v-border)' }} />
+        </div>
+      )}
       <p style={{ fontSize: 11, color: 'var(--t2v-muted)', maxWidth: 280, textAlign: 'center' }}>
         By continuing you agree to the{' '}
         <a href={termsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--t2v-accent)' }}>Terms</a>{' '}

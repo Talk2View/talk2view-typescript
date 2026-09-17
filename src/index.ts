@@ -966,6 +966,7 @@ export class Talk2View {
 
 // Re-export types and classes for consumers
 export { T2VAuth } from './auth.js';
+export type { PopupProvider } from './auth.js';
 export { T2VClient } from './client.js';
 export { T2VSession } from './sessions.js';
 export { T2VSkills } from './skills.js';

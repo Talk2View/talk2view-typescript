@@ -228,10 +228,13 @@ const {
   signInWithApple,   // () => Promise<void> — opens the Apple sign-in popup
   oauthLoading,      // boolean — true while either popup is open
   oauthProvider,     // 'google' | 'apple' | null — which one
+  oauthProviders,    // ('google' | 'apple')[] | null — popup sign-ins available on this website; null while loading
 } = useT2VAuth();
 ```
 
 `signup()` resolves to a `SignupOutcome`: `{ user: User | null; confirmationRequired: boolean }`. When your project has email confirmation switched on, `confirmationRequired` is `true` and `user` is `null` until the person clicks the link in their inbox.
+
+Google and Apple sign-in open a popup and work on any `https://` website, with nothing to configure — your users have Talk2View accounts, and the sign-in form is the same in every app. Your publishable key is public, though, so on a website you have **not** registered your users first see a Talk2View screen naming the site that is asking, and press Continue. Add your site under **Settings → Allowed websites** in the dashboard (the exact `https://` address, nothing after the domain) and that screen goes away; the SDK logs one line to the console when it applies. If your account is set to allow only registered websites, `<LoginForm>` hides the two buttons elsewhere. Popup sign-in never runs on `localhost`; use email and password while developing.
 
 ### `useT2VChat()`
 

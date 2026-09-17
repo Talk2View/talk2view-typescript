@@ -95,6 +95,19 @@ describe('signInWithGoogle', () => {
     expect(user.id).toBe('u1');
   });
 
+  it('gives up after 90 seconds on a sign-in that never started, and says so', async () => {
+    // The popup was refused (a blocked Referer, a strict partner) or closed on
+    // the check screen: the engine never creates the transaction, so every poll
+    // is a 410. That used to spin for the full three minutes and then claim a
+    // timeout.
+    stubPopup();
+    const { auth } = makeAuth(['gone']);
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1_000));
+    await expect(auth.signInWithGoogle()).rejects.toThrow(/didn’t start/i);
+    expect(now - 1_000_000).toBeLessThan(120_000);
+  });
+
   it('treats a 410 AFTER the txn was seen as expired (terminal)', async () => {
     stubPopup();
     const { auth } = makeAuth(['pending', 'gone']);

@@ -2,7 +2,8 @@
  * useT2VAuth — React hook for Talk2View authentication.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { PopupProvider } from '../auth.js';
 import type { SignupOutcome, User } from '../types.js';
 import { useT2V } from './T2VProvider.js';
 
@@ -21,6 +22,8 @@ export interface UseT2VAuthResult {
   oauthLoading: boolean;
   /** Which popup sign-in is open, so a form can mark the right button. */
   oauthProvider: 'google' | 'apple' | null;
+  /** Which popup sign-ins work from this website. `null` while it is finding out. */
+  oauthProviders: PopupProvider[] | null;
 }
 
 export function useT2VAuth(): UseT2VAuthResult {
@@ -95,6 +98,18 @@ export function useT2VAuth(): UseT2VAuthResult {
 
   const clearError = useCallback(() => setError(null), []);
 
+  const [oauthProviders, setOauthProviders] = useState<PopupProvider[] | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void t2v.auth.getPopupProviders().then((providers) => {
+      if (mounted) setOauthProviders(providers);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [t2v]);
+
   return {
     user,
     isAuthenticated,
@@ -108,5 +123,6 @@ export function useT2VAuth(): UseT2VAuthResult {
     signInWithApple,
     oauthLoading,
     oauthProvider,
+    oauthProviders,
   };
 }
