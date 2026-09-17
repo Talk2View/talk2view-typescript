@@ -1,7 +1,7 @@
 {
   "name": "@talk2view/sdk",
-  "version": "0.14.0",
-  "description": "Talk2View SDK \u2014 Add AI-powered natural language control to any application",
+  "version": "0.15.0",
+  "description": "Talk2View SDK — Add AI-powered natural language control to any application",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
