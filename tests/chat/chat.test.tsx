@@ -141,6 +141,24 @@ describe('<Talk2ViewChat>', () => {
     expect(sendMessage.mock.calls[0]?.[0]).toBe('A');
   });
 
+  it('starts a new conversation from the header, instead of silently doing nothing', async () => {
+    // The external store has to declare `onSwitchToNewThread`. Without it
+    // assistant-ui throws "External store adapter does not support switching
+    // to new thread", catches it, logs it, and the button does nothing at all
+    // — which is exactly how it shipped and how a visitor found it.
+    const t2v = client();
+    const cleared = vi.spyOn(t2v, 'clearMessages');
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help you today/i });
+
+    const newThread = await screen.findByRole('button', { name: /new thread/i });
+    await act(async () => {
+      fireEvent.click(newThread);
+    });
+
+    await waitFor(() => expect(cleared).toHaveBeenCalled());
+  });
+
   it('sends `systemPrompt` with the message, and nothing when there is none', async () => {
     // A runtime option, not a connection one: it rides on each message, which is
     // why changing it does not rebuild the client or drop the conversation.

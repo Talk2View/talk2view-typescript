@@ -296,6 +296,18 @@ export function useTalk2ViewRuntimeForClient(
       adapters: {
         ...(attachmentsEnabled ? { attachments } : {}),
         ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
+        // The header's "New Thread" control. The runtime reads this from
+        // `adapters.threadList`, not from the root, and without it it throws
+        // "External store adapter does not support switching to new thread",
+        // catches it, logs it, and the button does nothing at all — which is
+        // how it shipped. `clearMessages()` is what the first-party panel's
+        // New chat always did: it drops the messages, the history and the
+        // thread id, and ends the engine-side session.
+        threadList: {
+          onSwitchToNewThread: () => {
+            t2v.clearMessages();
+          },
+        },
       },
     }),
     [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, attachmentsEnabled, dictationAdapter],
