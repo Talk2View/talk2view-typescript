@@ -23,10 +23,26 @@ export interface T2VProviderProps extends T2VConfig {
 }
 
 export function T2VProvider({ children, ...config }: T2VProviderProps) {
-  const t2v = useMemo(() => new Talk2View(config), [config.partnerKey, config.baseUrl, config.model, config.debug]);
+  // React invokes this factory TWICE per mount under StrictMode — the default in
+  // Vite, CRA and Next.js — and keeps only one of the two clients. The other is
+  // unreachable from the effect below and could never take its window listeners
+  // off again, so every client built here starts asleep and the effect wakes the
+  // survivor. Auth events only matter to a mounted provider, and the gap between
+  // render and effect is one commit long.
+  const t2v = useMemo(() => {
+    const made = new Talk2View(config);
+    made.auth.destroy();
+    return made;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.partnerKey, config.baseUrl, config.model, config.debug]);
   const [user, setUser] = useState<User | null>(() => t2v.auth.getUser());
 
   useEffect(() => {
+    // Setup wakes it, cleanup puts it back to sleep, both ways round and any
+    // number of times: StrictMode runs this as setup → cleanup → setup, and a
+    // cleanup that only tore listeners off would leave the surviving client deaf
+    // to cross-tab sign-out and to `clearAuth()` for the rest of the session.
+    t2v.auth.listen();
     const unsubscribe = t2v.auth.onAuthStateChange((newUser) => {
       setUser(newUser);
     });

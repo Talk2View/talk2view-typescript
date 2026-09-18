@@ -95,15 +95,29 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
   // A new client only when the connection details change. `model` is not one
   // of them here: it travels with each message, so an end-user can switch
   // models from a settings screen without losing the chat.
+  // Built asleep: React invokes this factory twice per mount under StrictMode
+  // and keeps one client, and the one it discards is unreachable from the effect
+  // below — it could never take its window listeners off again. The effect wakes
+  // the survivor.
   const t2v = useMemo(
-    () => new Talk2View(config),
+    () => {
+      const made = new Talk2View(config);
+      made.auth.destroy();
+      return made;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.partnerKey, config.baseUrl, config.debug, config.anonymousAutoStart],
   );
   const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools, model: messageModel, dictation });
   // Declared after the subscriptions above so, on a client swap or unmount,
-  // React runs their cleanup first and destroys the client last.
-  useEffect(() => () => t2v.destroy(), [t2v]);
+  // React runs their cleanup first and destroys the client last. Setup and
+  // cleanup are exact inverses because StrictMode runs this as setup → cleanup →
+  // setup: without the `listen()`, the surviving client spends the rest of the
+  // session deaf to cross-tab sign-out and to `clearAuth()`.
+  useEffect(() => {
+    t2v.auth.listen();
+    return () => t2v.destroy();
+  }, [t2v]);
   return runtime;
 }
 
