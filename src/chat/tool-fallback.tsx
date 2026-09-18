@@ -223,17 +223,24 @@ function ApprovalCard({ toolName, args, argsText, approval }: ToolCallMessagePar
         <ShieldAlertIcon className="text-primary mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div className="flex flex-col gap-1">
           <p className="font-medium">The assistant wants to run {toolName}</p>
-          {/* `approval.prompt` is the AGENT's description of the call, and the
-              agent has read whatever this conversation put in front of it — a
-              web-search result, an attachment, another tool's output. This is
-              the one screen where a person grants permission to change their
-              work, so the line is attributed and quoted rather than sitting in
-              the chat's own voice directly above the buttons. Escaped by React;
-              the real defence is the tool name and arguments shown below. */}
+          {/* This is the TOOL's own registered description — `tools.getDescription(name)`
+              in `sessions.ts`, the text the integrator writes for the model — not
+              anything the agent composed. It was previously attributed to the
+              assistant, which was wrong in the more misleading direction: it
+              dressed the integrator's own documentation up as untrusted model
+              output.
+
+              It is also written for a model rather than for this card, so it runs
+              long. On a 320px task pane an unclamped one pushed the destructive
+              warning and the buttons below the fold — the decision controls have
+              to stay visible, so it is clamped and the full text stays available
+              on hover and to a screen reader. */}
           {approval?.prompt ? (
-            <p className="text-muted-foreground text-xs">
-              <span className="font-medium">The assistant says:</span>{' '}
-              <q className="t2v-tool-approval-prompt italic">{approval.prompt}</q>
+            <p
+              className="t2v-tool-approval-prompt text-muted-foreground text-xs"
+              title={approval.prompt}
+            >
+              {approval.prompt}
             </p>
           ) : null}
         </div>

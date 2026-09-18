@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The approval card no longer attributes the tool's own description to the assistant.** That line is `tools.getDescription(name)` — the text an integrator writes for the model — not anything the agent composed. Labelling it "The assistant says:" dressed first-party documentation up as untrusted model output, which is the more misleading direction to get it wrong in.
+- **…and it no longer pushes the decision off the screen.** A tool description is written for a model, so it can run to a paragraph: in a 320px task pane an unclamped one put the destructive-tool warning and the allow/deny buttons below the fold. It is clamped to three lines now, with the full text kept in the DOM for a screen reader and in `title` for a pointer.
+- **A thread's "More options" menu is styled again.** Radix portals it to `<body>`, outside the chat's scoped stylesheet, so without a container it rendered with no background, border or padding. It now portals into the chat's own portal host, like every other popup.
+
+
 ### Added
 
 #### New export path: `@talk2view/sdk/chat` — the branded Talk2View chat, ready to render

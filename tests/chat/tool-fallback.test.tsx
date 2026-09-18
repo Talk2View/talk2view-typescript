@@ -216,18 +216,24 @@ describe('a tool call waiting on the end-user', () => {
     expect(approve).toHaveBeenCalledWith({ action: 'deny', feedback: 'wrong recipient' });
   });
 
-  it('attributes the agent’s own description instead of speaking in the chat’s voice', async () => {
-    // `approval.prompt` is written by the model, which has read whatever this
-    // conversation put in front of it. Unlabelled, directly above "Allow once",
-    // it reads as first-party copy on the one screen where a person grants
-    // permission to change their work.
+  it('shows the tool\u2019s own description, unattributed and clamped', async () => {
+    // `approval.prompt` is the TOOL's registered description — the text the
+    // integrator writes for the model (`tools.getDescription()` in sessions.ts)
+    // — not anything the agent composed. An earlier version labelled it "The
+    // assistant says:", which dressed first-party documentation up as untrusted
+    // model output.
+    //
+    // It is written for a model, so it runs long: on a 320px task pane an
+    // unclamped one pushed the destructive warning and the buttons below the
+    // fold. The clamp is CSS (`.t2v-tool-approval-prompt`), so the full text
+    // stays in the DOM for a screen reader and in `title` for a pointer.
     const { mounted } = card();
     await mounted;
     await screen.findByRole('button', { name: 'Allow once' });
-    expect(screen.getByText('The assistant says:')).toBeTruthy();
-    expect(document.querySelector('.t2v-tool-approval-prompt')!.textContent).toBe(
-      'Run send_email',
-    );
+    expect(screen.queryByText('The assistant says:')).toBeNull();
+    const line = document.querySelector('.t2v-tool-approval-prompt')!;
+    expect(line.textContent).toBe('Run send_email');
+    expect(line.getAttribute('title')).toBe('Run send_email');
   });
 
   it('comes back to the thread when it arrives while another view is open', async () => {

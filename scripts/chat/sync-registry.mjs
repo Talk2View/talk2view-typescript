@@ -44,7 +44,7 @@ const ITEMS = [
   'image',
 ];
 const OUT = 'src/chat/vendor';
-const PATCHES = ['thread.aui.patch'];
+const PATCHES = ['thread.aui.patch', 'thread-list.aui.patch'];
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const sources = (dir) => readdirSync(dir).filter((f) => /\.tsx?$/.test(f) && !f.endsWith('.d.ts'));

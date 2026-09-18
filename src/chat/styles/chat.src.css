@@ -379,6 +379,22 @@
   }
 }
 
+/* ── the approval card's tool description ────────────────────────────────
+   The tool's registered description is written for a model, not for this card,
+   so it can run to a paragraph. On a narrow pane (a Word task pane is 320px)
+   an unclamped one pushed the destructive warning and the allow/deny buttons
+   below the fold, which is the one place in the chat where the controls must
+   stay in view. Clamped to three lines; the element carries the full text in
+   `title`, and clamping is visual only, so a screen reader still reads it
+   whole. */
+.t2v-tool-approval-prompt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
 /* ── the panel's dragged size ─────────────────────────────────────────────
    The visitor's own size, set on the popup as two custom properties by
    launcher.tsx. It cannot be a plain inline `width`/`height`: the panel's
