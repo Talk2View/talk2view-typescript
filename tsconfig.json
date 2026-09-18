@@ -15,8 +15,15 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      // src/chat/inject-styles.ts imports the stylesheet by its PUBLISHED path so
+      // the source never points into dist/. `npm run build` runs build:css first,
+      // which writes the declaration this resolves to. At runtime the import is
+      // a package self-reference, served by the "./chat-css" exports entry.
+      "@talk2view/sdk/chat-css": ["./dist/chat-css.d.ts"]
+    }
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist", "tests", "scripts"]
 }

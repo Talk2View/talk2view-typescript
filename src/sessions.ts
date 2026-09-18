@@ -222,14 +222,18 @@ export class T2VSession {
         };
       } else {
         // Text content
-        const delta = chunk.choices[0]?.delta?.content;
+        // `choices` is declared required, but a chunk that carries only
+        // metadata (a status line, a keep-alive) can arrive without it. An
+        // unguarded read throws and takes the whole turn down, so guard the
+        // array as well as its first element.
+        const delta = chunk.choices?.[0]?.delta?.content;
         if (delta) {
           yield { type: 'text', content: delta };
         }
       }
 
       // Done
-      if (chunk.choices[0]?.finish_reason === 'stop') {
+      if (chunk.choices?.[0]?.finish_reason === 'stop') {
         yield { type: 'done', threadId: chunk.thread_id ?? this.threadId };
         return;
       }

@@ -8,13 +8,24 @@
  * the props move, the docs move with them.
  */
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Talk2View, ChatPanel } from '../../src/ui';
 import { T2VProvider } from '../../src/react';
 
 const originalFetch = global.fetch;
+
+beforeAll(() => {
+  // The packaged chat's primitives observe layout; jsdom has no ResizeObserver.
+  class RO {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (globalThis as unknown as { ResizeObserver: typeof RO }).ResizeObserver = RO;
+  Element.prototype.scrollTo ??= () => {};
+});
 
 beforeEach(() => {
   // Every network call the providers make on mount answers with an empty
@@ -53,6 +64,48 @@ describe('the README quick start', () => {
     await waitFor(() => expect(container.querySelector('[data-talk2view]')).not.toBeNull());
     // ChatPanel really rendered inside the provider rather than throwing.
     expect(container.textContent).toContain('Ask me anything');
+  });
+
+  it('mounts the Chat UI snippet: <Talk2ViewChat> with tools and suggestions', async () => {
+    // The README's "Chat UI" section. This is the first code a partner copies
+    // for the packaged chat, so the props, the import path and the composition
+    // have to be the real ones. Imported here rather than at the top of the
+    // file so the older quick start keeps working in a checkout where the
+    // chat's stylesheet has not been built.
+    const { Talk2ViewChat } = await import('../../src/chat/index.js');
+    const tools = [
+      {
+        name: 'highlight_text',
+        description: 'Highlight a passage in the document',
+        parameters: {
+          type: 'object' as const,
+          properties: { text: { type: 'string' as const, description: 'The passage' } },
+          required: ['text'],
+        },
+        execute: async () => 'highlighted',
+      },
+    ];
+
+    render(
+      <Talk2ViewChat
+        partnerKey="pk_test_readme"
+        tools={tools}
+        welcome={{ suggestions: ['What can you do?'] }}
+      />,
+    );
+
+    // The chat rendered its own root and seeded the suggestion, rather than
+    // throwing on a prop the README invented.
+    await waitFor(() => expect(document.querySelector('.t2v-chat')).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'What can you do?' })).not.toBeNull(),
+    );
+  });
+
+  it('mounts the Chat UI launcher snippet', async () => {
+    const { Talk2ViewChatLauncher } = await import('../../src/chat/index.js');
+    render(<Talk2ViewChatLauncher partnerKey="pk_test_readme" label="Ask Talk2View" />);
+    await waitFor(() => expect(screen.getByText('Ask Talk2View')).not.toBeNull());
   });
 
   it('keeps <T2VProvider> working for the headless hooks path', async () => {

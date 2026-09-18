@@ -4,6 +4,63 @@
 
 ### Added
 
+#### New export path: `@talk2view/sdk/chat` — the branded Talk2View chat, ready to render
+
+Two components and one stylesheet. No Tailwind, no PostCSS, no shadcn, no copied
+files: everything the chat needs is a dependency of the package.
+
+```tsx
+import { Talk2ViewChat } from '@talk2view/sdk/chat';
+import '@talk2view/sdk/chat.css';
+
+<Talk2ViewChat partnerKey="pk_live_…" tools={tools} welcome={{ suggestions: ['What can you do?'] }} />
+```
+
+- `Talk2ViewChat` — the full pane: a header of one-tap views (Account, Settings,
+  earlier conversations, new chat) over a thread that never unmounts, so
+  switching views keeps the conversation, the scroll position and a half-typed
+  message. Streaming replies in markdown, attachments, dictation, tool approvals
+  with editable arguments, and sign-in inside the chat.
+- `Talk2ViewChatLauncher` — the same chat in a floating panel: a mark in the
+  corner of the page, a popover on a desktop, a full-screen sheet on a phone,
+  three colourways, and a size the visitor can drag.
+- `injectTalk2ViewChatStyles()` — for a host that cannot import CSS (no loader,
+  or a strict `style-src`): installs the same sheet through `adoptedStyleSheets`.
+- `useTalk2ViewChatClient()` — the client behind the chat, for the host's own UI.
+
+Everything renders inside `<div class="t2v-chat">`, and the stylesheet is scoped
+and armoured so neither side reaches the other. Proven in CI against five
+hostile host pages (`npm run test:e2e:chat-hosts`).
+
+**Size, stated plainly:** `/chat` is 361.8 KB gzip of JavaScript, excluding
+React. A page containing the chat and nothing else measures about 437 KB gzip.
+A consumer who never imports `/chat` pays nothing: the core entry is 9.4 KB gzip
+and reaches no assistant-ui code, pinned by a test.
+
+Full documentation in [`docs/chat.md`](docs/chat.md); a runnable example, with no
+Tailwind in the host, in [`examples/react-chat`](examples/react-chat).
+
+- **`t2v.auth.listen()`** — the exact inverse of `t2v.auth.destroy()`, for a
+  client you want listening again after disposing of it. Today `t2v.destroy()`
+  does nothing but `t2v.auth.destroy()`, so it undoes that too; if the client
+  ever grows more teardown, this is the auth half only. Nobody needs to call it
+  in the ordinary case: a client listens from construction, exactly as before. It
+  exists because React's StrictMode runs an effect as setup → cleanup → setup,
+  so a component that destroys the client it owns on cleanup needs a way to
+  bring it back — without one, cross-tab sign-out and `clearAuth()` silently
+  stop reaching that client for the rest of the session, in development only.
+
+### Fixed
+
+- **A streaming chunk without `choices` no longer takes down the turn.** The
+  session reader indexed `chunk.choices[0]` unguarded, so a chunk carrying only
+  metadata threw "Cannot read properties of undefined" and lost the reply that
+  had already streamed.
+
+## [0.15.0] - 2026-09-18
+
+### Added
+
 - Google / Apple sign-in work on every website by default. On a website the partner has not registered, the end-user first sees a Talk2View screen naming the site; registering it (dashboard → Settings → Allowed websites) removes that screen. `<LoginForm>` asks the engine what is available from the current page (`t2v.auth.getPopupProviders()`, `oauthProviders` on `useT2VAuth()`), hides the buttons only where the partner allows registered websites alone, and logs one console line telling the developer what to register.
 
 ### Security

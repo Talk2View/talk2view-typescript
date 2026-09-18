@@ -79,26 +79,49 @@ export class T2VAuth {
     }
   };
 
+  /** Whether the window listeners below are currently registered. */
+  private listening = false;
+
   constructor(private readonly client: T2VClient) {
-    // Same-tab + cross-tab auth-cleared sync. Guarded for SSR/Node where
-    // `window`/`localStorage` are absent.
-    if (typeof window !== 'undefined') {
-      // Same-tab custom event (e.g., from 401 handling via clearAuth()).
-      window.addEventListener('talk2view_auth_cleared', this.onAuthCleared);
-      // Cross-tab native storage event (a logout in a sibling tab).
-      window.addEventListener('storage', this.onStorage);
-    }
+    // Listening from construction, as this class always has: a plain
+    // `new Talk2View()` must keep syncing auth across tabs without anyone
+    // having to know that listen() exists.
+    this.listen();
   }
 
   /**
-   * Remove the window event listeners registered in the constructor.
+   * Start listening for auth being cleared, in this tab and in others.
+   *
+   * Called from the constructor, so nobody normally calls it. It is public and
+   * idempotent for one case: a caller that has already called {@link destroy}
+   * and wants the instance working again. React's StrictMode runs an effect as
+   * setup → cleanup → setup, so a component that destroys the client it owns on
+   * cleanup would otherwise be left holding a client whose auth listeners have
+   * been torn off — cross-tab sign-out and `clearAuth()` silently stop reaching
+   * it, in development only, which makes it the worst kind of bug to chase.
+   * `listen()` and {@link destroy} are exact inverses, either way round and any
+   * number of times.
+   *
+   * Guarded for SSR/Node, where `window` is absent.
+   */
+  listen(): void {
+    if (this.listening || typeof window === 'undefined') return;
+    // Same-tab custom event (e.g., from 401 handling via clearAuth()).
+    window.addEventListener('talk2view_auth_cleared', this.onAuthCleared);
+    // Cross-tab native storage event (a logout in a sibling tab).
+    window.addEventListener('storage', this.onStorage);
+    this.listening = true;
+  }
+
+  /**
+   * Remove the window event listeners {@link listen} registered.
    * Call when disposing of this auth instance to avoid leaking listeners.
    */
   destroy(): void {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('talk2view_auth_cleared', this.onAuthCleared);
-      window.removeEventListener('storage', this.onStorage);
-    }
+    if (!this.listening || typeof window === 'undefined') return;
+    window.removeEventListener('talk2view_auth_cleared', this.onAuthCleared);
+    window.removeEventListener('storage', this.onStorage);
+    this.listening = false;
   }
 
   /** Start an anonymous demo session (no account). */

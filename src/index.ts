@@ -958,6 +958,15 @@ export class Talk2View {
    * registered by the auth module. Call this whenever you permanently discard a
    * Talk2View instance — e.g. on app teardown, or when re-creating the client —
    * so the cross-tab `storage`/`talk2view_auth_cleared` listeners don't leak.
+   *
+   * **If you add teardown here, give it a resume and call that alongside
+   * `auth.listen()`.** The packaged chat's provider pairs this method against
+   * `client.auth.listen()` in an effect, because React's StrictMode runs an
+   * effect as setup → cleanup → setup. That pairing is exact only while this
+   * method does nothing else; a second responsibility with no inverse would
+   * silently come back missing on the second setup, in development only —
+   * `src/chat/provider.tsx`, and `tests/chat/strict-mode.test.tsx` covers the
+   * auth half.
    */
   destroy(): void {
     this.auth.destroy();

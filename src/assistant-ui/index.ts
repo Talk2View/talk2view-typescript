@@ -76,6 +76,12 @@ export interface Talk2ViewRuntimeOptions {
    * the default speech-to-text model; pass `{ model, language }` to choose.
    */
   dictation?: boolean | Talk2ViewDictationOptions;
+  /**
+   * Let the end-user attach files (default true). `false` removes the adapter,
+   * which is what turns the composer's attach button and its drop zone off —
+   * hiding the button alone would still leave a drop target.
+   */
+  attachments?: boolean;
 }
 
 export interface UseTalk2ViewRuntimeOptions extends T2VConfig, Talk2ViewRuntimeOptions {}
@@ -104,7 +110,7 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
 /** Expose an existing client (for example the one from `useT2V()`) as an assistant-ui runtime. */
 export function useTalk2ViewRuntimeForClient(
   t2v: Talk2View,
-  { systemPrompt, tools, model, dictation }: Talk2ViewRuntimeOptions = {},
+  { systemPrompt, tools, model, dictation, attachments: attachmentsEnabled = true }: Talk2ViewRuntimeOptions = {},
 ): AssistantRuntime {
   const [messages, setMessages] = useState<DisplayMessage[]>(t2v.messages);
   const [isLoading, setIsLoading] = useState(t2v.isLoading);
@@ -273,9 +279,12 @@ export function useTalk2ViewRuntimeForClient(
         if (response.approvalId !== t2v.pendingApproval?.toolCallId) return;
         await t2v.approveToolCall(toHumanDecision(response));
       },
-      adapters: { attachments, ...(dictationAdapter ? { dictation: dictationAdapter } : {}) },
+      adapters: {
+        ...(attachmentsEnabled ? { attachments } : {}),
+        ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
+      },
     }),
-    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, dictationAdapter],
+    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, attachmentsEnabled, dictationAdapter],
   );
 
   const runtime = useExternalStoreRuntime(adapter);

@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testIgnore: 'assistant-ui.spec.ts',
+  // Each of these has its own config and its own dev server.
+  testIgnore: ['assistant-ui.spec.ts', 'chat-example.spec.ts', 'chat-hosts/**'],
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,

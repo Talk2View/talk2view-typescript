@@ -391,3 +391,33 @@ describe('T2VSession — engine error chunks', () => {
     expect(events.find((e) => e.type === 'text')).toBeUndefined();
   });
 });
+
+describe('T2VSession — chunks without `choices`', () => {
+  it('keeps the turn alive when a chunk carries no choices array', async () => {
+    const tools = createMockTools();
+    // `choices` is required by the type, but a chunk that only carries
+    // metadata can arrive without it. Reading `chunk.choices[0]` unguarded
+    // threw "Cannot read properties of undefined" and killed the whole turn:
+    // the reply already streamed was dropped and the stop event never landed.
+    const metadataOnlyChunk = {
+      id: 'test',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: 'test',
+      thread_id: 'thread_1',
+    } as unknown as ChatCompletionChunk;
+
+    const client = createMockClient([
+      [textChunk('Half an answer'), metadataOnlyChunk, textChunk(' and the rest.'), stopChunk()],
+    ]);
+
+    const session = createSession(client, tools);
+    const events = await collectEvents(session.sendMessage('go'));
+
+    expect(events.filter((e) => e.type === 'text').map((e) => (e as { content: string }).content)).toEqual([
+      'Half an answer',
+      ' and the rest.',
+    ]);
+    expect(events.at(-1)).toEqual({ type: 'done', threadId: 'thread_1' });
+  });
+});

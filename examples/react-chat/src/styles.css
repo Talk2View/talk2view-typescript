@@ -1,0 +1,131 @@
+/*
+ * The host page's own CSS. Hand-written, no framework, no reset — the point of
+ * this example is that the chat needs nothing from the page's build.
+ *
+ * One line here matters more than the rest: `body { font-family: … }`. The chat
+ * inherits the page's font (`--t2v-font: inherit`), so a page that sets none at
+ * all gets a serif chat from the browser's default.
+ */
+:root {
+  color-scheme: light;
+  --page: #ffffff;
+  --ink: #16212b;
+  --quiet: #5b6b76;
+  --rule: #dfe5ea;
+}
+
+body.dark-page {
+  color-scheme: dark;
+  --page: #10171d;
+  --ink: #e8eef2;
+  --quiet: #93a3ae;
+  --rule: #26333d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.topbar nav {
+  display: flex;
+  gap: 8px;
+}
+
+.topbar a,
+.topbar button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.topbar a[aria-current="page"] {
+  background: var(--ink);
+  color: var(--page);
+  border-color: var(--ink);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The full-pane route: the chat is given a box and fills it. */
+.pane-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  gap: 24px;
+  padding: 24px;
+  height: calc(100dvh - 58px);
+}
+
+.chat-frame {
+  border: 1px solid var(--rule);
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .pane-route {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(360px, 1fr);
+    height: auto;
+  }
+}
+
+/* The launcher route: an ordinary page with a floating mark in the corner. */
+.report {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px 160px;
+}
+
+.report h1 {
+  font-size: 2.2rem;
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+}
+
+.report h2 {
+  font-size: 1.25rem;
+  margin: 32px 0 8px;
+}
+
+.report .meta {
+  color: var(--quiet);
+  margin: 0 0 24px;
+}
+
+.report table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 24px 0;
+}
+
+.report th,
+.report td {
+  text-align: left;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
