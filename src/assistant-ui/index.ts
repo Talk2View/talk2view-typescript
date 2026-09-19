@@ -35,6 +35,7 @@ import type {
   AttachmentAdapter,
   CompleteAttachment,
   ExternalStoreAdapter,
+  ExternalStoreThreadListAdapter,
   PendingAttachment,
 } from '@assistant-ui/react';
 import { Talk2View } from '../index.js';
@@ -82,6 +83,17 @@ export interface Talk2ViewRuntimeOptions {
    * hiding the button alone would still leave a drop target.
    */
   attachments?: boolean;
+  /**
+   * Earlier conversations: what the Threads view lists and what "New Thread"
+   * starts. Supply one and this runtime passes it to assistant-ui unchanged —
+   * where the conversations are kept, and how, is the caller's business, not
+   * the runtime's. `@talk2view/sdk/chat` supplies one that keeps them in the
+   * browser.
+   *
+   * Without it, "New Thread" clears the conversation instead of starting one
+   * beside it, which is all a runtime with nowhere to keep the old one can do.
+   */
+  threadList?: ExternalStoreThreadListAdapter;
 }
 
 export interface UseTalk2ViewRuntimeOptions extends T2VConfig, Talk2ViewRuntimeOptions {}
@@ -91,7 +103,7 @@ const CANCELLED_APPROVAL_FEEDBACK = 'Cancelled by the user';
 
 /** Create a Talk2View client and expose it as an assistant-ui runtime. */
 export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): AssistantRuntime {
-  const { systemPrompt, tools, model: messageModel, dictation, ...config } = options;
+  const { systemPrompt, tools, model: messageModel, dictation, threadList, ...config } = options;
   // A new client only when the connection details change. `model` is not one
   // of them here: it travels with each message, so an end-user can switch
   // models from a settings screen without losing the chat.
@@ -108,7 +120,7 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.partnerKey, config.baseUrl, config.debug, config.anonymousAutoStart],
   );
-  const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools, model: messageModel, dictation });
+  const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools, model: messageModel, dictation, threadList });
   // Declared after the subscriptions above so, on a client swap or unmount,
   // React runs their cleanup first and destroys the client last. Setup and
   // cleanup are exact inverses because StrictMode runs this as setup → cleanup →
@@ -124,7 +136,14 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
 /** Expose an existing client (for example the one from `useT2V()`) as an assistant-ui runtime. */
 export function useTalk2ViewRuntimeForClient(
   t2v: Talk2View,
-  { systemPrompt, tools, model, dictation, attachments: attachmentsEnabled = true }: Talk2ViewRuntimeOptions = {},
+  {
+    systemPrompt,
+    tools,
+    model,
+    dictation,
+    attachments: attachmentsEnabled = true,
+    threadList,
+  }: Talk2ViewRuntimeOptions = {},
 ): AssistantRuntime {
   const [messages, setMessages] = useState<DisplayMessage[]>(t2v.messages);
   const [isLoading, setIsLoading] = useState(t2v.isLoading);
@@ -296,21 +315,24 @@ export function useTalk2ViewRuntimeForClient(
       adapters: {
         ...(attachmentsEnabled ? { attachments } : {}),
         ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
-        // The header's "New Thread" control. The runtime reads this from
-        // `adapters.threadList`, not from the root, and without it it throws
-        // "External store adapter does not support switching to new thread",
-        // catches it, logs it, and the button does nothing at all — which is
-        // how it shipped. `clearMessages()` is what the first-party panel's
-        // New chat always did: it drops the messages, the history and the
-        // thread id, and ends the engine-side session.
-        threadList: {
+        // The thread list, and the header's "New Thread" control with it. The
+        // runtime reads this from `adapters.threadList`, not from the adapter
+        // root — at the root it type-checks, runs, and does nothing at all.
+        //
+        // Without an adapter here it throws "External store adapter does not
+        // support switching to new thread", catches it, logs it, and the button
+        // does nothing, which is how it shipped. The fallback keeps a runtime
+        // with nowhere to store conversations working: `clearMessages()` is what
+        // the first-party panel's New chat always did — it drops the messages,
+        // the history and the thread id, and ends the engine-side session.
+        threadList: threadList ?? {
           onSwitchToNewThread: () => {
             t2v.clearMessages();
           },
         },
       },
     }),
-    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, attachmentsEnabled, dictationAdapter],
+    [threadMessages, isLoading, pendingApproval, convertMessage, onNew, onCancel, onReload, t2v, attachments, attachmentsEnabled, dictationAdapter, threadList],
   );
 
   const runtime = useExternalStoreRuntime(adapter);

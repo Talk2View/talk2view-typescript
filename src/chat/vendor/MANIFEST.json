@@ -31,7 +31,7 @@
     },
     "thread-list.aui.tsx": {
       "upstreamSha256": "a9b65e10b5a89da349c4dcc2ff295baf08ad7b3aeb4bccfe3c6b1726d8619ba1",
-      "sha256": "36be81562a87d8d31e811aec7d79cc5dd840ad115ff0e6b3b48573ad6440d4fd"
+      "sha256": "79d5aec73510130b15429d03974f47ea7b94b301e68f4a987e30aa1a65221c1f"
     },
     "thread.aui.tsx": {
       "upstreamSha256": "ce619ce7e6e57468c9d3aea9792751e4dab5e0b30f151dd06eb62a75b19e435f",

@@ -26,6 +26,7 @@ import { assertOneAssistantUi } from './lib/guard.js';
 import { useGuestLimits, type GuestLimits } from './auth-gate.js';
 import { PortalHostContext, useCreatePortalHost } from './lib/portal-host.js';
 import { createDictationPhaseStore, type DictationPhaseStore } from './lib/dictation-phase.js';
+import { useConversations } from './lib/use-conversations.js';
 
 /** The opening screen: a heading and the openers offered under the composer. */
 export interface Talk2ViewChatWelcome {
@@ -230,12 +231,18 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   const dictation = useMemo(() => createDictationPhaseStore(), []);
   const { preferences } = useUserPreferences();
 
+  // Before the runtime, and it has to stay there: this may put the conversation
+  // this device left off on back into the client, and the runtime reads the
+  // client's messages as its own initial state on the same render.
+  const threadList = useConversations(client, { enabled: features.threadList });
+
   const runtime = useTalk2ViewRuntimeForClient(client, {
     systemPrompt,
     tools,
     // The end-user's choice from Settings; empty means the partner's default.
     model: preferences.model || undefined,
     attachments: features.attachments,
+    threadList,
     dictation: features.dictation && {
       model: preferences.sttModel || undefined,
       language: preferences.sttLanguage || undefined,

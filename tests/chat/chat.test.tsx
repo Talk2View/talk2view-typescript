@@ -53,6 +53,9 @@ beforeAll(() => {
     disconnect() {}
   }
   (globalThis as unknown as { ResizeObserver: typeof RO }).ResizeObserver = RO;
+  // The thread scrolls itself to the newest message; jsdom has no scrollTo, and
+  // the throw lands in a requestAnimationFrame where no test can catch it.
+  Element.prototype.scrollTo = Element.prototype.scrollTo ?? (() => {});
   window.matchMedia = (() => ({
     matches: false,
     media: '',
@@ -66,6 +69,12 @@ beforeAll(() => {
 });
 
 const client = () => new Talk2View({ partnerKey: 'pk_test_x' });
+
+beforeEach(() => {
+  // Conversations are kept in localStorage, so a chat mounted in the next test
+  // would otherwise open the one the last test left behind.
+  localStorage.clear();
+});
 
 afterEach(() => {
   // The portal host is ref-counted per document; unmount drops it, but a test
@@ -141,22 +150,40 @@ describe('<Talk2ViewChat>', () => {
     expect(sendMessage.mock.calls[0]?.[0]).toBe('A');
   });
 
-  it('starts a new conversation from the header, instead of silently doing nothing', async () => {
-    // The external store has to declare `onSwitchToNewThread`. Without it
-    // assistant-ui throws "External store adapter does not support switching
-    // to new thread", catches it, logs it, and the button does nothing at all
-    // — which is exactly how it shipped and how a visitor found it.
+  it('starts a new conversation from the header, without ending the one it leaves', async () => {
+    // The external store has to declare `onSwitchToNewThread`, and on
+    // `adapters.threadList` — at the adapter root it type-checks and does
+    // nothing. Without it assistant-ui throws "External store adapter does not
+    // support switching to new thread", catches it, logs it, and the button
+    // does nothing at all, which is how it shipped and how a visitor found it.
+    //
+    // `clearMessages()` is what it did next, and that is wrong too: it deletes
+    // the engine session, and the conversation it wipes is one the end-user can
+    // now go back to. tests/chat/conversations.test.tsx has the whole flow.
     const t2v = client();
     const cleared = vi.spyOn(t2v, 'clearMessages');
-    render(<Talk2ViewChat client={t2v} />);
-    await screen.findByRole('heading', { name: /how can i help you today/i });
+    vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+      (async function* () {
+        yield { type: 'text', content: 'An answer.' };
+        yield { type: 'done', threadId: 'th' };
+      })()) as never);
 
-    const newThread = await screen.findByRole('button', { name: /new thread/i });
+    render(<Talk2ViewChat client={t2v} welcome={{ suggestions: ['A'] }} />);
     await act(async () => {
-      fireEvent.click(newThread);
+      fireEvent.click(await screen.findByRole('button', { name: /^A$/ }));
+    });
+    expect(await screen.findByText('An answer.')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /new chat/i }));
     });
 
-    await waitFor(() => expect(cleared).toHaveBeenCalled());
+    // An empty chat, and the answer gone from it…
+    expect(await screen.findByRole('heading', { name: /how can i help you today/i })).toBeTruthy();
+    expect(screen.queryByText('An answer.')).toBeNull();
+    // …but not thrown away, and the engine session not deleted behind it.
+    expect(cleared).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Chats' })).not.toHaveProperty('disabled', true);
   });
 
   it('sends `systemPrompt` with the message, and nothing when there is none', async () => {
@@ -252,14 +279,14 @@ describe('<Talk2ViewChat>', () => {
   it('shows Settings and the thread list by default', async () => {
     render(<Talk2ViewChat partnerKey="pk_test_x" />);
     expect(await screen.findByRole('button', { name: 'Settings' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Threads' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chats' })).toBeTruthy();
   });
 
   it('hides Settings / thread list when features say so', async () => {
     render(<Talk2ViewChat partnerKey="pk_test_x" features={{ settings: false, threadList: false }} />);
     await screen.findByRole('heading', { name: /how can i help/i });
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Threads' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
   });
 
   it('opens Settings over the thread and makes the thread inert', async () => {

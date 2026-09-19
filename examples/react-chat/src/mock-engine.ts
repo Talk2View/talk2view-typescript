@@ -40,6 +40,34 @@ function text(content: string) {
   ];
 }
 
+/**
+ * What the client replayed with this turn. The engine keeps nothing between
+ * messages — the transcript travels with each one — so this is also how you can
+ * see, in the browser, that a conversation reopened from the list really did
+ * carry its history: ask it what you asked first.
+ */
+function history(body: string): { earlier: number; first: string | null } {
+  try {
+    const messages = (JSON.parse(body) as { messages?: Array<{ role: string; content: unknown }> })
+      .messages;
+    if (!Array.isArray(messages)) return { earlier: 0, first: null };
+    const users = messages.filter((m) => m.role === 'user').map((m) => plain(m.content));
+    return { earlier: Math.max(0, messages.length - 1), first: users[0] ?? null };
+  } catch {
+    return { earlier: 0, first: null };
+  }
+}
+
+/** A message's text, whether it arrived as a string or as content parts. */
+function plain(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((p): p is { type: 'text'; text: string } => (p as { type?: string })?.type === 'text')
+    .map((p) => p.text)
+    .join(' ');
+}
+
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -94,6 +122,18 @@ export function installMockEngine(): void {
             },
           }),
         ]);
+      }
+      // Ask it what you asked before and it answers from the replayed
+      // transcript, which is the only place it could know.
+      if (/what did i|earlier|before|first question|remember/i.test(body)) {
+        const { earlier, first } = history(body);
+        return sse(
+          text(
+            first
+              ? `You started this chat with “${first}”. I was given ${earlier} earlier message${earlier === 1 ? '' : 's'} with your question.`
+              : 'This chat has nothing before your last message.',
+          ),
+        );
       }
       const reply = REPLIES[nextReply % REPLIES.length]!;
       nextReply += 1;

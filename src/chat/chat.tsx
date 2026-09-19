@@ -42,9 +42,14 @@ import { ThreadListView } from './views/thread-list.js';
 /** Which pane the header is showing. */
 export type ChatView = 'thread' | 'list' | 'settings' | 'account';
 
+/**
+ * Plain English over assistant-ui's own words: the thing an end-user starts is
+ * a chat, not a thread, and "Chats" is what the list of them is called
+ * everywhere else they have seen one.
+ */
 const VIEW_TITLES: Record<ChatView, string> = {
-  thread: 'New Chat',
-  list: 'Threads',
+  thread: 'New chat',
+  list: 'Chats',
   settings: 'Settings',
   account: 'Account',
 };
@@ -238,7 +243,7 @@ const ChatHeader: FC<{
         )}
         {features.threadList && (
           <TooltipIconButton
-            tooltip="Threads"
+            tooltip="Chats"
             side="bottom"
             aria-pressed={view === 'list'}
             disabled={!hasThreads && view === 'thread'}
@@ -251,7 +256,7 @@ const ChatHeader: FC<{
         <ThreadListPrimitive.New
           render={
             <TooltipIconButton
-              tooltip="New Thread"
+              tooltip="New chat"
               side="bottom"
               className={HEADER_BUTTON}
               onClick={() => onViewChange('thread')}

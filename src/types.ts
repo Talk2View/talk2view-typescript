@@ -480,6 +480,27 @@ export interface DisplayMessage {
   steps?: ToolStep[];
 }
 
+/**
+ * A whole conversation, taken out of the client and put back later.
+ *
+ * All three parts are needed to carry on where it left off: `messages` is what
+ * the end-user sees, `history` is the clean user/assistant alternation replayed
+ * to the model with every turn, and `threadId` is what the engine last called
+ * this thread. Nothing here depends on the engine still remembering it — the
+ * transcript travels with the next message.
+ *
+ * @see Talk2View.exportConversation
+ * @see Talk2View.restoreConversation
+ */
+export interface ConversationSnapshot {
+  /** The transcript as displayed, segmented the way the thread renders it. */
+  messages: DisplayMessage[];
+  /** What the model is told, before this turn's own message is appended. */
+  history: ChatMessage[];
+  /** The engine's id for this thread, or null if no turn has finished yet. */
+  threadId: string | null;
+}
+
 export interface T2VEventMap {
   [key: string]: unknown[];
   messagesChange: [DisplayMessage[]];

@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/client', () => ({
   T2VClient: vi.fn().mockImplementation(() => ({
@@ -64,6 +64,12 @@ beforeAll(() => {
     removeListener() {},
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
+});
+
+beforeEach(() => {
+  // Conversations are kept in localStorage, so a chat mounted in the next test
+  // would otherwise open the one the last test left behind.
+  localStorage.clear();
 });
 
 /** Answer once, with `markdown`, and hand back the rendered anchors. */

@@ -40,7 +40,7 @@ import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
-import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
+import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
  * Refusals from POST /v1/auth/anonymous that only signing in — or Talk2View
@@ -131,6 +131,14 @@ export class Talk2View {
   private _lastUserMessage: string | null = null;
   private _lastUserAttachments: Attachment[] | null = null;
   private _messageCounter = 0;
+  /**
+   * Bumped whenever the conversation on screen is replaced — a switch to
+   * another one, a new one, a clear. A turn that started under an older number
+   * must not write into the one that replaced it: its text would arrive in
+   * somebody else's transcript, and the assistant turn it records at the end
+   * would go into somebody else's history.
+   */
+  private _conversationEpoch = 0;
   /** Aborts the in-flight response stream when the user stops generation. */
   private _streamAbort: AbortController | null = null;
   /** True between stop() and stream teardown, so the abort isn't surfaced as an error. */
@@ -566,6 +574,88 @@ export class Talk2View {
   }
 
   /**
+   * Forget the engine-side session without deleting it, so the next message
+   * opens a fresh one.
+   *
+   * Unlike {@link clearSession} there is no `DELETE /v1/sessions/:id`. That is
+   * the difference that matters when the end-user is only moving away for a
+   * moment: the session may still be finishing a turn, and the conversation it
+   * belongs to may be one they switch back to. A new session on the next
+   * message costs a round trip and nothing else, because the transcript is
+   * replayed with every message (ADR 0005).
+   *
+   * Session-clear listeners are notified, so client tools re-register on the
+   * session that replaces it.
+   */
+  detachSession(): void {
+    this.currentSession = null;
+    for (const listener of this.sessionClearListeners) {
+      listener();
+    }
+  }
+
+  /**
+   * Everything needed to put this conversation back later and carry on with it.
+   * Take one before switching away — see {@link restoreConversation}.
+   *
+   * The arrays are copies; the messages inside them are shared. Nothing in the
+   * client mutates a message in place, so treat what you get back as read-only.
+   */
+  exportConversation(): ConversationSnapshot {
+    return {
+      messages: [...this._messages],
+      history: [...this._conversationHistory],
+      threadId: this._threadId,
+    };
+  }
+
+  /**
+   * Put a conversation on screen, replacing whatever is there.
+   *
+   * The engine is not consulted and does not need to remember anything: the
+   * transcript travels with the next message, so a conversation restored after
+   * a deploy, a restart or a week away carries on correctly.
+   *
+   * Everything that belonged to the conversation being replaced goes with it —
+   * the error, the loading flag, a tool approval still waiting for an answer,
+   * and the tools the end-user allowed for the rest of the session ("always
+   * allow" is a grant to a session, not a property of a conversation, so a
+   * restored one asks again). A reply still streaming is abandoned: it finishes
+   * writing nowhere rather than into the conversation that has just arrived.
+   *
+   * The engine-side session is detached, not deleted, so a visitor who switches
+   * away mid-task can come back to it. See {@link detachSession}.
+   */
+  restoreConversation(snapshot: ConversationSnapshot): void {
+    this.endCurrentTurn();
+    this.detachSession();
+    this.setMessages([...snapshot.messages]);
+    this._conversationHistory = [...snapshot.history];
+    this.setThreadId(snapshot.threadId);
+    this.setLoading(false);
+    this.setError(null);
+    this.setPendingApproval(null);
+    this.setAgentStatus(null);
+    // Reload acts on the last turn of whatever is now on screen, not on the
+    // last turn of a conversation the end-user has moved away from.
+    const lastUser = [...snapshot.messages].reverse().find((m) => m.role === 'user');
+    this._lastUserMessage = lastUser?.content ?? null;
+    this._lastUserAttachments = lastUser?.attachments ?? null;
+    this.setAlwaysAllowed(new Set());
+  }
+
+  /**
+   * Abandon a reply still streaming, and stop the turn behind it writing into
+   * whatever replaces the conversation it belongs to.
+   */
+  private endCurrentTurn(): void {
+    this._conversationEpoch += 1;
+    this._streamAbort?.abort();
+    this._streamAbort = null;
+    this._stopped = false;
+  }
+
+  /**
    * Drop the cached session when the signed-in identity changes, so the next
    * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
    * this does NOT delete the old session on the server: it belongs to the previous
@@ -701,6 +791,7 @@ export class Talk2View {
   private async consumeStream(
     stream: AsyncGenerator<ChatEvent>,
     assistantId: string,
+    epoch: number,
   ): Promise<{ paused: boolean; pendingAutoApproval: PendingApproval | null; currentAssistantId: string }> {
     let pendingAutoApproval: PendingApproval | null = null;
     let currentId = assistantId;
@@ -708,6 +799,9 @@ export class Talk2View {
 
     try {
       for await (const event of stream) {
+        // The conversation this turn belongs to has been replaced. Leaving the
+        // loop closes the generator, which aborts the read behind it.
+        if (epoch !== this._conversationEpoch) break;
         if (event.type !== 'text') this.debug('event', event.type, 'toolName' in event ? (event as { toolName: string }).toolName : '');
         switch (event.type) {
           case 'text':
@@ -773,7 +867,9 @@ export class Talk2View {
       }
     } catch (err) {
       // A user-initiated stop aborts the fetch; don't surface that as an error.
-      if (!this._stopped) {
+      // Nor does switching conversations, which aborts it the same way — the
+      // error belongs to a chat that is no longer on screen.
+      if (!this._stopped && epoch === this._conversationEpoch) {
         this.setError(err instanceof Error ? err.message : String(err));
       }
     }
@@ -783,12 +879,16 @@ export class Talk2View {
   /**
    * Loop consumeStream, auto-approving always-allowed tools until the stream completes.
    */
-  private async drainStream(stream: AsyncGenerator<ChatEvent>, assistantId: string): Promise<void> {
+  private async drainStream(stream: AsyncGenerator<ChatEvent>, assistantId: string, epoch: number): Promise<void> {
     let currentStream = stream;
     let currentId = assistantId;
     while (true) {
-      const { paused, pendingAutoApproval, currentAssistantId } = await this.consumeStream(currentStream, currentId);
+      const { paused, pendingAutoApproval, currentAssistantId } = await this.consumeStream(currentStream, currentId, epoch);
       currentId = currentAssistantId;
+      // Another conversation is on screen now: this turn stops here rather than
+      // finishing into it. Nothing is lost — the snapshot taken on the way out
+      // holds everything that had arrived.
+      if (epoch !== this._conversationEpoch) return;
       if (!paused) break;
       if (!pendingAutoApproval) {
         // Manual approval needed — keep isStreaming true so ApprovalCard renders
@@ -879,7 +979,7 @@ export class Talk2View {
     this._streamAbort = new AbortController();
     this._stopped = false;
     const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal, attachments });
-    await this.drainStream(stream, assistantMsg.id);
+    await this.drainStream(stream, assistantMsg.id, this._conversationEpoch);
   }
 
   /**
@@ -907,7 +1007,7 @@ export class Talk2View {
     this._streamAbort = new AbortController();
     this._stopped = false;
     const stream = this.respondToApproval(approval, decision, this._streamAbort.signal);
-    await this.drainStream(stream, assistantMsg.id);
+    await this.drainStream(stream, assistantMsg.id, this._conversationEpoch);
   }
 
   /**
@@ -932,6 +1032,7 @@ export class Talk2View {
    * Clear all messages and reset conversation state.
    */
   clearMessages(): void {
+    this.endCurrentTurn();
     this.setMessages([]);
     this._conversationHistory = [];
     this.setLoading(false);
@@ -992,6 +1093,7 @@ export type {
   TextContentPart,
   ChatEvent,
   ChatMessage,
+  ConversationSnapshot,
   ClientTool,
   ClientToolSchema,
   ToolHandler,
