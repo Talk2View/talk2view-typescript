@@ -448,6 +448,9 @@ export class T2VAuth {
    * or expired): auth is then cleared and listeners notified, so the app drops
    * to logged-out. On a transient failure (network / 409 / 429) the existing
    * token is returned so the caller can proceed or retry.
+   *
+   * @throws {PartnerKeyError} when the engine rejects the partner key. The
+   *   session is kept: a misconfigured key must not sign the end-user out.
    */
   async getValidAccessToken(opts?: { forceRefresh?: boolean }): Promise<string | null> {
     const current = getAccessToken();

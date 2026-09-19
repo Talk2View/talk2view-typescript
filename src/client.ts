@@ -2,7 +2,13 @@
  * HTTP/SSE API client with two-tier auth (partner key + user JWT).
  */
 
-import { AuthenticationError, NetworkError, T2VError, errorForType } from './errors.js';
+import {
+  AuthenticationError,
+  NetworkError,
+  PartnerKeyError,
+  T2VError,
+  errorForType,
+} from './errors.js';
 import {
   clearAuth,
   getAccessToken,
@@ -29,6 +35,8 @@ const DEFAULT_UPLOAD_TIMEOUT = 120_000;
 // a rate limit, or a network blip) — surface a retryable error, keep the session.
 // A "transient" result is raised as a NetworkError; callers should retry it,
 // ideally with a short backoff so a 429 isn't made worse.
+// A refresh refused because of the PARTNER key is none of these: the engine's
+// PartnerKeyError is thrown and the session is kept.
 type RefreshResult = 'refreshed' | 'invalid' | 'transient';
 
 export class T2VClient {
@@ -124,6 +132,11 @@ export class T2VClient {
     }
 
     if (response.status === 401 && requiresAuth) {
+      // A 401 caused by the PARTNER key is not an expired user session.
+      // Refreshing cannot fix it, and the refresh route would reject the same
+      // key — so throw the engine's error and leave the stored session alone.
+      const unauthorized = await this.errorFromResponse(response);
+      if (unauthorized instanceof PartnerKeyError) throw unauthorized;
       const result = await this.tryRefreshToken();
       if (result === 'refreshed') {
         headers['Authorization'] = `Bearer ${getAccessToken()}`;
@@ -304,6 +317,10 @@ export class T2VClient {
    * this client doesn't proxy — can share this client's single refresh authority
    * instead of POSTing `/v1/auth/refresh` themselves and racing the rotation.
    * Prefer {@link T2VAuth.getValidAccessToken} over calling this directly.
+   *
+   * @throws {PartnerKeyError} when the engine rejects this client's partner
+   *   key. The stored session is left alone: that is the integration's
+   *   configuration, not the end-user's sign-in.
    */
   async refreshTokens(): Promise<RefreshResult> {
     return this.tryRefreshToken();
@@ -364,7 +381,13 @@ export class T2VClient {
     // 401 = the refresh token was genuinely rejected -> real logout.
     // 409 (already rotated) and 429 (rate limited) are recoverable -> keep the
     // session and let the caller retry with the latest token.
-    if (response.status === 401) return 'invalid';
+    if (response.status === 401) {
+      // ...unless it is the partner key the route rejected: that says nothing
+      // about the refresh token, so keep the session and throw the engine's error.
+      const rejected = await this.errorFromResponse(response);
+      if (rejected instanceof PartnerKeyError) throw rejected;
+      return 'invalid';
+    }
     return 'transient';
   }
 }
