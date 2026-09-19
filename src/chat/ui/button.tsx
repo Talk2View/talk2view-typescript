@@ -1,3 +1,9 @@
+// Every component in this directory is wrapped in `forwardRef`. React 19 lets a
+// plain function component read `ref` out of its props; React 18 — which this
+// package still supports — strips it, warns, and the ref reaches nothing. Base
+// UI hands refs to whatever it renders, so a plain function here loses them
+// silently. See tests/chat/ui-refs.test.tsx.
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -40,19 +46,22 @@ const buttonVariants = cva(
   }
 )
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+const Button = React.forwardRef<
+  HTMLButtonElement,
+  ButtonPrimitive.Props & VariantProps<typeof buttonVariants>
+>(function Button(
+  { className, variant = "default", size = "default", ...props },
+  ref
+) {
   return (
     <ButtonPrimitive
+      ref={ref}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
   )
-}
+})
+Button.displayName = "Button"
 
 export { Button, buttonVariants }

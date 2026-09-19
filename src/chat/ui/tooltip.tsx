@@ -1,3 +1,14 @@
+// Every component in this directory that renders a DOM element is wrapped in
+// `forwardRef`. React 19 lets a plain function component read `ref` out of its
+// props; React 18 — which this package still supports — strips it, warns, and
+// the ref reaches nothing. Base UI hands refs to whatever it renders, so a
+// plain function here loses them silently. See tests/chat/ui-refs.test.tsx.
+//
+// `TooltipProvider` and `Tooltip` are the exceptions: Base UI's `Tooltip.Provider`
+// and `Tooltip.Root` render no element of their own, take no `ref`, and so
+// neither do these. Wrapping them would advertise a ref that nothing could ever
+// attach.
+import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "../lib/cn.js"
 import { usePortalHost } from "../lib/portal-host.js"
@@ -19,29 +30,49 @@ function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
-}
+const TooltipTrigger = React.forwardRef<
+  HTMLButtonElement,
+  TooltipPrimitive.Trigger.Props
+>(function TooltipTrigger({ ...props }, ref) {
+  return (
+    <TooltipPrimitive.Trigger
+      ref={ref}
+      data-slot="tooltip-trigger"
+      {...props}
+    />
+  )
+})
+TooltipTrigger.displayName = "TooltipTrigger"
 
-function TooltipContent({
-  className,
-  side = "top",
-  sideOffset = 4,
-  align = "center",
-  alignOffset = 0,
-  children,
-  ...props
-}: TooltipPrimitive.Popup.Props &
-  Pick<
-    TooltipPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
-  >) {
+const TooltipContent = React.forwardRef<
+  HTMLDivElement,
+  TooltipPrimitive.Popup.Props &
+    Pick<
+      TooltipPrimitive.Positioner.Props,
+      "align" | "alignOffset" | "side" | "sideOffset"
+    >
+>(function TooltipContent(
+  {
+    className,
+    side = "top",
+    sideOffset = 4,
+    align = "center",
+    alignOffset = 0,
+    children,
+    ...props
+  },
+  ref
+) {
   // Portals default to <body>, outside the element the whole stylesheet is
-  // scoped to — a tooltip there would render unstyled. Null (no chat around it)
-  // means the default, which is what a standalone use of this file wants.
+  // scoped to — a tooltip there would render unstyled — so inside a chat this
+  // goes to its portal host instead. Outside one the hook returns null, and an
+  // explicit null container is NOT the same as omitting it: Base UI reads it as
+  // a container it has not resolved yet and renders nothing at all. Passing
+  // undefined is what actually asks for the default. See
+  // tests/chat/ui-standalone.test.tsx, which fails without the coalesce.
   const portalHost = usePortalHost()
   return (
-    <TooltipPrimitive.Portal container={portalHost}>
+    <TooltipPrimitive.Portal container={portalHost ?? undefined}>
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
@@ -50,6 +81,7 @@ function TooltipContent({
         className="isolate z-50"
       >
         <TooltipPrimitive.Popup
+          ref={ref}
           data-slot="tooltip-content"
           className={cn(
             "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
@@ -63,6 +95,7 @@ function TooltipContent({
       </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
   )
-}
+})
+TooltipContent.displayName = "TooltipContent"
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
