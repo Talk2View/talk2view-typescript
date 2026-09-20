@@ -129,6 +129,8 @@ export class T2VTools {
    */
   async register(tools: (ClientToolSchema | ClientTool)[]): Promise<RegisterToolsResponse> {
     const schemasToRegister: ClientToolSchema[] = [];
+    const nextHandlers = new Map<string, ToolHandler>();
+    const nextPermissions = new Map<string, boolean | ToolPermissionCallback>();
 
     for (const tool of tools) {
       // Extract schema (without execute)
@@ -142,15 +144,24 @@ export class T2VTools {
 
       // If tool has an inline execute function, register as handler
       if ('execute' in tool && typeof tool.execute === 'function') {
-        this.handlers.set(tool.name, tool.execute);
+        nextHandlers.set(tool.name, tool.execute);
       }
 
       // Track permission config
       if (tool.permission !== undefined && tool.permission !== false) {
-        this.permissions.set(tool.name, tool.permission);
+        nextPermissions.set(tool.name, tool.permission);
       }
     }
 
+    // Rebuilt, not merged. `schemas` is replaced wholesale, so a tool dropped
+    // from a later register() disappears from what the engine may call — but
+    // its handler and its permission used to survive in these maps, leaving it
+    // executable through `hasHandler`, and with no schema left, validateArgs
+    // waves any arguments through. The engine validates too, so this was
+    // defence in depth rather than a live hole; it is still a withdrawn tool
+    // that could run.
+    this.handlers = nextHandlers;
+    this.permissions = nextPermissions;
     this.schemas = schemasToRegister;
 
     return this.client.request<RegisterToolsResponse>('/v1/tools/register', {
