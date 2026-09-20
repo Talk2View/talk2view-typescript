@@ -7,7 +7,7 @@
  * usual stub is deliberately absent.
  */
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const requests: { path: string; body: unknown }[] = [];
@@ -23,10 +23,25 @@ vi.mock('../../src/client', () => ({
     uploadRequest: vi.fn(),
   })),
 }));
+const authState = vi.hoisted(() => {
+  const state = {
+    user: { id: 'u1', email: 'a@b.c' } as { id: string; email: string } | null,
+    listeners: new Set<(user: unknown) => void>(),
+    set(user: { id: string; email: string } | null) {
+      state.user = user;
+      for (const listener of [...state.listeners]) listener(user);
+    },
+  };
+  return state;
+});
+
 vi.mock('../../src/auth', () => ({
   T2VAuth: vi.fn().mockImplementation(() => ({
-    onAuthStateChange: () => () => {},
-    getUser: () => ({ id: 'u1', email: 'a@b.c' }),
+    onAuthStateChange: (cb: (user: unknown) => void) => {
+      authState.listeners.add(cb);
+      return () => authState.listeners.delete(cb);
+    },
+    getUser: () => authState.user,
     isAnonymous: () => false,
     startAnonymous: vi.fn().mockResolvedValue(null),
     listen: vi.fn(),
@@ -68,6 +83,8 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   requests.length = 0;
+  authState.user = { id: 'u1', email: 'a@b.c' };
+  authState.listeners.clear();
 });
 
 afterEach(() => {
@@ -194,6 +211,37 @@ describe('the Skills view', () => {
     expect((screen.getByRole('button', { name: 'Save skill' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+});
+
+describe('when nobody is signed in', () => {
+  it('sends nothing — there is no session to register against', async () => {
+    authState.user = null;
+    localStorage.setItem(
+      't2v_user_skills',
+      JSON.stringify([{ name: 'waiting', description: '', content: 'body' }]),
+    );
+    await openSkills();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(registered()).toHaveLength(0);
+  });
+
+  it('sends them as soon as somebody does sign in', async () => {
+    authState.user = null;
+    localStorage.setItem(
+      't2v_user_skills',
+      JSON.stringify([{ name: 'waiting', description: '', content: 'body' }]),
+    );
+    await openSkills();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(registered()).toHaveLength(0);
+
+    await act(async () => {
+      authState.set({ id: 'u2', email: 'later@b.c' });
+    });
+
+    await waitFor(() => expect(registered().at(-1)).toHaveLength(1));
+    expect(registered().at(-1)?.[0]?.name).toBe('waiting');
   });
 });
 

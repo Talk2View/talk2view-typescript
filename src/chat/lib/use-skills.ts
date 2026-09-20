@@ -13,9 +13,9 @@
  *
  * When they are sent: the enabled ones go to the engine for the current
  * session, where they merge with the partner's and the built-in ones, and win
- * over both. Registering needs somebody signed in — a guest counts — so a
- * refusal before there is a session is not an error to show anyone: the client
- * registers again on its own when a session appears.
+ * over both. Registering needs somebody signed in — a guest counts — so
+ * nothing is sent before then, and the client registers again on its own
+ * whenever it starts a session.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Talk2View } from '../../index.js';
@@ -74,12 +74,26 @@ export function useSkills(client: Talk2View, options: { enabled: boolean }): Ski
 
   const enabled = useMemo(() => skills.filter((s) => !disabled.has(s.name)), [skills, disabled]);
 
-  // Send the enabled set whenever it changes. The first run after mount is the
-  // one that matters for a returning visitor: their skills are already on this
-  // device and the engine has never heard of them.
+  // Send the enabled set whenever it changes, and again when somebody signs
+  // in. Registering needs a session, and a session needs an account — a guest
+  // counts — so before that there is nobody to register them for: the call
+  // would 401, in the console of every logged-out visitor, for nothing. The
+  // client registers on its own when it starts a session, which covers the
+  // visitor who signs in by sending their first message as a guest.
+  const [identity, setIdentity] = useState(() => client.auth.getUser()?.id ?? null);
+  useEffect(() => {
+    if (!live) return;
+    return client.auth.onAuthStateChange((user) => setIdentity(user?.id ?? null));
+  }, [client, live]);
+
   const lastSent = useRef<string>('');
   useEffect(() => {
     if (!live) return;
+    if (!identity) {
+      // Nothing is registered for nobody, so the next signed-in run must send.
+      lastSent.current = '';
+      return;
+    }
     const payload = JSON.stringify(enabled);
     if (payload === lastSent.current) return;
     lastSent.current = payload;
@@ -89,16 +103,14 @@ export function useSkills(client: Talk2View, options: { enabled: boolean }): Ski
       .register(enabled)
       .then(() => !cancelled && setStatus('idle'))
       .catch(() => {
-        // No session yet is the common case, and the client registers again
-        // when it makes one. Anything else is worth a quiet flag in the view.
         if (cancelled) return;
         lastSent.current = '';
-        setStatus(client.auth.getUser() ? 'error' : 'idle');
+        setStatus('error');
       });
     return () => {
       cancelled = true;
     };
-  }, [client, enabled, live]);
+  }, [client, enabled, identity, live]);
 
   const persist = useCallback(
     (next: UserSkill[]) => {
