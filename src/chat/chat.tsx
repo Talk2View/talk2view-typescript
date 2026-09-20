@@ -25,7 +25,7 @@ import {
   type FC,
   type ReactNode,
 } from 'react';
-import { HistoryIcon, PlusIcon, SettingsIcon, UserRoundIcon } from 'lucide-react';
+import { BookOpenIcon, HistoryIcon, PlusIcon, SettingsIcon, UserRoundIcon } from 'lucide-react';
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react';
 import { Thread, ComposerExtrasContext, type ThreadComponents } from './vendor/thread.aui.js';
 import { TooltipIconButton } from './vendor/tooltip-icon-button.js';
@@ -37,10 +37,11 @@ import { ToolFallback, ToolGroup } from './tool-fallback.js';
 import { useAuthGate } from './auth-gate.js';
 import { AccountView } from './views/account.js';
 import { SettingsView } from './views/settings.js';
+import { SkillsView } from './views/skills.js';
 import { ThreadListView } from './views/thread-list.js';
 
 /** Which pane the header is showing. */
-export type ChatView = 'thread' | 'list' | 'settings' | 'account';
+export type ChatView = 'thread' | 'list' | 'settings' | 'account' | 'skills';
 
 /**
  * Plain English over assistant-ui's own words: the thing an end-user starts is
@@ -52,6 +53,7 @@ const VIEW_TITLES: Record<ChatView, string> = {
   list: 'Chats',
   settings: 'Settings',
   account: 'Account',
+  skills: 'Skills',
 };
 
 export function Talk2ViewChat(props: Talk2ViewChatProps): ReactNode {
@@ -156,6 +158,7 @@ export const ChatShell: FC<ChatShellProps> = ({ footer, headerEnd, view: given, 
           <ThreadListView onSelect={() => setView('thread')} />
         )}
         {view === 'settings' && features.settings && <SettingsView />}
+        {view === 'skills' && features.skills && <SkillsView />}
         {/* Rendered whenever the view is Account, feature flag or not: the gate
             turns it on by itself, and a gate with no way through is a dead end. */}
         {view === 'account' && (
@@ -228,6 +231,17 @@ const ChatHeader: FC<{
                 className="bg-primary absolute end-1 top-1 size-1.5 rounded-full max-sm:end-2 max-sm:top-2"
               />
             ) : null}
+          </TooltipIconButton>
+        )}
+        {features.skills && (
+          <TooltipIconButton
+            tooltip="Skills"
+            side="bottom"
+            aria-pressed={view === 'skills'}
+            className={HEADER_BUTTON}
+            onClick={toggle('skills')}
+          >
+            <BookOpenIcon className="size-3.5" />
           </TooltipIconButton>
         )}
         {features.settings && (

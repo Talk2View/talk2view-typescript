@@ -27,6 +27,7 @@ import { useGuestLimits, type GuestLimits } from './auth-gate.js';
 import { PortalHostContext, useCreatePortalHost } from './lib/portal-host.js';
 import { createDictationPhaseStore, type DictationPhaseStore } from './lib/dictation-phase.js';
 import { useConversations } from './lib/use-conversations.js';
+import { useSkills, type SkillsStore } from './lib/use-skills.js';
 
 /** The opening screen: a heading and the openers offered under the composer. */
 export interface Talk2ViewChatWelcome {
@@ -44,6 +45,8 @@ export interface Talk2ViewChatFeatures {
   settings?: boolean;
   account?: boolean;
   threadList?: boolean;
+  /** The end-user's own markdown skills, written in the chat (default true). */
+  skills?: boolean;
 }
 
 export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
@@ -110,6 +113,8 @@ export interface Talk2ViewChatContextValue {
    * refusal arrives.
    */
   limits: GuestLimits;
+  /** The end-user's own skills, and what is sent with their chats. */
+  skills: SkillsStore;
   dictation: DictationPhaseStore;
   /**
    * Whether the integrator asked for dark mode, i.e. `className` carries
@@ -147,6 +152,7 @@ const FEATURE_DEFAULTS: Required<Talk2ViewChatFeatures> = {
   settings: true,
   account: true,
   threadList: true,
+  skills: true,
 };
 
 const NO_WELCOME: Talk2ViewChatWelcome = {};
@@ -235,6 +241,7 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   // this device left off on back into the client, and the runtime reads the
   // client's messages as its own initial state on the same render.
   const threadList = useConversations(client, { enabled: features.threadList });
+  const skills = useSkills(client, { enabled: features.skills });
 
   const runtime = useTalk2ViewRuntimeForClient(client, {
     systemPrompt,
@@ -301,11 +308,12 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
       welcome,
       portalHost,
       limits,
+      skills,
       dictation,
       dark,
       behaviour,
     }),
-    [client, partnerConfig, features, welcome, portalHost, limits, dictation, dark],
+    [client, partnerConfig, features, welcome, portalHost, limits, skills, dictation, dark],
   );
 
   return (

@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+#### Skills, in the chat itself
+
+The end-user's own markdown — a protocol, a house style, the way their team
+names things — written in the chat and loaded by the agent when it helps.
+`Skills` is a view in the header, beside Account and Settings, so every
+integration gets it without building an editor: write one, import a `.md` file,
+switch one off without deleting it.
+
+Skills are kept on that device (`t2v_user_skills`, with the switched-off names
+in `t2v_disabled_skills`) and the enabled ones are registered for the session,
+where the engine merges them with the partner's and the built-in ones. They are
+also re-registered whenever the client starts a new session — on sign-in, on
+recovery, on a fresh visit — which a host previously had to remember to do.
+
+Turn the view off with `features={{ skills: false }}`. The `client.skills` API
+is unchanged and still there for hosts that manage skills themselves.
+
 ### Fixed
 
 - **A bad or revoked partner key no longer signs the end-user out.** The SDK read every 401 as an expired access token, so it refreshed. The engine's refresh route rejected the same partner key with its own 401, which the SDK took for a dead refresh token, and it cleared the session. Now a `partner_key_error` 401 is thrown as a `PartnerKeyError`, carrying the engine's `type`, `statusCode` and message, with no refresh attempted. This holds for requests, `chat()` and uploads alike, and the stored session is kept. A refresh refused because of the partner key also keeps the session: `t2v.auth.getValidAccessToken()` and the client's `refreshTokens()` throw that `PartnerKeyError` instead of returning `null` / `'invalid'`. Only a rejected refresh token still signs the end-user out, in every tab.

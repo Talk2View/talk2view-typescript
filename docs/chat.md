@@ -53,6 +53,17 @@ A header of one-tap views sits over a thread that never unmounts, so switching
 to Settings and back keeps the conversation, the scroll position and a
 half-typed message.
 
+The views are Account, Skills, Settings and Chats.
+
+**Skills** is the end-user's own knowledge: markdown they write once — a
+protocol, a house style, the way their team names things — that the agent can
+load when it helps. They are kept on that device and sent with that person's
+chats, where they merge with the partner's and the built-in skills and win over
+both. A skill can be switched off without deleting it, and a `.md` file can be
+imported, taking its `name` and `description` from frontmatter when it has any.
+Turn the view off with `features={{ skills: false }}`; the underlying
+`client.skills` API stays available either way.
+
 ### `<Talk2ViewChatLauncher>`
 
 The same chat in a floating panel: a mark in the corner of the page, a popover
@@ -98,7 +109,7 @@ take directly.
 | `systemPrompt` | none | Your own instructions, sent with every message. Changing it does not restart the conversation. |
 | `welcome` | `{}` | `heading` and `suggestions` on the empty chat. Clicking a suggestion sends it. |
 | `allowAnonymous` | `true` | Logged-out visitors chat as guests. `false` shows sign-in first — **and see the note below**. |
-| `features` | all on | `{ dictation, attachments, settings, account, threadList }`. |
+| `features` | all on | `{ dictation, attachments, settings, account, threadList, skills }`. |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
 | `footer` | none | A short line under the composer — your terms, a disclaimer. |

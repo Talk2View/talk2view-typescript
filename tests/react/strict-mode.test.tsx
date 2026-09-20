@@ -34,7 +34,20 @@ vi.mock('../../src/tools', () => ({
   })),
   stripNullArgs: (args: Record<string, unknown>) => args,
 }));
-vi.mock('../../src/skills', () => ({ T2VSkills: vi.fn().mockImplementation(() => ({})) }));
+vi.mock('../../src/skills', () => ({
+  // A stub that answers the whole surface the client uses: createSession
+  // re-registers the end-user's skills, so a bare {} breaks every test
+  // that starts a session.
+  T2VSkills: vi.fn().mockImplementation(() => ({
+    getAll: () => [],
+    load: () => [],
+    add: () => {},
+    remove: () => false,
+    save: () => {},
+    clear: () => {},
+    register: async () => ({ registered: [], count: 0 }),
+  })),
+}));
 // `../../src/auth` is deliberately NOT mocked: its listeners are the subject.
 
 import { Talk2View } from '../../src/index';

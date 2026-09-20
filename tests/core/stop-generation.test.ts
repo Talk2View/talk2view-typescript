@@ -13,7 +13,20 @@ vi.mock('../../src/tools', () => ({
   T2VTools: vi.fn().mockImplementation(() => ({ reRegister: vi.fn().mockResolvedValue(null) })),
   stripNullArgs: (args: Record<string, unknown>) => args,
 }));
-vi.mock('../../src/skills', () => ({ T2VSkills: vi.fn().mockImplementation(() => ({})) }));
+vi.mock('../../src/skills', () => ({
+  // A stub that answers the whole surface the client uses: createSession
+  // re-registers the end-user's skills, so a bare {} breaks every test
+  // that starts a session.
+  T2VSkills: vi.fn().mockImplementation(() => ({
+    getAll: () => [],
+    load: () => [],
+    add: () => {},
+    remove: () => false,
+    save: () => {},
+    clear: () => {},
+    register: async () => ({ registered: [], count: 0 }),
+  })),
+}));
 
 const text = (content: string): ChatEvent => ({ type: 'text', content });
 

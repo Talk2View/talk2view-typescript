@@ -216,6 +216,18 @@ export class Talk2View {
       console.warn('[Talk2View] Failed to re-register tools on new session:', err);
     }
 
+    // Skills are session-scoped too, and the end-user's live on their device:
+    // a host that loaded them once would otherwise lose them the moment the
+    // session turned over — on sign-in, on recovery, on a fresh visit.
+    const userSkills = this.skills.getAll();
+    if (userSkills.length > 0) {
+      try {
+        await this.skills.register(userSkills);
+      } catch (err) {
+        console.warn('[Talk2View] Failed to re-register skills on new session:', err);
+      }
+    }
+
     return session;
   }
 

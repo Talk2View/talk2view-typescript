@@ -32,7 +32,15 @@ vi.mock('../../src/tools', () => ({
 }));
 
 vi.mock('../../src/skills', () => ({
-  T2VSkills: vi.fn().mockImplementation(() => ({})),
+  T2VSkills: vi.fn().mockImplementation(() => ({
+    getAll: () => [],
+    load: () => [],
+    add: () => {},
+    remove: () => false,
+    save: () => {},
+    clear: () => {},
+    register: async () => ({ registered: [], count: 0 }),
+  })),
 }));
 
 // ─── Chunk builders ──────────────────────────────────────────────────────────
