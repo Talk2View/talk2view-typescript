@@ -1,0 +1,505 @@
+/* Talk2View packaged chat — the ONE source stylesheet.
+   Compiled to dist/chat.css by scripts/chat/build-css.mjs:
+     Tailwind v4 CLI -> isolate (scope + namespace) -> audit -> lightningcss.
+
+   Nothing here may assume the host page has Tailwind, PostCSS or shadcn, and
+   nothing here may fetch from a third-party host: no @font-face, no
+   fonts.googleapis, no CDN. The chat uses the host page's font unless the
+   integrator sets --t2v-font.
+
+   `:root` below is rewritten to `.t2v-chat` by scripts/chat/isolate.mjs, so the
+   published file never declares anything on an element the host owns. */
+
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@import "tw-shimmer";
+/* Folded in, because tsc would otherwise emit a bare `import "….css"` from the
+   vendored markdown-text.tsx that a consumer without a CSS loader cannot parse. */
+@import "@assistant-ui/react-markdown/styles/dot.css";
+
+@source "../";
+
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+
+/* Brand (talk2view-brand skill): flat hexes on purpose — the same values on every host. */
+:root {
+  --t2v-teal: #26C8B8;
+  --t2v-smoke: #021C25;
+  --t2v-ivory: #F2F0EC;
+  --t2v-mist: #CAEBEB;
+  --t2v-stone: #9AA4A8;
+  --t2v-slate: #67777C;
+  --t2v-ash: #354951;
+  --t2v-highlight: #73FFFF;
+  --t2v-harbor: #608B8D;
+  --t2v-amber: #F0A74A;
+  /* Inherit the host page's font unless the integrator passes `fontFamily`. */
+  --t2v-font: inherit;
+
+  /* shadcn/assistant-ui semantic tokens, in OUR meanings (surfaces, not text) */
+  --background: #ffffff;
+  --foreground: var(--t2v-smoke);
+  --card: #ffffff;
+  --card-foreground: var(--t2v-smoke);
+  --popover: #ffffff;
+  --popover-foreground: var(--t2v-smoke);
+  --primary: var(--t2v-teal);
+  --primary-foreground: var(--t2v-smoke);
+  --secondary: var(--t2v-ivory);
+  --secondary-foreground: var(--t2v-smoke);
+  --muted: var(--t2v-mist);
+  --muted-foreground: var(--t2v-slate);
+  --accent: var(--t2v-mist);
+  --accent-foreground: var(--t2v-smoke);
+  --destructive: #BB524E;
+  --border: var(--t2v-stone);
+  --input: var(--t2v-stone);
+  --ring: var(--t2v-teal);
+  --radius: 0rem;
+  --composer-radius: 0rem;
+  --composer-bg: #ffffff;
+  --composer-padding: 0.5rem;
+
+  /* Private mirrors of the three composer tokens, read back further down. They
+     are computed HERE, on the chat root, so they carry the integrator's own
+     override of the public token — see the note above .aui-composer-shell. */
+  --t2v-composer-radius: var(--composer-radius);
+  --t2v-composer-bg: var(--composer-bg);
+  --t2v-composer-padding: var(--composer-padding);
+}
+
+/* Dark mode is opt-in, and it is `dark` on the `.t2v-chat` element ITSELF —
+   `<Talk2ViewChat className="dark">`, which is the only form docs/chat.md gives.
+   `dark` on a container around the chat does NOT work, and neither does it on
+   <html> or <body>: isolation rewrites `:root.dark` to `.t2v-chat.dark`, a
+   compound on the chat's own element, and nothing here can see an ancestor.
+   The bare `.dark` below ships as `.t2v-chat .dark` and covers only a `dark`
+   element INSIDE the chat, which is nobody's use case — it is kept because the
+   cost is one selector and removing it is a change nothing needs.
+
+   Both of these declare tokens on the chat root, so every descendant inherits
+   them. Do NOT re-declare a token on an inner element (`.aui-root`, say): an
+   element's own declaration beats the value it would inherit, and the dark twin
+   cannot be spelled for it — isolate.mjs can write the root class as a whole
+   compound or as a leading descendant, never "the root's own compound, then a
+   descendant", so `:root.dark .aui-root` would ship as
+   `.t2v-chat :root.dark .aui-root`. A remap like that silently pinned every
+   muted and accent surface in the full pane to the LIGHT palette. */
+:root.dark,
+.dark {
+  --background: var(--t2v-smoke);
+  --foreground: var(--t2v-ivory);
+  --card: #0b2731;
+  --card-foreground: var(--t2v-ivory);
+  --popover: #0b2731;
+  --popover-foreground: var(--t2v-ivory);
+  --primary: var(--t2v-teal);
+  --primary-foreground: var(--t2v-smoke);
+  --secondary: var(--t2v-ash);
+  --secondary-foreground: var(--t2v-ivory);
+  --muted: var(--t2v-ash);
+  --muted-foreground: var(--t2v-stone);
+  --accent: var(--t2v-ash);
+  --accent-foreground: var(--t2v-ivory);
+  --border: var(--t2v-ash);
+  --input: var(--t2v-ash);
+  --ring: var(--t2v-highlight);
+  --composer-bg: var(--t2v-smoke);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-mist: var(--t2v-mist);
+  --color-harbor: var(--t2v-harbor);
+  --color-ash: var(--t2v-ash);
+  --color-highlight: var(--t2v-highlight);
+  --color-accent-amber: var(--t2v-amber);
+  --font-sans: var(--t2v-font);
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  /* Kept as calc() off --radius, not flattened to 0, so a partner setting
+     `.t2v-chat { --radius: 1rem }` actually rounds the chat. Square is the
+     default, not the ceiling. */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --animate-collapsible-down: collapsible-down 0.2s ease-out;
+  --animate-collapsible-up: collapsible-up 0.2s ease-out;
+}
+
+/* assistant-ui reads shadcn's tokens with shadcn's meanings: `muted` and
+   `accent` are soft SURFACES (the user's bubble, hover states), not text
+   colours. Those meanings are the ones `:root` and `:root.dark` above already
+   declare, so there is nothing to remap here — and a remap on `.aui-root` is
+   worse than redundant: see the note on the dark block above.
+
+   Scrollbars inside the chat. On a Mac with a mouse plugged in (or "Show scroll
+   bars: Always"), and on Windows, the browser paints a classic scrollbar with a
+   grey track — and assistant-ui reserves that strip permanently so the text
+   doesn't jump when a scrollbar appears. Keep the reserved space, lose the
+   track: a thin Stone thumb on nothing. */
+.aui-root,
+.aui-root * {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(154 164 168 / 0.6) transparent;
+}
+
+/* The root box. The exported component renders a dedicated wrapper carrying
+   this class and no utilities of its own, so descendant scoping reaches
+   everything (REPORT.md §1a-ii).
+
+   Written as `:root`, not `.t2v-chat`: isolate.mjs rewrites `:root` to the scope
+   class, and prefixes everything else as a DESCENDANT of it — a literal
+   `.t2v-chat` here would ship as `.t2v-chat .t2v-chat` and match nothing, which
+   is what left the full-pane chat collapsed to its content height. */
+:root {
+  height: 100%;
+  font-family: var(--t2v-font);
+  color: var(--foreground);
+
+  /* Isolation has two halves, and this is the one specificity cannot do.
+     Everything else here defends against the host's SELECTORS — armour, layers,
+     descendant scoping — but an inherited property never matches a selector at
+     all: a rule on the host's `body` simply arrives, and no amount of
+     specificity on our side is even consulted.
+
+     It is not a hypothetical. The stock Vite React template ships
+     `text-align: center` on `body`, so the very first thing a new integrator
+     saw was a centred chat; a host with `text-transform: uppercase` renders our
+     header as "NEW CHAT". So the inherited typography stops at this element.
+
+     The font is the deliberate exception: `--t2v-font` is `inherit` on purpose
+     (docs/chat.md), because the chat is meant to look like part of the page it
+     sits in. Alignment, case and spacing are not that — they are the page's own
+     layout leaking into a component. */
+  text-align: start;
+  text-transform: none;
+  letter-spacing: normal;
+  word-spacing: normal;
+  line-height: normal;
+  text-indent: 0;
+  white-space: normal;
+}
+
+/* The portal host is a second .t2v-chat element, in <body>, that every popover,
+   tooltip and dialog inside the chat renders into (src/chat/lib/portal-host.ts).
+   It carries the class only to inherit the tokens, so it must take no part in
+   the host page's layout: height:100% above would give a page with
+   `html,body{height:100%}` an extra full-height block and a scrollbar. */
+:root.t2v-portal-host {
+  height: auto;
+}
+
+/* ── composer shape ───────────────────────────────────────────────────────
+   thread.aui.tsx sets --composer-bg / --composer-radius / --composer-padding as
+   INLINE styles on the thread root. An inline declaration beats anything we can
+   write for that element and everything under it, and !important on a custom
+   property is forbidden here (the theming rule; isolate.mjs strips it anyway).
+   Re-declaring the tokens on the elements that READ them wins instead: an
+   element's own declaration beats a value inherited from an ancestor. The
+   values come from the private mirrors computed on .t2v-chat, so an integrator
+   setting `--composer-radius` on the chat root still reaches the composer.
+
+   Selectors are the four upstream readers of these tokens. If upstream adds a
+   fifth it renders with the 1rem inline default — visible at a glance, and the
+   fix is one more selector here. */
+.aui-thread-viewport-footer,
+[data-slot="aui_composer-shell"],
+.aui-user-message-content,
+.aui-edit-composer-root {
+  --composer-radius: var(--t2v-composer-radius);
+  --composer-bg: var(--t2v-composer-bg);
+  --composer-padding: var(--t2v-composer-padding);
+}
+
+/* ── voice button motion ──────────────────────────────────────────────────
+   Listening: each bar breathes from its middle, out of phase, like speech. */
+.t2v-wave-bar {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.25s ease-out;
+}
+.t2v-wave-live {
+  animation: t2v-wave-live 0.9s ease-in-out infinite;
+}
+/* Transcribing: the bars settle into short dashes and pulse left to right. */
+.t2v-wave-busy {
+  animation: t2v-wave-busy 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+/* …and a beam circles the face: the launcher's beam, drawn as a ring. */
+.t2v-voice-face[data-busy]::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--t2v-beam),
+    transparent 0 35%,
+    #26c8b8 70%,
+    #73ffff 96%,
+    transparent 100%
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  animation: t2v-beam 1.1s linear infinite;
+}
+
+/* ── the launcher's anchor ────────────────────────────────────────────────
+   The fixed corner the launcher sits in. It is a chat ROOT — it carries
+   `.t2v-chat` itself, in the partner's own page — so its rules are written
+   `:root.…`: a bare `.aui-modal-anchor` here would ship as
+   `.t2v-chat .aui-modal-anchor` and match nothing, and for the same reason the
+   element takes no Tailwind utilities of its own.
+
+   A container with a `transform`, `filter` or `contain` on it makes `fixed`
+   resolve against that container instead of the viewport — mount the launcher
+   outside one. */
+:root.aui-modal-anchor {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-end: 1rem;
+  z-index: 999998;
+  display: flex;
+  height: 4rem;
+  justify-content: flex-end;
+  /* Rising over a cookie banner that has just appeared (`keepClearOf`). */
+  transition: translate 0.3s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root.aui-modal-anchor {
+    transition: none;
+  }
+}
+
+/* ── launcher colourways ──────────────────────────────────────────────────
+   Every state is pinned, colour as well as background: ui/button.tsx's ghost
+   variant repaints both on hover and while the popup is open, which turned the
+   chevron Smoke-on-Smoke in the dark colourway.
+
+   `!important` because every Tailwind utility in this sheet is armoured with it
+   (scripts/chat/isolate.mjs --armour), so specificity alone cannot win against
+   the variant's own `hover:bg-muted`. Never on a custom property: a partner
+   retheming the chat by declaring a token has to keep working. */
+.aui-modal-button[data-launcher-variant='smoke-teal'],
+.aui-modal-button[data-launcher-variant='smoke-teal']:hover,
+.aui-modal-button[data-launcher-variant='smoke-teal'][aria-expanded='true'],
+.aui-modal-button[data-launcher-variant='smoke-teal'][data-popup-open] {
+  background-color: var(--t2v-teal) !important;
+  color: var(--t2v-smoke) !important;
+}
+.aui-modal-button[data-launcher-variant='teal-smoke'],
+.aui-modal-button[data-launcher-variant='teal-smoke']:hover,
+.aui-modal-button[data-launcher-variant='teal-smoke'][aria-expanded='true'],
+.aui-modal-button[data-launcher-variant='teal-smoke'][data-popup-open] {
+  background-color: var(--t2v-smoke) !important;
+  color: var(--t2v-teal) !important;
+}
+.aui-modal-button[data-launcher-variant='teal-white'],
+.aui-modal-button[data-launcher-variant='teal-white']:hover,
+.aui-modal-button[data-launcher-variant='teal-white'][aria-expanded='true'],
+.aui-modal-button[data-launcher-variant='teal-white'][data-popup-open] {
+  background-color: #ffffff !important;
+  color: var(--t2v-teal) !important;
+  /* The drop shadow again, plus a Stone hairline: white on white needs an edge. */
+  box-shadow:
+    0 6px 20px -8px rgb(2 28 37 / 0.55),
+    0 0 0 1px var(--t2v-stone) !important;
+}
+
+/* The label's own colours: the brand pairs the words and the trailing cursor in
+   two colours that both contrast with the tile, so they do not simply inherit
+   the mark's colour. */
+.aui-modal-button[data-launcher-variant='smoke-teal'] .t2v-launcher-label {
+  color: var(--t2v-smoke);
+}
+.aui-modal-button[data-launcher-variant='smoke-teal'] .t2v-launcher-cursor {
+  color: #ffffff;
+}
+.aui-modal-button[data-launcher-variant='teal-smoke'] .t2v-launcher-label {
+  color: #ffffff;
+}
+.aui-modal-button[data-launcher-variant='teal-smoke'] .t2v-launcher-cursor {
+  color: var(--t2v-teal);
+}
+.aui-modal-button[data-launcher-variant='teal-white'] .t2v-launcher-label {
+  color: var(--t2v-smoke);
+}
+.aui-modal-button[data-launcher-variant='teal-white'] .t2v-launcher-cursor {
+  color: var(--t2v-teal);
+}
+
+/* The trailing underscore blinks like a cursor, after the brand's tagline
+   sting: on for two beats, off for one. Decorative, so reduced motion keeps it
+   steady — lit, never mid-fade. */
+@media (prefers-reduced-motion: no-preference) {
+  .t2v-launcher-cursor {
+    animation: t2v-cursor-blink 1s step-end infinite;
+  }
+}
+
+/* ── launcher beam ────────────────────────────────────────────────────────
+   One beam for every colourway: Teal into Highlight into white. Some part of it
+   shows on each tile — Highlight and white on Teal, all of it on Smoke, Teal
+   and Highlight on white — so the launcher's edge looks the same whichever
+   colour the visitor picks. It runs in every state: the rule is keyed on the
+   button alone, never on open/closed/hover. */
+.aui-modal-button {
+  position: relative;
+  --t2v-beam-tail: #26c8b8;
+  --t2v-beam-mid: #73ffff;
+  --t2v-beam-head: #ffffff;
+  --t2v-beam-ring: rgb(115 255 255 / 0.4);
+}
+.aui-modal-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 3px;
+  pointer-events: none;
+  background:
+    conic-gradient(
+      from var(--t2v-beam),
+      transparent 0 50%,
+      var(--t2v-beam-tail) 68%,
+      var(--t2v-beam-mid) 84%,
+      var(--t2v-beam-head) 95%,
+      transparent 100%
+    ),
+    linear-gradient(var(--t2v-beam-ring) 0 0);
+  /* Keep only the 3px frame: paint the padding box, knock out the content box. */
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  filter: drop-shadow(0 0 5px var(--t2v-beam-mid));
+  animation: t2v-beam 3.2s linear infinite;
+}
+/* Reduced motion: nothing travels — the whole ring breathes instead. */
+@media (prefers-reduced-motion: reduce) {
+  .aui-modal-button::before {
+    background: linear-gradient(var(--t2v-beam-mid) 0 0);
+    animation: t2v-beam-breathe 2.4s ease-in-out infinite;
+  }
+}
+
+/* ── the approval card's tool description ────────────────────────────────
+   The tool's registered description is written for a model, not for this card,
+   so it can run to a paragraph. On a narrow pane (a Word task pane is 320px)
+   an unclamped one pushed the destructive warning and the allow/deny buttons
+   below the fold, which is the one place in the chat where the controls must
+   stay in view. Clamped to three lines; the element carries the full text in
+   `title`, and clamping is visual only, so a screen reader still reads it
+   whole. */
+.t2v-tool-approval-prompt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* ── the panel's dragged size ─────────────────────────────────────────────
+   The visitor's own size, set on the popup as two custom properties by
+   launcher.tsx. It cannot be a plain inline `width`/`height`: the panel's
+   default box comes from Tailwind size utilities, which this pipeline arms with
+   `!important` (isolate.mjs --armour) so a hostile host cannot shrink the chat,
+   and an inline declaration loses to an important one. */
+.aui-modal-content[data-sized] {
+  width: var(--t2v-panel-width) !important;
+  height: var(--t2v-panel-height) !important;
+}
+
+/* ── phone sheet ──────────────────────────────────────────────────────────
+   At and below the launcher's `sheetBelow` width the panel is a full-screen
+   sheet. The switch is a `data-sheet` attribute the launcher sets from
+   matchMedia, not a media query here, because that width is the integrator's to
+   choose and a stylesheet cannot read a prop.
+
+   `!important` twice over: Base UI positions the popup with inline styles, and
+   the panel's own Tailwind size utilities are armoured. */
+.aui-modal-positioner[data-sheet] {
+  position: fixed !important;
+  inset: 0 !important;
+  transform: none !important;
+  translate: none !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+.aui-modal-content[data-sheet] {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+/* The launcher stays tappable over the sheet, so it is raised above it. */
+:root.aui-modal-anchor[data-sheet] {
+  z-index: 1000000;
+}
+/* …and the composer keeps clear of it. Inside .aui-modal-content only: the
+   full-pane chat has no launcher, and an unscoped rule left its composer
+   indented by 72px on a phone. */
+.aui-modal-content[data-sheet] .aui-thread-viewport-footer {
+  padding-right: 4.5rem;
+}
+
+/* Keyframes and registrations last. The site's globals.css put every style rule
+   above these because Next 16's CSS handling dropped a rule placed directly
+   after an @keyframes block; that was a Next artefact, not a Tailwind or
+   lightningcss one (REPORT.md §1d), and this pipeline does not have it. They
+   are grouped here because it reads better, not because it is required. */
+@property --t2v-beam {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes t2v-wave-live {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1.25); }
+}
+@keyframes t2v-wave-busy {
+  0%, 55%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+  25% { transform: scaleY(1.7); opacity: 1; }
+}
+@keyframes t2v-beam {
+  to { --t2v-beam: 360deg; }
+}
+@keyframes t2v-beam-breathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@keyframes t2v-cursor-blink {
+  0%, 66% { opacity: 1; }
+  67%, 100% { opacity: 0; }
+}
+@keyframes collapsible-down {
+  from { height: 0; }
+  to { height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+}
+@keyframes collapsible-up {
+  from { height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+  to { height: 0; }
+}

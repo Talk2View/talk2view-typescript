@@ -1,0 +1,28 @@
+--- a/thread-list.aui.tsx
++++ b/thread-list.aui.tsx
+@@ -4,6 +4,7 @@
+ import { Input } from "../ui/input.js";
+ import { Skeleton } from "../ui/skeleton.js";
+ import { cn } from "../lib/cn.js";
++import { usePortalHost } from "../lib/portal-host.js";
+ import {
+   AuiIf,
+   ThreadListItemMorePrimitive,
+@@ -389,6 +390,9 @@
+ };
+ 
+ const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
++  // Radix portals this menu to <body>, outside the chat's scoped stylesheet,
++  // so without a container it renders with no background, border or padding.
++  const portalHost = usePortalHost();
+   return (
+     <ThreadListItemMorePrimitive.Root sharedFocusGroup>
+       <ThreadListItemMorePrimitive.Trigger render={<Button variant="ghost"
+@@ -399,6 +403,7 @@
+           <span className="sr-only">More options</span>
+         </ThreadListItemMorePrimitive.Trigger>
+       <ThreadListItemMorePrimitive.Content
++        portalProps={{ container: portalHost }}
+         side="right"
+         align="start"
+         sideOffset={6}

@@ -1,0 +1,117 @@
+name: Publish
+
+# Publishing is deliberately dull: it ships whatever version is committed on
+# `main`, and nothing else. The version bump is an ordinary pull request that
+# somebody reviewed — which means the artifact that reaches npm was reviewed
+# too, rather than being conjured by a workflow input at the moment of release.
+#
+# The workflow does not push to `main`. It only creates a tag after a
+# successful publish, so branch protection needs no exception for a bot.
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'npm dist-tag (latest for a stable release; beta/next for a prerelease)'
+        required: true
+        default: latest
+        type: choice
+        options: [latest, next, beta, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify the commit being published
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Vendored code has not drifted
+        run: npm run chat:check
+
+      - name: The isolated stylesheet still isolates
+        run: npm run chat:audit
+
+      - name: Read the version, and refuse one that is already published
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "About to publish @talk2view/sdk@$version"
+          if npm view "@talk2view/sdk@$version" version >/dev/null 2>&1; then
+            echo "::error::@talk2view/sdk@$version is already on npm. Bump the version in a pull request first."
+            exit 1
+          fi
+
+      # What lands in the tarball is what partners install. Print it, so the
+      # approver in the environment gate is approving something they can see.
+      - name: What would be published
+        run: npm pack --dry-run
+
+  publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    # A human approves this job before it runs. Configure the reviewers under
+    # Settings -> Environments -> npm-publish.
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@talk2view/sdk
+    permissions:
+      # The OIDC token npm exchanges for short-lived publish rights. There is
+      # no NPM_TOKEN in this repository: a long-lived token that can publish is
+      # exactly the thing worth stealing, and a public repository is where
+      # people go looking. Provenance is attested automatically under trusted
+      # publishing, so `--provenance` is not passed by hand.
+      id-token: write
+      # Only to create the release tag, after npm has accepted the publish.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 ships an older
+      # npm, so the CLI is upgraded rather than the runtime downgraded.
+      - name: Upgrade npm to a version that can publish over OIDC
+        run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Publish
+        run: npm publish --tag "${{ inputs.dist_tag }}"
+
+      - name: Tag the published commit
+        run: |
+          version="${{ needs.verify.outputs.version }}"
+          git tag "v$version"
+          git push origin "v$version"

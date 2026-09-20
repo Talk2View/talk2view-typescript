@@ -1,0 +1,51 @@
+--- a/thread.aui.tsx
++++ b/thread.aui.tsx
+@@ -66,6 +66,7 @@
+   type ComponentType,
+   type FC,
+   type PropsWithChildren,
++  type ReactNode,
+ } from "react";
+ 
+ export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
+@@ -425,13 +426,29 @@
+   );
+ };
+ 
++/**
++ * Talk2View: the composer's two seams. assistant-ui exposes no Composer slot at
++ * any level (ThreadComponents carries AssistantMessage, Welcome, ToolFallback,
++ * ToolGroup, ReasoningGroup and TaskGroup only, and Composer/ComposerAction are
++ * module-private), so mounting our own dictation control would otherwise mean
++ * forking the composer. Supplying `dictate` replaces the default mic and stop
++ * buttons; `attachments: false` drops the attach button, which upstream renders
++ * whether or not a runtime can take a file. Supplying neither leaves upstream's
++ * behaviour exactly as it is.
++ */
++export type ComposerExtras = { dictate?: ReactNode; attachments?: boolean };
++export const ComposerExtrasContext = createContext<ComposerExtras>({});
++
+ const ComposerAction: FC = () => {
++  const extras = useContext(ComposerExtrasContext);
+   return (
+     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
+-      <ComposerAddAttachment />
++      {/* The empty span keeps `justify-between` pushing the actions right. */}
++      {extras.attachments === false ? <span /> : <ComposerAddAttachment />}
+       <div className="flex items-center gap-1.5">
+         <AuiIf condition={(s) => s.thread.capabilities.dictation}>
+-          <AuiIf condition={(s) => s.composer.dictation == null}>
++          {extras.dictate}
++          <AuiIf condition={(s) => extras.dictate == null && s.composer.dictation == null}>
+             <ComposerPrimitive.Dictate render={<TooltipIconButton tooltip="Voice input"
+                 side="bottom"
+                 type="button"
+@@ -442,7 +459,7 @@
+                 <MicIcon className="aui-composer-dictate-icon size-4" />
+               </ComposerPrimitive.Dictate>
+           </AuiIf>
+-          <AuiIf condition={(s) => s.composer.dictation != null}>
++          <AuiIf condition={(s) => extras.dictate == null && s.composer.dictation != null}>
+             <ComposerPrimitive.StopDictation render={<TooltipIconButton tooltip="Stop dictation"
+                 side="bottom"
+                 type="button"

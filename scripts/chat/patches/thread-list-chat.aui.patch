@@ -1,0 +1,72 @@
+--- a/thread-list.aui.tsx
++++ b/thread-list.aui.tsx
+@@ -14,7 +14,6 @@
+   useAuiState,
+ } from "@assistant-ui/react";
+ import {
+-  ArchiveIcon,
+   Loader2Icon,
+   MoreHorizontalIcon,
+   PencilIcon,
+@@ -66,8 +65,8 @@
+         type="search"
+         value={value}
+         onChange={(event) => onValueChange(event.target.value)}
+-        aria-label="Search threads"
+-        placeholder="Search threads"
++        aria-label="Search chats"
++        placeholder="Search chats"
+         className={cn("h-8 ps-8 text-sm", className)}
+         {...props}
+       />
+@@ -140,7 +139,7 @@
+       .filter(
+         ({ id }) =>
+           !query ||
+-          (itemsById.get(id)?.title || "New Chat")
++          (itemsById.get(id)?.title || "New chat")
+             .toLowerCase()
+             .includes(query),
+       )
+@@ -186,7 +185,7 @@
+         data-slot="aui_thread-list-empty"
+         className="text-muted-foreground px-2.5 py-4 text-sm"
+       >
+-        No threads found
++        No chats found
+       </div>
+     );
+   }
+@@ -243,7 +242,7 @@
+               data-slot="aui_thread-list-new-label"
+               className={cn("whitespace-nowrap", labelClassName)}
+             >
+-              New Thread
++              New chat
+             </span>
+           </>
+         )}
+@@ -315,7 +314,7 @@
+             data-slot="aui_thread-list-item-title"
+             className="min-w-0 flex-1 truncate"
+           >
+-            <ThreadListItemPrimitive.Title fallback="New Chat" />
++            <ThreadListItemPrimitive.Title fallback="New chat" />
+           </span>
+           {isRunning && <span className="sr-only">Running</span>}
+         </ThreadListItemPrimitive.Trigger>
+@@ -418,11 +417,9 @@
+           <PencilIcon className="size-4" />
+           Rename
+         </ThreadListItemMorePrimitive.Item>
+-        <ThreadListItemPrimitive.Archive render={<ThreadListItemMorePrimitive.Item data-slot="aui_thread-list-item-more-item"
+-            className="hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none" />}>
+-            <ArchiveIcon className="size-4" />
+-            Archive
+-          </ThreadListItemPrimitive.Archive>
++        {/* Archive is left out: the packaged chat has no archived view, so the
++            control would hide a conversation with no way to get it back — and
++            an adapter without `onArchive` throws into the console instead. */}
+         <ThreadListItemPrimitive.Delete render={<ThreadListItemMorePrimitive.Item data-slot="aui_thread-list-item-more-item"
+             className="text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none" />}>
+             <TrashIcon className="size-4" />

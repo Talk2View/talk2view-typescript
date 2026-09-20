@@ -1,0 +1,158 @@
+{
+  "name": "@talk2view/sdk",
+  "version": "0.18.1",
+  "description": "Talk2View SDK \u2014 Add AI-powered natural language control to any application",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js",
+      "default": "./dist/ui/index.js"
+    },
+    "./assistant-ui": {
+      "types": "./dist/assistant-ui/index.d.ts",
+      "import": "./dist/assistant-ui/index.js",
+      "default": "./dist/assistant-ui/index.js"
+    },
+    "./chat": {
+      "types": "./dist/chat/index.d.ts",
+      "import": "./dist/chat/index.js",
+      "default": "./dist/chat/index.js"
+    },
+    "./chat.css": "./dist/chat.css",
+    "./chat-css": {
+      "types": "./dist/chat-css.d.ts",
+      "import": "./dist/chat-css.js",
+      "default": "./dist/chat-css.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react/index.d.ts"
+      ],
+      "ui": [
+        "./dist/ui/index.d.ts"
+      ],
+      "assistant-ui": [
+        "./dist/assistant-ui/index.d.ts"
+      ],
+      "chat": [
+        "./dist/chat/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:css && tsc && npm run build:licenses",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e:assistant-ui": "playwright test --config playwright.assistant-ui.config.ts",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "build:css": "node scripts/chat/build-css.mjs",
+    "chat:audit": "node scripts/chat/audit.mjs dist/chat.isolated.css && node scripts/chat/audit.mjs dist/chat.css",
+    "chat:sync": "node scripts/chat/sync-registry.mjs",
+    "chat:check": "node scripts/chat/check.mjs",
+    "test:e2e:chat-hosts": "npm run build && playwright test --config playwright.chat-hosts.config.ts",
+    "test:e2e:chat-example": "npm run build && playwright test --config playwright.chat-example.config.ts",
+    "build:licenses": "node -e \"const fs=require('node:fs');fs.mkdirSync('dist/chat/vendor',{recursive:true});fs.copyFileSync('src/chat/vendor/LICENSE','dist/chat/vendor/LICENSE');fs.copyFileSync('src/chat/vendor/MANIFEST.json','dist/chat/vendor/MANIFEST.json')\""
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.20",
+    "@assistant-ui/react-markdown": "^0.14.15",
+    "@base-ui/react": "^1.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dompurify": "^3.4.13",
+    "lucide-react": "^1.8.0",
+    "marked": "^15.0.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.0.2",
+    "tailwind-merge": "^3.7.0",
+    "tw-shimmer": "^0.4.13",
+    "zustand": "^5.0.15"
+  },
+  "overrides": {
+    "rollup": "^4.62.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/cli": "^4.3.3",
+    "@testing-library/react": "^16.0.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "browserslist": "^4.29.0",
+    "esbuild": "^0.27.3",
+    "jsdom": "^25.0.0",
+    "lightningcss": "^1.33.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "talk2view",
+    "ai",
+    "llm",
+    "chat",
+    "sdk",
+    "natural-language",
+    "react",
+    "agent",
+    "tools"
+  ],
+  "homepage": "https://talk2view.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Talk2View/talk2view-typescript.git"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "bugs": {
+    "url": "https://talk2view.com/contact"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

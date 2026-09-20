@@ -1,0 +1,186 @@
+/**
+ * MessageBubble — renders a single chat message.
+ *
+ * User messages: right-aligned light-gray bubble, plain text.
+ * Assistant messages: left-aligned with Talk2View logo avatar, rendered as
+ * plain text (no card) — ThinkingBlock (if plan exists), ToolDisplay (if
+ * steps exist), ApprovalCard (if pendingApproval and isStreaming), and a
+ * MarkdownRenderer whose content is smoothly revealed while streaming.
+ */
+
+import React from 'react';
+import { Paperclip } from 'lucide-react';
+import type { DisplayMessage } from '../../types.js';
+import { useChat } from '../context.js';
+import { LOGOS } from '../theme.js';
+import { MarkdownRenderer } from './MarkdownRenderer.js';
+import { ThinkingBlock } from './ThinkingBlock.js';
+import { ToolStepGroup } from './ToolDisplay.js';
+import { ApprovalCard } from './ApprovalCard.js';
+import { MessageActions } from './MessageActions.js';
+import { Shimmer } from './Shimmer.js';
+import { useSmoothText } from '../useSmoothText.js';
+
+export interface MessageBubbleProps {
+  message: DisplayMessage;
+  isLast?: boolean;
+  /** Hide the assistant avatar (used to visually group consecutive assistant turns). */
+  hideAvatar?: boolean;
+}
+
+export function MessageBubble({ message, isLast, hideAvatar }: MessageBubbleProps) {
+  const { pendingApproval, approveToolCall } = useChat();
+  const isUser = message.role === 'user';
+  // Smoothly reveal assistant text while streaming; full text otherwise.
+  const displayContent = useSmoothText(message.content, !!message.isStreaming && !isUser);
+
+  if (isUser) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          marginBottom: '12px',
+          animation: 't2v-fade-in 0.2s ease-out',
+        }}
+      >
+        {message.attachments && message.attachments.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
+              gap: '4px',
+              maxWidth: '80%',
+              marginBottom: '4px',
+            }}
+          >
+            {message.attachments.map((a) => (
+              <span
+                key={a.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: 'var(--t2v-radius-md)',
+                  border: '1px solid var(--t2v-border)',
+                  background: 'var(--t2v-surface)',
+                  fontSize: '12px',
+                  color: 'var(--t2v-foreground)',
+                  fontFamily: 'var(--t2v-font)',
+                }}
+              >
+                <Paperclip size={11} />
+                {a.filename}
+              </span>
+            ))}
+          </div>
+        )}
+        {message.content && (
+          <div
+            style={{
+              maxWidth: '80%',
+              padding: '8px 14px',
+              borderRadius: 'var(--t2v-radius-xl)',
+              borderBottomRightRadius: 'var(--t2v-radius-sm)',
+              background: 'var(--t2v-user-bubble)',
+              color: 'var(--t2v-user-foreground)',
+              fontSize: '14px',
+              lineHeight: 1.5,
+              fontFamily: 'var(--t2v-font)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {message.content}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Assistant message
+  const showApproval =
+    message.isStreaming &&
+    pendingApproval !== null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '8px',
+        marginBottom: '12px',
+        animation: 't2v-fade-in 0.2s ease-out',
+      }}
+    >
+      {/* Avatar — replaced by a same-width spacer when grouped so content stays aligned */}
+      {hideAvatar ? (
+        <div style={{ width: '24px', flexShrink: 0 }} aria-hidden="true" />
+      ) : (
+        <img
+          src={LOGOS.icon}
+          alt="Talk2View"
+          style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            flexShrink: 0,
+            marginTop: '2px',
+            objectFit: 'contain',
+            background: 'var(--t2v-bg)',
+            border: '1px solid var(--t2v-border)',
+          }}
+        />
+      )}
+
+      {/* Content — plain text on the thread background (assistant-ui style) */}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: '14px',
+          lineHeight: 1.7,
+          color: 'var(--t2v-foreground)',
+          fontFamily: 'var(--t2v-font)',
+        }}
+      >
+        {/* Thinking / plan block */}
+        {message.plan && <ThinkingBlock content={message.plan} />}
+
+        {/* Tool call steps */}
+        {message.steps && message.steps.length > 0 && (
+          <div style={{ marginBottom: message.content ? '8px' : '0' }}>
+            <ToolStepGroup steps={message.steps} isStreaming={message.isStreaming} />
+          </div>
+        )}
+
+        {/* HITL approval card */}
+        {showApproval && pendingApproval && (
+          <ApprovalCard
+            toolName={pendingApproval.toolName}
+            toolCallId={pendingApproval.toolCallId}
+            args={pendingApproval.arguments}
+            description={pendingApproval.description}
+            onDecision={approveToolCall}
+          />
+        )}
+
+        {/* Shimmer — shown when streaming with no content yet */}
+        {message.isStreaming && !message.content && !message.plan && !pendingApproval && (
+          <Shimmer />
+        )}
+
+        {/* Message content — smoothly revealed while streaming */}
+        {displayContent && <MarkdownRenderer content={displayContent} />}
+
+        {/* Message actions — show when not streaming */}
+        {!message.isStreaming && message.content && (
+          <MessageActions content={message.content} isLast={isLast ?? false} />
+        )}
+      </div>
+    </div>
+  );
+}
