@@ -177,6 +177,29 @@
   height: 100%;
   font-family: var(--t2v-font);
   color: var(--foreground);
+
+  /* Isolation has two halves, and this is the one specificity cannot do.
+     Everything else here defends against the host's SELECTORS — armour, layers,
+     descendant scoping — but an inherited property never matches a selector at
+     all: a rule on the host's `body` simply arrives, and no amount of
+     specificity on our side is even consulted.
+
+     It is not a hypothetical. The stock Vite React template ships
+     `text-align: center` on `body`, so the very first thing a new integrator
+     saw was a centred chat; a host with `text-transform: uppercase` renders our
+     header as "NEW CHAT". So the inherited typography stops at this element.
+
+     The font is the deliberate exception: `--t2v-font` is `inherit` on purpose
+     (docs/chat.md), because the chat is meant to look like part of the page it
+     sits in. Alignment, case and spacing are not that — they are the page's own
+     layout leaking into a component. */
+  text-align: start;
+  text-transform: none;
+  letter-spacing: normal;
+  word-spacing: normal;
+  line-height: normal;
+  text-indent: 0;
+  white-space: normal;
 }
 
 /* The portal host is a second .t2v-chat element, in <body>, that every popover,

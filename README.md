@@ -8,6 +8,11 @@ Add AI-powered natural language control to any application. Talk2View's SDK hand
 npm install @talk2view/sdk
 ```
 
+You need a partner key. Create one at
+**[dashboard.talk2view.com](https://dashboard.talk2view.com)** — a `pk_test_…`
+for development and a `pk_live_…` for production. Keys are public identifiers,
+safe to ship in a browser bundle; see [Partner Keys](#partner-keys).
+
 ## Chat UI
 
 Three lines to a working chat. `@talk2view/sdk/chat` is the branded Talk2View
@@ -43,13 +48,23 @@ fonts, no CDN — and uses your page's font unless you pass `fontFamily`.
 `/chat` pays none of it.
 
 Everything else — the full prop table, theming tokens, the launcher in a hostile
-page, CSP, Next.js — is in **[`docs/chat.md`](docs/chat.md)**. A runnable
-example with no Tailwind in the host is in
-[`examples/react-chat`](examples/react-chat).
+page, CSP, Next.js — is in
+**[`docs/chat.md`](https://unpkg.com/@talk2view/sdk/docs/chat.md)**, which ships
+inside the package. A runnable example with no Tailwind in the host is in
+[`examples/react-chat`](https://unpkg.com/browse/@talk2view/sdk/examples/react-chat/).
 
 ## Quick Start
 
-### React (recommended)
+### React — the packaged chat (recommended)
+
+The three lines at the top of this README are the whole integration. Everything
+below shows the layers underneath, for apps that want their own UI.
+
+### React — the previous panel (`/ui`, deprecated)
+
+> **Deprecated.** `/ui` still works and is still supported, but new
+> integrations should use [`@talk2view/sdk/chat`](#chat-ui). It is kept for the
+> apps already on it.
 
 ```tsx
 import { Talk2View, ChatPanel } from '@talk2view/sdk/ui';
@@ -84,10 +99,9 @@ function App() {
 
 That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
 
-> `/ui` is the previous chat panel, and is still supported. It is far smaller
-> than the packaged chat (39.9 KB gzip against 361.8) and has no assistant-ui in
-> it. New integrations that want the current Talk2View chat should use
-> [`@talk2view/sdk/chat`](#chat-ui) above.
+> `/ui` is smaller than the packaged chat (53.4 KB gzip against 362.7, plus
+> syntax highlighting loaded on demand) and has no assistant-ui in it, which is
+> why it is still here.
 
 A logged-out visitor gets an anonymous demo session automatically, so there is nothing to wire up before the first reply. Pass `allowAnonymous={false}` to `<ChatPanel>` to ask people to sign in first.
 
@@ -142,7 +156,7 @@ The SDK attaches this header automatically.
 Best practices:
 - Inject keys via environment variables at build time (e.g. `VITE_T2V_PARTNER_KEY`)
 - Use separate `pk_test_` and `pk_live_` keys for development and production
-- To rotate a key, generate a new key in the Talk2View dashboard, update your app, then deactivate the old key
+- To rotate a key, generate a new one at [dashboard.talk2view.com](https://dashboard.talk2view.com), update your app, then deactivate the old key
 
 ### Two-Tier Authentication
 
@@ -175,7 +189,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 
 There are four React entry points, and they do different jobs:
 
-- **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](docs/chat.md).
+- **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://unpkg.com/@talk2view/sdk/docs/chat.md).
 - **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 39.9 KB gzip against the packaged chat's 361.8, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
@@ -337,17 +351,18 @@ const {
 
 assistant-ui already has a seam other backends plug into at the runtime level — `@assistant-ui/react-ai-sdk` for the Vercel AI SDK is the well-known example. `useTalk2ViewRuntime` is Talk2View's equivalent: it hands assistant-ui an `AssistantRuntime`, built on `useExternalStoreRuntime`, so the stock `<Thread />` (or the primitives) render Talk2View's messages, client tools, approvals and streaming — with no Talk2View-specific component in the tree.
 
-This is a separate entry point from `/ui` and `/react`: `@assistant-ui/react` is an optional peer dependency, loaded only when you import `@talk2view/sdk/assistant-ui`. It never affects the root, `/react` or `/ui` bundles.
+This is a separate entry point from `/ui` and `/react`. `@assistant-ui/react` is a dependency of this package — installing `@talk2view/sdk` installs it, and you do not add it yourself. It is only *loaded* when you import `@talk2view/sdk/assistant-ui` or `/chat`, so the root, `/react` and `/ui` bundles are unaffected.
+
+**Do not `npm install @assistant-ui/react` separately.** A second copy that npm cannot collapse with ours makes the chat throw `Two copies of @assistant-ui/react are loaded`.
 
 ### Install
 
 ```bash
-npm install @assistant-ui/react
 npx shadcn@latest init --yes --defaults
 npx shadcn@latest add @assistant-ui/thread --yes
 ```
 
-The `shadcn` commands generate the Thread's source into your own `src/components/` — they're your files, not a Talk2View package, so you can restyle or extend them freely. See `examples/react-assistant-ui` for a full app built this way, including the exact generated output.
+The `shadcn` commands generate the Thread's source into your own `src/components/` — they're your files, not a Talk2View package, so you can restyle or extend them freely.
 
 One known wrinkle in the registry output at the time of writing: `tooltip-icon-button.tsx` passes `delayDuration={0}` to a `TooltipProvider` whose prop is `delay`. It is inert at runtime, but it fails `tsc`, so if your build type-checks (most Vite templates run `tsc -b && vite build`) change it to `delay={0}` — the example does.
 
@@ -507,7 +522,7 @@ t2v.skills.getAll();   // UserSkill[]
 t2v.skills.clear();    // Remove all
 ```
 
-Skills merge with partner-defined and built-in skills. User skills take highest priority. See [Skills documentation](../../docs/skills.md) for details.
+Skills merge with partner-defined and built-in skills, and the end-user's win. The packaged chat has a Skills view built in (`features.skills`), so most integrations never call this API directly.
 
 #### `t2v.chat()`
 
@@ -972,95 +987,6 @@ import type {
   Talk2ViewRuntimeOptions,    // useTalk2ViewRuntimeForClient(t2v, options)
 } from '@talk2view/sdk/assistant-ui';
 ```
-
-## Publishing
-
-The SDK is published to npm via the **Publish SDK** GitHub Actions workflow (`Actions → Publish SDK → Run workflow`).
-
-### Prerequisites
-
-- An `NPM_TOKEN` repository secret with publish access to `@talk2view/sdk` (Settings → Secrets → Actions)
-- The workflow uses npm provenance signing (`--provenance`), which requires the `id-token: write` permission (already configured)
-
-### Production Release
-
-Use this when shipping a stable version to partners.
-
-1. Go to **Actions → Publish SDK → Run workflow**
-2. Set **Version bump type** to `patch`, `minor`, or `major`
-3. Click **Run workflow**
-
-What happens:
-- Builds and typechecks the SDK
-- Bumps `package.json` version (e.g. `0.2.0` → `0.2.1` for patch)
-- Publishes to npm as `latest` tag
-- Commits the version bump and creates a git tag `sdk-v0.2.1`
-- Pushes the commit and tag to `main`
-
-Partners running `npm install @talk2view/sdk` will get this version.
-
-### Dev / Testing Release
-
-Use this to publish a prerelease version for testing before a stable release.
-
-1. Go to **Actions → Publish SDK → Run workflow**
-2. Set **Version bump type** to `prerelease`
-3. Set **Prerelease identifier** to `dev` (default), `beta`, or `rc`
-4. Click **Run workflow**
-
-What happens:
-- Builds and typechecks the SDK
-- Bumps version with preid (e.g. `0.2.0` → `0.2.1-dev.0`, or `0.2.1-dev.0` → `0.2.1-dev.1`)
-- Publishes to npm with the preid as dist-tag (e.g. `--tag dev`)
-- Does **not** commit, tag, or push to git (prerelease versions are ephemeral)
-
-To install a dev release:
-```bash
-npm install @talk2view/sdk@dev
-```
-
-To install a specific prerelease version:
-```bash
-npm install @talk2view/sdk@0.2.1-dev.0
-```
-
-### Version Lifecycle Example
-
-```
-0.1.0 (current latest)
-  ↓ prerelease (preid=dev)
-0.1.1-dev.0 (tagged as "dev" on npm)
-  ↓ prerelease (preid=dev)
-0.1.1-dev.1
-  ↓ prerelease (preid=beta)
-0.1.1-beta.0 (tagged as "beta" on npm)
-  ↓ minor (production release)
-0.2.0 (tagged as "latest" on npm, git tagged sdk-v0.2.0)
-```
-
-### Manual Publishing (escape hatch)
-
-If CI is down or you need to publish from your machine:
-
-```bash
-cd packages/sdk
-npm run build
-npm run typecheck
-npm version prerelease --preid=dev --no-git-tag-version
-npm publish --access public --tag dev
-```
-
-For a production release from local (not recommended):
-```bash
-npm version patch --no-git-tag-version
-npm publish --access public
-git add package.json
-git commit -m "Release @talk2view/sdk v$(node -p "require('./package.json').version")"
-git tag "sdk-v$(node -p "require('./package.json').version")"
-git push origin main --tags
-```
-
----
 
 ## License
 

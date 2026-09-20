@@ -22,8 +22,10 @@
  * }
  * ```
  *
- * `@assistant-ui/react` is an optional peer dependency: it is only loaded by
- * this entry point, never by `@talk2view/sdk`, `/react` or `/ui`.
+ * `@assistant-ui/react` is a dependency of this package, so installing the SDK
+ * installs it — never add it yourself, or the chat throws on two copies. It is
+ * only LOADED by this entry point and `/chat`, never by `@talk2view/sdk`,
+ * `/react` or `/ui`.
  *
  * @packageDocumentation
  */

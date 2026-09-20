@@ -1,5 +1,14 @@
 "use client";
 
+/*
+ * Vendored from assistant-ui's shadcn registry (Base UI flavour).
+ * Copyright (c) 2025 AgentbaseAI Inc. Licensed under the MIT License;
+ * see ./LICENSE. Source: https://github.com/assistant-ui/assistant-ui
+ *
+ * Not hand-edited. Every difference from upstream is a path rewrite, the
+ * codemod or a patch in scripts/chat/ — run `npm run chat:sync` to refresh.
+ */
+
 import { Button } from "../ui/button.js";
 import { Input } from "../ui/input.js";
 import { Skeleton } from "../ui/skeleton.js";

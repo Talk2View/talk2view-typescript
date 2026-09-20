@@ -1,7 +1,7 @@
 {
   "name": "@talk2view/sdk",
   "version": "0.18.1",
-  "description": "Talk2View SDK — Add AI-powered natural language control to any application",
+  "description": "Talk2View SDK \u2014 Add AI-powered natural language control to any application",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -55,10 +55,12 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "examples"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:css && tsc",
+    "build": "npm run clean && npm run build:css && tsc && npm run build:licenses",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "tsc --watch",
     "test": "vitest run",
@@ -74,7 +76,8 @@
     "chat:sync": "node scripts/chat/sync-registry.mjs",
     "chat:check": "node scripts/chat/check.mjs",
     "test:e2e:chat-hosts": "npm run build && playwright test --config playwright.chat-hosts.config.ts",
-    "test:e2e:chat-example": "npm run build && playwright test --config playwright.chat-example.config.ts"
+    "test:e2e:chat-example": "npm run build && playwright test --config playwright.chat-example.config.ts",
+    "build:licenses": "node -e \"const fs=require('node:fs');fs.mkdirSync('dist/chat/vendor',{recursive:true});fs.copyFileSync('src/chat/vendor/LICENSE','dist/chat/vendor/LICENSE');fs.copyFileSync('src/chat/vendor/MANIFEST.json','dist/chat/vendor/MANIFEST.json')\""
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.20",
@@ -139,9 +142,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/A2B-Technology-Corporation/Talk2View-Platform"
+    "url": "git+https://github.com/A2B-Technology-Corporation/Talk2View-Platform.git",
+    "directory": "packages/sdk"
   },
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "bugs": {
+    "url": "https://talk2view.com/contact"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

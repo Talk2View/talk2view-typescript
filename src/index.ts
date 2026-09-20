@@ -51,6 +51,13 @@ import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessa
  * claim RPC failing) is deliberately NOT here: it's a transient 503, and
  * sticking on it would flip the sign-in form on for the rest of the session
  * over a momentary blip. It falls through to the `console.warn` retry path.
+ *
+ * `partner_key_error` is here for a different reason: nothing the end-user can
+ * do fixes it, and the engine only says it on this call. Every later request
+ * carries no user token yet, so the engine answers "Missing authorization
+ * token" instead — which the client reads as an expired session and reports as
+ * "Session expired. Please log in again." Catching it here is what keeps a
+ * mistyped key from being announced as the end-user's fault.
  */
 const ANONYMOUS_UNAVAILABLE_TYPES = new Set([
   'anonymous_access_disabled',
@@ -58,6 +65,7 @@ const ANONYMOUS_UNAVAILABLE_TYPES = new Set([
   'captcha_required',
   'captcha_invalid',
   'captcha_unavailable',
+  'partner_key_error',
 ]);
 
 /**

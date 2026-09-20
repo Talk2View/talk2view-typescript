@@ -40,6 +40,19 @@ export function AccountView({
   const { client, behaviour } = useChatContext();
   const account = useAccount(client);
 
+  // A rejected partner key stops the app for everyone, so this is neither a
+  // sign-in problem nor an account problem: no form, no account panel, just
+  // what happened. Signing in does not lift it and there is nothing to retry.
+  if (reason === 'misconfigured') {
+    return (
+      <div className="t2v-chat-account aui-modal-account bg-popover absolute inset-0 flex flex-col gap-5 overflow-y-auto p-4 text-sm">
+        <p role="status" className="bg-muted text-foreground px-3 py-2.5 leading-relaxed">
+          {REASON_COPY.misconfigured}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="t2v-chat-account aui-modal-account bg-popover absolute inset-0 flex flex-col gap-5 overflow-y-auto p-4 text-sm">
       {account.status === 'signed-in' ? (
@@ -100,6 +113,7 @@ function SignInForm({
   const [mode, setMode] = useState<'login' | 'signup'>(
     reason === 'demo-limit' ? 'signup' : 'login',
   );
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<'form' | 'google' | 'apple' | null>(null);

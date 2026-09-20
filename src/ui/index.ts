@@ -1,8 +1,19 @@
+/**
+ * `@talk2view/sdk/ui` — the previous chat panel.
+ *
+ * @deprecated Use `@talk2view/sdk/chat` for new integrations. This entry point
+ * still works and is still supported for the apps already on it, but the
+ * packaged chat is where new work goes.
+ */
+
 // Components
+/** @deprecated Use `Talk2ViewChat` from `@talk2view/sdk/chat`. */
 export { Talk2View } from './components/Talk2View.js';
 export type { Talk2ViewProps } from './components/Talk2View.js';
+/** @deprecated Use `Talk2ViewChat` from `@talk2view/sdk/chat`. */
 export { ChatPanel } from './components/ChatPanel.js';
 export type { ChatPanelProps } from './components/ChatPanel.js';
+/** @deprecated Use `Talk2ViewChat` from `@talk2view/sdk/chat`. */
 export { ChatWidget } from './components/ChatWidget.js';
 export type { ChatWidgetProps } from './components/ChatWidget.js';
 

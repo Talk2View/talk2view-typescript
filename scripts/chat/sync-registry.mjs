@@ -168,6 +168,44 @@ for (const patch of PATCHES) {
   }
 }
 
-for (const name of sources(OUT)) manifest.files[name].sha256 = sha256(readFileSync(`${OUT}/${name}`, 'utf8'));
+// Attribution. These files are assistant-ui's work, MIT, and the licence asks
+// for the notice to travel with substantial portions — which a verbatim copy in
+// a published package plainly is. Our own LICENSE claims the tree, so without
+// this the vendored files read as ours. The header goes on AFTER the upstream
+// hash is recorded, so `upstreamSha256` still says what the registry served,
+// and it is skipped when already present so `--offline` re-runs do not stack it.
+const NOTICE = () =>
+  `/*\n` +
+  ` * Vendored from assistant-ui's shadcn registry (Base UI flavour).\n` +
+  ` * Copyright (c) 2025 AgentbaseAI Inc. Licensed under the MIT License;\n` +
+  ` * see ./LICENSE. Source: https://github.com/assistant-ui/assistant-ui\n` +
+  ` *\n` +
+  ` * Not hand-edited. Every difference from upstream is a path rewrite, the\n` +
+  ` * codemod or a patch in scripts/chat/ — run \`npm run chat:sync\` to refresh.\n` +
+  ` */\n`;
+
+for (const name of sources(OUT)) {
+  const src = readFileSync(`${OUT}/${name}`, 'utf8');
+  if (src.includes('Vendored from assistant-ui')) continue;
+  // Below any leading "use client", which has to stay the first statement.
+  const directive = /^(["']use client["'];?\n+)/.exec(src);
+  writeFileSync(
+    `${OUT}/${name}`,
+    directive ? `${directive[1]}${NOTICE()}\n${src.slice(directive[1].length)}` : `${NOTICE()}\n${src}`,
+  );
+}
+
+for (const name of sources(OUT)) {
+  manifest.files[name].sha256 = sha256(readFileSync(`${OUT}/${name}`, 'utf8'));
+  manifest.files[name].license = 'MIT';
+  manifest.files[name].source = 'https://github.com/assistant-ui/assistant-ui';
+}
+manifest.upstream = {
+  project: 'assistant-ui',
+  license: 'MIT',
+  licenseFile: 'LICENSE',
+  source: 'https://github.com/assistant-ui/assistant-ui',
+  registry: 'https://r.assistant-ui.com',
+};
 writeFileSync(`${OUT}/MANIFEST.json`, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`${OUT}/MANIFEST.json  ${Object.keys(manifest.files).length} files`);

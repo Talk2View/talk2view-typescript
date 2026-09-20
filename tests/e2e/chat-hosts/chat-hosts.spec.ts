@@ -26,7 +26,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mockAllApiRoutes } from '../fixtures/api-mocks';
 
-const HOSTS = ['clean', 'tailwind3', 'bootstrap', 'aggressive', 'bang'] as const;
+const HOSTS = ['clean', 'tailwind3', 'bootstrap', 'inherited', 'aggressive', 'bang'] as const;
 type Host = (typeof HOSTS)[number];
 
 /** What the chat should look like on a host that has no opinions of its own. */
@@ -49,6 +49,14 @@ const EXPECTED_CHAT = {
   dictateBackground: 'rgb(38, 200, 184)',
   dictateColor: 'rgb(2, 28, 37)',
   portalHostHeight: '0px',
+  // Inherited typography stops at the chat's own element. Nothing else in this
+  // file can catch a host that sets these on `body`: an inherited property
+  // matches no selector, so armour and specificity never come into it.
+  rootTextAlign: 'start',
+  rootTextTransform: 'none',
+  rootLetterSpacing: 'normal',
+  rootWordSpacing: '0px',
+  rootTextIndent: '0px',
 };
 
 /** And the launcher, which lives in the host's own page rather than the portal. */
@@ -70,6 +78,16 @@ const EXPECTED_LAUNCHER = {
  * here.
  */
 const KNOWN_CHAT_BREAKS: Partial<Record<Host, Partial<typeof EXPECTED_CHAT>>> = {
+  aggressive: {
+    // `[class] { letter-spacing: 0.08em }` — a SELECTOR, not inheritance, and
+    // it matches the chat's own root, which carries a class. It ties with our
+    // `.t2v-chat` declaration on specificity, and our stylesheet is linked
+    // first on purpose so the host wins every tie. The `inherited` host is the
+    // case this one cannot cover: there the same property arrives with no
+    // selector at all, and the chat's own declaration is the only thing
+    // standing between it and the text.
+    rootLetterSpacing: '1.28px',
+  },
   bang: {
     // `* { box-sizing: content-box !important }`. Tailwind's preflight sets
     // box-sizing on `*`, which isolates to `.t2v-chat *` — a descendant
@@ -158,6 +176,11 @@ const chatProbe = () => {
     sendRadius: g('.aui-composer-send', 'borderTopLeftRadius'),
     sendWidth: g('.aui-composer-send', 'width'),
     sendHeight: g('.aui-composer-send', 'height'),
+    rootTextAlign: g('#t2v-mount > .t2v-chat', 'textAlign'),
+    rootTextTransform: g('#t2v-mount > .t2v-chat', 'textTransform'),
+    rootLetterSpacing: g('#t2v-mount > .t2v-chat', 'letterSpacing'),
+    rootWordSpacing: g('#t2v-mount > .t2v-chat', 'wordSpacing'),
+    rootTextIndent: g('#t2v-mount > .t2v-chat', 'textIndent'),
     dictateBackground: g('.aui-composer-dictate', 'backgroundColor'),
     dictateColor: g('.aui-composer-dictate', 'color'),
     portalHostHeight: g('.t2v-chat.t2v-portal-host', 'height'),

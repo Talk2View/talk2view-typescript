@@ -14,9 +14,12 @@ import type { Talk2View } from '../index.js';
 import type { User } from '../types.js';
 
 /** Why the Account view opened by itself, if it did. */
-export type AccountReason = 'guest-limit' | 'demo-limit' | null;
+export type AccountReason = 'guest-limit' | 'demo-limit' | 'misconfigured' | null;
 
 export const REASON_COPY: Record<Exclude<AccountReason, null>, string> = {
+  // Not the end-user's problem and not something signing in can fix: the key
+  // this app was built with is wrong. Say so without blaming them.
+  misconfigured: 'This app isn’t set up correctly, so chat is unavailable. Please contact support.',
   'guest-limit': 'Guest chat isn’t available right now. Sign in to keep going.',
   'demo-limit': 'You’ve reached the guest limit. Sign in or create a free account to keep going.',
 };
@@ -58,9 +61,15 @@ export interface GuestLimits {
   demoLimitReached: boolean;
   /** The engine will not start a guest session at all. */
   anonymousUnavailable: boolean;
+  /** The engine rejected this app's partner key: nobody can chat here. */
+  misconfigured: boolean;
 }
 
-const NO_LIMITS: GuestLimits = { demoLimitReached: false, anonymousUnavailable: false };
+const NO_LIMITS: GuestLimits = {
+  demoLimitReached: false,
+  anonymousUnavailable: false,
+  misconfigured: false,
+};
 
 /**
  * Track the two ways a guest is turned away, for as long as the chat is on the
@@ -81,8 +90,15 @@ export function useGuestLimits(client: Talk2View): GuestLimits {
       client.on('demoLimitReached', () =>
         setLimits((l) => (l.demoLimitReached ? l : { ...l, demoLimitReached: true })),
       ),
-      client.on('anonymousUnavailable', () =>
-        setLimits((l) => (l.anonymousUnavailable ? l : { ...l, anonymousUnavailable: true })),
+      client.on('anonymousUnavailable', (reason) =>
+        setLimits((l) => {
+          // A rejected partner key is not a guest limit. Signing in cannot fix
+          // it, so the gate must not offer signing in as the way out.
+          if (reason === 'partner_key_error') {
+            return l.misconfigured ? l : { ...l, misconfigured: true };
+          }
+          return l.anonymousUnavailable ? l : { ...l, anonymousUnavailable: true };
+        }),
       ),
     ];
     return () => offs.forEach((off) => off());
@@ -92,6 +108,8 @@ export function useGuestLimits(client: Talk2View): GuestLimits {
   // the core has already dropped the orphaned guest session, so the resend lands
   // in a fresh one owned by the now-signed-in end-user.
   const signedIn = account.status === 'signed-in';
+  // `misconfigured` is deliberately not here: signing in does not lift it, and
+  // clearing it would retry a key the engine has already refused.
   const limited = limits.demoLimitReached || limits.anonymousUnavailable;
   useEffect(() => {
     if (!signedIn || !limited) return;
@@ -120,14 +138,23 @@ export function useAuthGate(
   limits: GuestLimits,
 ): AuthGate {
   const account = useAccount(client);
-  const { demoLimitReached, anonymousUnavailable } = limits;
+  const { demoLimitReached, anonymousUnavailable, misconfigured } = limits;
 
   // A guest counts as authenticated here, as they do in `/ui`: they have a
   // session and may chat. `allowAnonymous` is what decides whether they get one.
   const isAuthenticated = account.status !== 'none';
   return {
-    gated: (!isAuthenticated && (!allowAnonymous || anonymousUnavailable)) || demoLimitReached,
-    reason: demoLimitReached ? 'demo-limit' : anonymousUnavailable ? 'guest-limit' : null,
+    gated:
+      misconfigured ||
+      (!isAuthenticated && (!allowAnonymous || anonymousUnavailable)) ||
+      demoLimitReached,
+    reason: misconfigured
+      ? 'misconfigured'
+      : demoLimitReached
+        ? 'demo-limit'
+        : anonymousUnavailable
+          ? 'guest-limit'
+          : null,
     account,
   };
 }

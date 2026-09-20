@@ -61,7 +61,7 @@ const FRAME_CSS = `
   #chat-frame > #t2v-mount { height: 100%; }
 `;
 
-// ── The five hosts ─────────────────────────────────────────────────────────
+// ── The six hosts ──────────────────────────────────────────────────────────
 
 const HOSTS = {
   // 1. Nothing of their own: the rendering everything else is compared against.
@@ -91,6 +91,25 @@ const HOSTS = {
 
   // 3. Bootstrap 5, whose Reboot layer restyles button, input, textarea and a.
   bootstrap: { vendor: 'bootstrap-5.3.8.min.css', css: '' },
+
+  // 3b. A host whose typography is set on `body` and INHERITED — the half of
+  //     isolation that specificity cannot reach, because an inherited property
+  //     never matches a selector for armour to outrank. The stock Vite React
+  //     template really does ship `text-align: center` on body, so this is the
+  //     ordinary case, not a contrived one.
+  inherited: {
+    vendor: null,
+    css: `
+      body {
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        word-spacing: 4px;
+        line-height: 3;
+        text-indent: 12px;
+      }
+    `,
+  },
 
   // 4. A house style written entirely in element selectors, no !important.
   //    Armour beats all of this.

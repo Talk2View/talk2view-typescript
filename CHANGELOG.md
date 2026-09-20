@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mistyped partner key no longer tells the end-user their session expired.** The engine only names a bad key on `POST /v1/auth/anonymous`; every later call has no user token yet, so it answers "Missing authorization token", which the SDK read as an expired session — and said so, to the wrong person. `partner_key_error` now stops the chat where it is raised, with its own message: *This app isn't set up correctly, so chat is unavailable. Please contact support.* No sign-in form, because signing in cannot fix it, and the notice stays up for a signed-in end-user too.
+- **The chat no longer inherits the host page's typography.** Isolation defended against the host's selectors, but an inherited property matches no selector, so alignment, case, tracking, word spacing and indentation simply arrived. The stock Vite React template sets `text-align: center` on `body`, which centred the whole chat; a host with `text-transform: uppercase` rendered the header as "NEW CHAT". The chat's own element now stops all of it. The font is still inherited on purpose. A sixth hostile-host page covers this, since the five existing ones attack with selectors only.
+
+### Changed
+
+- **Vendored assistant-ui files carry their attribution.** `src/chat/vendor/` holds twelve files copied verbatim from assistant-ui (MIT). Each now opens with a provenance header, the licence sits beside them, `MANIFEST.json` records the licence and source per file, and both travel into the published package.
+- **`@assistant-ui/react` is documented as what it is.** It is a dependency of this package, not an optional peer, and the README no longer tells you to install it yourself — which produced a second copy and the "Two copies of @assistant-ui/react are loaded" throw.
+- **The Quick Start no longer teaches `/ui`.** The packaged chat leads; `/ui` is marked deprecated at the entry point and on each of its three components, so an IDE says so at the call site.
+- **The package tells you where to get a key**, and ships the documentation for the component it recommends: `files` now includes `docs` and `examples`, and the README's links are absolute so they work from npm.
+- **npm metadata**: `bugs` added, `repository` points at the package directory in the correct `git+https` form, `engines` declares the Node floor this ESM-only package needs, `publishConfig.access` is explicit.
+- **The internal release runbook moved to `CONTRIBUTING.md`** — it was in the partner-facing README, and on the npm page.
+
 ### Added
 
 #### Skills, in the chat itself

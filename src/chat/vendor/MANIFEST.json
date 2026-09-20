@@ -3,51 +3,82 @@
   "files": {
     "attachment.aui.tsx": {
       "upstreamSha256": "4d531907b919ddb694f64ddecfefc55a8a7760f86931ba20f0a1f966b63bd0b1",
-      "sha256": "4d531907b919ddb694f64ddecfefc55a8a7760f86931ba20f0a1f966b63bd0b1"
+      "sha256": "1dd35d9b6279f731a54b469c276191163a9b8ce3d86c5435b76cca7305faa9cc",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "file.tsx": {
       "upstreamSha256": "b700a207f5fd8ee4c520177002d2e3f76eb148991ab529e13aa3dbb9741cbdf6",
-      "sha256": "b700a207f5fd8ee4c520177002d2e3f76eb148991ab529e13aa3dbb9741cbdf6"
+      "sha256": "ef7a17810004ef8902102108db8e661364cc4ee095f2148abfaf73ae26b972ed",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "follow-up-suggestions.aui.tsx": {
       "upstreamSha256": "f0db1e9cfc5f648adeb57c8ac61fbeca4ebbb4d55267a9c107709af01b73abb4",
-      "sha256": "f0db1e9cfc5f648adeb57c8ac61fbeca4ebbb4d55267a9c107709af01b73abb4"
+      "sha256": "a83af99c606a1e5f1dca0e6792a6c4f369a7c914ee9529e99ab02e106218542a",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "image.tsx": {
       "upstreamSha256": "e1ded5faf9cec46da2ede86a85689237f97995edd41cb4dc2db4b539fba467c8",
-      "sha256": "e1ded5faf9cec46da2ede86a85689237f97995edd41cb4dc2db4b539fba467c8"
+      "sha256": "ec895d1b4813a37df2c55586b4312891402fc7d7580bbb6ddc17a7a0abe88fe3",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "markdown-text.tsx": {
       "upstreamSha256": "1ea24c4c0daeadb5937fc80a0df004e17772315036686a7ff79f23c3cb9ce779",
-      "sha256": "1ea24c4c0daeadb5937fc80a0df004e17772315036686a7ff79f23c3cb9ce779"
+      "sha256": "74525f3dc2fd948987c72dc722b51b9e90a71f7050905919f17e03629cc38fff",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "reasoning.aui.tsx": {
       "upstreamSha256": "3538e423a951b20e60ce919c5e85a05fbb25303dbb39c10350226a0f47e36e96",
-      "sha256": "48defd22f13de478377ba5e17c90ccb8855941de4d760e2603f7c49fe415ef67"
+      "sha256": "ee4898804c11e0a8beed6c76b2c47feada58cafb588d731916da21c421f929f3",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "reasoning.tsx": {
       "upstreamSha256": "54c169c2f200f341b39c97e46083efa4ff6ae9836abe334001326302334383a5",
-      "sha256": "54c169c2f200f341b39c97e46083efa4ff6ae9836abe334001326302334383a5"
+      "sha256": "747ebdafad76a7ed36a0e78e328ad4126e9d202a50f12e6841a7361c6b7c1bde",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "thread-list.aui.tsx": {
       "upstreamSha256": "a9b65e10b5a89da349c4dcc2ff295baf08ad7b3aeb4bccfe3c6b1726d8619ba1",
-      "sha256": "79d5aec73510130b15429d03974f47ea7b94b301e68f4a987e30aa1a65221c1f"
+      "sha256": "0daba886ab6577d6864065b0d27ba599ef40746a1432aaa9311d078d643295e5",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "thread.aui.tsx": {
       "upstreamSha256": "ce619ce7e6e57468c9d3aea9792751e4dab5e0b30f151dd06eb62a75b19e435f",
-      "sha256": "8cea3de870b034b23c7f188860364144053f19363c46f1bd83b429740e7ae8c3"
+      "sha256": "da95ac0ce8ec5b5c33bb6ba7af325ff601bb359a083555bde0705cf6167a8637",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "tool-fallback.aui.tsx": {
       "upstreamSha256": "a9f589f31b1fa91851647029bec3af7b914d109dea38543d71f4ae3348f25db9",
-      "sha256": "a9f589f31b1fa91851647029bec3af7b914d109dea38543d71f4ae3348f25db9"
+      "sha256": "0f196dd6252b88ac9ec295c3acadf467cb9fe5687fec91ad14914196490f3c69",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "tool-group.aui.tsx": {
       "upstreamSha256": "7d0258af3ed95e049bed20648e30d50966959db597e4b59f363bd3a5ded71a30",
-      "sha256": "7d0258af3ed95e049bed20648e30d50966959db597e4b59f363bd3a5ded71a30"
+      "sha256": "9b9be3fab59bbd21ed20bc3098230626ccd4e06184436b1862440ee773206842",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     },
     "tooltip-icon-button.tsx": {
       "upstreamSha256": "73d07e418bfd567f7c91d13986c31cd281336e75bc22f7dc10f6ae0b05391d40",
-      "sha256": "73d07e418bfd567f7c91d13986c31cd281336e75bc22f7dc10f6ae0b05391d40"
+      "sha256": "ddd34bd3857718e59959905c2324385bd9612bb5f76e618577a6db030a4df4a9",
+      "license": "MIT",
+      "source": "https://github.com/assistant-ui/assistant-ui"
     }
+  },
+  "upstream": {
+    "project": "assistant-ui",
+    "license": "MIT",
+    "licenseFile": "LICENSE",
+    "source": "https://github.com/assistant-ui/assistant-ui",
+    "registry": "https://r.assistant-ui.com"
   }
 }

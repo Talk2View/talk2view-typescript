@@ -322,6 +322,47 @@ describe('the sign-in gate', () => {
     expect(screen.getByRole('status').textContent).toMatch(/guest chat isn’t available/i);
   });
 
+  it('says the app is misconfigured when the engine rejects the partner key', async () => {
+    const t2v = client();
+    authState.startAnonymous.mockRejectedValue(
+      new T2VError('Invalid partner API key', 'partner_key_error', 401),
+    );
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await act(async () => {
+      await t2v.ensureSession();
+    });
+
+    await waitFor(() => expect(accountView()).toBeTruthy());
+    const notice = screen.getByRole('status').textContent ?? '';
+    expect(notice).toMatch(/isn’t set up correctly/i);
+    // The old behaviour told the end-user their session had expired and asked
+    // them to log in. Neither is true, and neither is offered now.
+    expect(notice).not.toMatch(/session expired/i);
+    expect(notice).not.toMatch(/sign in to keep going/i);
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
+    expect(thread().inert).toBe(true);
+  });
+
+  it('keeps the misconfigured notice up even after someone signs in', async () => {
+    const t2v = client();
+    authState.startAnonymous.mockRejectedValue(
+      new T2VError('Invalid partner API key', 'partner_key_error', 401),
+    );
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await act(async () => {
+      await t2v.ensureSession();
+    });
+    await waitFor(() => expect(accountView()).toBeTruthy());
+
+    // Signing in cannot fix a key the engine refuses, so the gate must hold.
+    await act(async () => {
+      authState.set({ id: 'u1', email: 'a@b.c' });
+    });
+    expect(screen.getByRole('status').textContent).toMatch(/isn’t set up correctly/i);
+  });
+
   it('opens with a banner when a guest runs out of allowance', async () => {
     const t2v = client();
     setIsAnonymous(true);
