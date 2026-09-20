@@ -16,7 +16,7 @@ const READY = { access_token: 'at', refresh_token: 'rt', user: { id: 'u1' } };
  * the signal is aborted) so the poll loop runs fast and deterministically.
  */
 function makeAuth(seq: Step[]) {
-  const client = new T2VClient({ partnerKey: 'pk', baseUrl: 'https://eng.example' });
+  const client = new T2VClient({ partnerKey: 'pk_test_x', baseUrl: 'https://eng.example' });
   let call = 0;
   vi.spyOn(client, 'request').mockImplementation(async () => {
     const step = seq[Math.min(call++, seq.length - 1)];

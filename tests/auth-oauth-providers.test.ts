@@ -4,7 +4,7 @@ import { T2VClient } from '../src/client';
 import { T2VError } from '../src/errors';
 
 function makeAuth() {
-  const client = new T2VClient({ partnerKey: 'pk', baseUrl: 'https://eng.example' });
+  const client = new T2VClient({ partnerKey: 'pk_test_x', baseUrl: 'https://eng.example' });
   const requestSpy = vi.spyOn(client, 'request');
   const auth = new T2VAuth(client);
   return { auth, client, requestSpy };

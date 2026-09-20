@@ -56,7 +56,14 @@ export async function* decodeSSEStream(
           const chunk: ChatCompletionChunk = JSON.parse(data);
           yield chunk;
         } catch {
-          // Skip malformed JSON
+          // A frame we cannot parse means the reply the end-user is reading is
+          // missing a piece, and skipping in silence leaves no way to find out
+          // why. Keep going — one bad frame should not end a live answer — but
+          // say so, once per frame, with enough of it to identify.
+          console.warn(
+            '[Talk2View] Skipped an unparseable stream frame:',
+            data.length > 200 ? `${data.slice(0, 200)}…` : data,
+          );
         }
       }
     }

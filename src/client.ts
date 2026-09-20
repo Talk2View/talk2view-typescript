@@ -40,6 +40,40 @@ const DEFAULT_UPLOAD_TIMEOUT = 120_000;
 type RefreshResult = 'refreshed' | 'invalid' | 'transient';
 
 /**
+ * A missing or empty key used to travel as the literal header
+ * `X-T2V-Partner-Key: undefined` and come back as a 401 three layers away,
+ * usually while the developer was looking at something else. It is the first
+ * thing an integrator gets wrong — an environment variable that did not load —
+ * so say it where it happened, in their own stack trace.
+ *
+ * The shape check is deliberately loose: a wrong-but-plausible key is the
+ * engine's to reject, and this must never refuse a key format Talk2View
+ * introduces later.
+ */
+function assertPartnerKey(partnerKey: unknown): asserts partnerKey is string {
+  if (typeof partnerKey !== 'string' || partnerKey.trim() === '') {
+    throw new PartnerKeyError(
+      'No partner key. Pass `partnerKey` when creating the client — ' +
+        'get one at https://dashboard.talk2view.com.',
+      'partner_key_error',
+      0,
+    );
+  }
+  // `pk_` and nothing more. The rest of a key's shape is the engine's to know,
+  // and a check that encoded today's format would reject tomorrow's. What this
+  // catches is the mistake worth catching: a secret in the wrong field.
+  if (!partnerKey.startsWith('pk_')) {
+    throw new PartnerKeyError(
+      `That does not look like a partner key: "${partnerKey.slice(0, 12)}…". ` +
+        'Partner keys begin with pk_ and are public identifiers rather than ' +
+        'secrets — a server-side API key does not belong here.',
+      'partner_key_error',
+      0,
+    );
+  }
+}
+
+/**
  * Every request to this address carries the end-user's access token in an
  * `Authorization` header. Over plain http that token crosses the network in
  * the clear, and a typo in an integrator's environment variable is all it
@@ -69,6 +103,7 @@ export class T2VClient {
   private refreshPromise: Promise<RefreshResult> | null = null;
 
   constructor(config: T2VConfig) {
+    assertPartnerKey(config.partnerKey);
     this.partnerKey = config.partnerKey;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
     this.requestTimeout = config.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;

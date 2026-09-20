@@ -34,3 +34,25 @@ describe('the base URL', () => {
     expect(spy).toHaveBeenCalledOnce();
   });
 });
+
+describe('the partner key', () => {
+  it('refuses a missing one where the mistake was made, not three layers later', () => {
+    // The old behaviour sent the literal header `X-T2V-Partner-Key: undefined`
+    // and surfaced as a 401 from an unrelated call.
+    expect(() => new T2VClient({ partnerKey: '' })).toThrow(/No partner key/);
+    expect(() => new T2VClient({ partnerKey: undefined as unknown as string })).toThrow(
+      /No partner key/,
+    );
+  });
+
+  it('refuses a secret pasted into the public field', () => {
+    expect(() => new T2VClient({ partnerKey: 'sk_live_not_for_browsers' })).toThrow(
+      /public identifiers rather than secrets/,
+    );
+  });
+
+  it('accepts anything shaped like a key, because the rest is the engine’s to judge', () => {
+    expect(() => new T2VClient({ partnerKey: 'pk_live_whatever' })).not.toThrow();
+    expect(() => new T2VClient({ partnerKey: 'pk_some_future_format' })).not.toThrow();
+  });
+});

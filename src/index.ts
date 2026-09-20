@@ -1097,10 +1097,13 @@ export class Talk2View {
 // Re-export types and classes for consumers
 export { T2VAuth } from './auth.js';
 export type { PopupProvider } from './auth.js';
+/** @internal Exported for typing. Construct {@link Talk2View} instead. */
 export { T2VClient } from './client.js';
+/** @internal Exported for typing. Sessions are created by {@link Talk2View}. */
 export { T2VSession } from './sessions.js';
 export { T2VSkills } from './skills.js';
 export { T2VTools } from './tools.js';
+/** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
 export type {

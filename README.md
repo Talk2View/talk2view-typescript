@@ -140,6 +140,25 @@ for await (const event of t2v.chat('What time is it?')) {
 
 ---
 
+## Versioning
+
+This package follows semantic versioning, with one qualification that matters
+while it is below 1.0: a **minor** version may change behaviour, and a
+**patch** never changes the public surface. Breaking changes to exports or to
+prop shapes are called out in [CHANGELOG.md](CHANGELOG.md) under the release
+that makes them.
+
+What counts as the public surface: everything exported from `@talk2view/sdk`,
+`/react`, `/chat` and `/assistant-ui`, and the CSS custom properties documented
+in [docs/chat.md](https://unpkg.com/@talk2view/sdk/docs/chat.md). Class names
+inside the chat's DOM are not — they are assistant-ui's and ours to change.
+`/ui` is deprecated and frozen: it will keep working, and will not gain
+anything.
+
+`T2VClient`, `T2VSession` and `TypedEventEmitter` are exported because the
+typed surface needs them, not because they are meant to be constructed
+directly. Use `Talk2View`.
+
 ## Concepts
 
 ### Partner Keys

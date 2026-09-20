@@ -8,6 +8,15 @@
 - **A withdrawn client tool can no longer run.** `register()` replaced the tool schemas wholesale but only added to the handler and permission maps, so a tool dropped from a later registration stayed executable — and with its schema gone, argument validation waved anything through. Both maps are rebuilt from the tools being registered. The engine validates too, so this was defence in depth rather than a live hole.
 - **An insecure `baseUrl` now says so.** Every request carries the end-user's access token in a header; over plain http that token crosses the network in the clear, and a typo in an environment variable is all it takes. The client warns once at construction, and exempts local addresses, which is how people develop.
 
+### Added
+
+- **The client checks its own configuration.** A missing or empty `partnerKey` used to travel as the literal header `X-T2V-Partner-Key: undefined` and come back as a 401 from an unrelated call, usually while the developer was looking somewhere else. It now throws where the mistake was made, and says where to get a key. A value that does not begin with `pk_` is refused with a line about public identifiers, because the mistake worth catching is a server-side secret pasted into a browser field. The shape check goes no further than that prefix: the rest of a key's format is the engine's to judge, and a stricter rule would reject a format Talk2View introduces later.
+- **A versioning policy, written down.** What the public surface is, what a minor may change below 1.0, and which exports exist only so the types resolve. Benchmarked against openai-node and stripe-node, both of which state theirs; we had none.
+
+### Changed
+
+- **An unparseable stream frame is no longer skipped in silence.** It means the reply somebody is reading is missing a piece. The stream still continues, and now says what it dropped.
+
 ### Fixed
 
 - **A mistyped partner key no longer tells the end-user their session expired.** The engine only names a bad key on `POST /v1/auth/anonymous`; every later call has no user token yet, so it answers "Missing authorization token", which the SDK read as an expired session — and said so, to the wrong person. `partner_key_error` now stops the chat where it is raised, with its own message: *This app isn't set up correctly, so chat is unavailable. Please contact support.* No sign-in form, because signing in cannot fix it, and the notice stays up for a signed-in end-user too.
