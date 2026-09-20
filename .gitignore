@@ -1,2 +1,25 @@
+# In the monorepo this package lived in, node_modules and dist were ignored by
+# the repository root's .gitignore, which did not travel with the extraction.
+# Standing alone, this file is the only thing between a build and 20k committed
+# files, so it is deliberately explicit rather than clever.
+
+node_modules/
+dist/
+coverage/
+
 test-results/
 playwright-report/
+blob-report/
+.playwright/
+
+.env
+.env.*
+!.env.example
+.npmrc
+
+*.tsbuildinfo
+.DS_Store
+.idea/
+.vscode/
+*.log
+npm-debug.log*

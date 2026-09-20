@@ -4,7 +4,7 @@
  * generates for any assistant-ui app, unmodified (see
  * examples/react-assistant-ui/src/components/assistant-ui/).
  *
- * `packages/sdk/tests/assistant-ui/runtime.test.tsx` proves the same story
+ * `tests/assistant-ui/runtime.test.tsx` proves the same story
  * at the primitives level (jsdom, no real browser); this spec proves it
  * through the full stock Thread in a real browser.
  *

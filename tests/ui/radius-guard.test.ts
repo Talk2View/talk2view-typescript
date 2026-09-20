@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Tests run with packages/sdk as the working directory (see vitest.config.ts).
+// Tests run with the repository root as the working directory (see vitest.config.ts).
 const componentsDir = join(process.cwd(), 'src/ui/components');
 
 describe('radius regression guard', () => {

@@ -18,8 +18,8 @@ import { cn } from './lib/cn.js';
 import { useDictationPhase } from './lib/dictation-phase.js';
 import { useChatContext } from './provider.js';
 
-/* The Talk2View voice mark — T2Board's BrandWaveform, geometry copied from
-   T2BoardKeyboard/Keyboard/BrandWaveform.swift: four SHARP bars (the brand's
+/* The Talk2View voice mark, geometry shared with the T2Board keyboard's
+   waveform: four SHARP bars (the brand's
    dash, never rounded caps) at 0.42 / 1.0 / 0.66 / 0.30 of the height, each 44%
    of its slot wide, in a 1.1 : 1 box, growing from the middle out. The face
    follows T2Board too: Smoke on Teal at rest, inverting to Teal on Smoke while

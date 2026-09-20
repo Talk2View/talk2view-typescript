@@ -7,7 +7,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@talk2view/sdk": "file:../../packages/sdk",
+    "@talk2view/sdk": "file:../..",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

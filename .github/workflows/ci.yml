@@ -1,0 +1,73 @@
+name: CI
+
+# `pull_request`, never `pull_request_target`: a fork's pull request must run
+# with the fork's own code and no access to this repository's secrets. That is
+# the default for `pull_request`, and it is the whole reason this repository can
+# accept contributions from strangers.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Least privilege by default. The publish workflow asks for more, on its own.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every action is pinned to a commit, not a tag. A tag is a pointer its owner
+# can move; a compromised action repository re-pointing `v7` is how several
+# supply-chain incidents have reached other people's secrets. Dependabot
+# updates these SHAs and writes the version it moved to in the comment.
+jobs:
+  test:
+    name: Lint, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Vendored code has not drifted
+        run: npm run chat:check
+
+      - name: The isolated stylesheet still isolates
+        run: npm run chat:audit
+
+  hosts:
+    name: Hostile hosts (browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # Six partner pages — Tailwind, Bootstrap, a house style in element
+      # selectors, the same shouted, and one whose typography is inherited from
+      # `body`. The chat has to render as designed inside each, and change
+      # nothing about the page around it.
+      - run: npm run test:e2e:chat-hosts

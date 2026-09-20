@@ -9,7 +9,7 @@ export default defineConfig({
     fs: {
       allow: [
         path.resolve(__dirname),
-        path.resolve(__dirname, '../../packages/sdk'),
+        path.resolve(__dirname, '../..'),
       ],
     },
     proxy: {

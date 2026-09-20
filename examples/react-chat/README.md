@@ -47,6 +47,6 @@ the partner key in `src/App.tsx`.
 ## Smoke test
 
 ```bash
-cd ../..            # packages/sdk
+cd ../..            # the repository root
 npm run test:e2e:chat-example
 ```

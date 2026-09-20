@@ -22,8 +22,8 @@ data behind them.
 
 - `VITE_T2V_PARTNER_KEY` — your partner key from the Talk2View dashboard.
   Defaults to `pk_test_example` if unset.
-- `VITE_T2V_BASE_URL` — override the engine URL (e.g. for local development
-  against `packages/server`). Omit it to use the SDK's default.
+- `VITE_T2V_BASE_URL` — override the engine URL (e.g. to point at a staging
+  engine). Omit it to use the SDK's default.
 
 ## What this demonstrates
 

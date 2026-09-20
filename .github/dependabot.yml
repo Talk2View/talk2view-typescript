@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # The chat's dependency tree is large and moves fast; weekly grouped updates
+  # keep it reviewable instead of a pull request per package per day.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+    # @assistant-ui/react is vendored from a registry as well as depended on
+    # (src/chat/vendor, refreshed by `npm run chat:sync`), so a bump here has to
+    # be taken together with a re-sync and a read of the diff. Raise it by hand.
+    ignore:
+      - dependency-name: '@assistant-ui/*'
+
+  # The workflows pin actions to commit SHAs. Dependabot follows the version
+  # written in the trailing comment and rewrites both, which is the only way
+  # pinning stays current instead of quietly rotting.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

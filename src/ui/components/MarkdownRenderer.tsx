@@ -7,7 +7,7 @@ export interface MarkdownRendererProps {
 
 /**
  * Renders a model reply as markdown only, never loading remote content on its
- * own (see renderSafeMarkdown and docs/adr/0009).
+ * own (see renderSafeMarkdown for why, and what that costs).
  */
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   const html = useMemo(() => renderSafeMarkdown(content), [content]);

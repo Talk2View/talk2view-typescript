@@ -1,0 +1,16 @@
+# Every change needs a review from someone here. Turn on "Require review from
+# Code Owners" in the branch protection rule for `main`, or this file is
+# decoration.
+*                       @andy9t7
+
+# The paths where a bad change is hardest to notice and worst to ship.
+#
+# Anything that runs in CI with credentials, or decides what reaches npm:
+/.github/               @andy9t7
+# The build, the vendoring script and the stylesheet audit — they decide what
+# ends up inside the published tarball:
+/scripts/               @andy9t7
+/package.json           @andy9t7
+# Code copied from upstream. A change here that is not a `npm run chat:sync`
+# is someone editing a third party's source in place.
+/src/chat/vendor/       @andy9t7

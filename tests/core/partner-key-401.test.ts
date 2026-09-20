@@ -1,14 +1,13 @@
 /**
  * A 401 caused by the PARTNER key is the integrator's configuration, not an
- * expired end-user session (audit ticket T12). The client used to treat every
+ * expired end-user session. The client used to treat every
  * 401 as an expired access token: it refreshed, the engine's refresh route
  * rejected the same partner key with the same 401, the client read that as "the
  * refresh token is dead" and cleared the session — so a bad or revoked partner
  * key signed the end-user out. The Python SDK already gets this right.
  *
  * The engine tells the two apart by `error.type`: `partner_key_error` for the
- * partner key, `authentication_error` for the user's token (bodies as in
- * packages/sdk-contract/http/*_401.json).
+ * partner key, `authentication_error` for the user's token.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { T2VAuth } from '../../src/auth';

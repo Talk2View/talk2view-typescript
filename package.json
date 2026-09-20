@@ -56,8 +56,7 @@
   },
   "files": [
     "dist",
-    "docs",
-    "examples"
+    "docs"
   ],
   "scripts": {
     "build": "npm run clean && npm run build:css && tsc && npm run build:licenses",
@@ -142,8 +141,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/A2B-Technology-Corporation/Talk2View-Platform.git",
-    "directory": "packages/sdk"
+    "url": "git+https://github.com/Talk2View/talk2view-typescript.git"
   },
   "sideEffects": [
     "*.css"

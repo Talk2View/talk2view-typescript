@@ -5,8 +5,10 @@ import type { Tokens } from 'marked';
 /**
  * Model replies are untrusted: prompt injection through web search, a document,
  * email content or a tool result can make the model write anything. A reply is
- * therefore rendered as markdown only and never loads remote content on its own
- * (docs/adr/0009-model-replies-render-as-markdown-only.md):
+ * therefore rendered as markdown only and never loads remote content on its own.
+ * A reply that could make the browser fetch a URL of the model's choosing is an
+ * exfiltration channel: the URL itself carries whatever the model puts in it,
+ * and the request goes out before anyone reads the reply. So:
  *  - raw HTML in the reply is shown as text, never parsed;
  *  - an image becomes a link the end-user can choose to open;
  *  - links open in a new tab and must be http(s) or mailto;

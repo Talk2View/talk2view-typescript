@@ -199,7 +199,7 @@ async function buildAll() {
 
   const chatCss = path.join(SDK, 'dist/chat.css');
   if (!fs.existsSync(chatCss)) {
-    throw new Error(`${chatCss} is missing — run \`npm run build\` in packages/sdk first.`);
+    throw new Error(`${chatCss} is missing — run \`npm run build\` first.`);
   }
   fs.copyFileSync(chatCss, path.join(OUT, 'chat.css'));
 

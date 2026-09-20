@@ -49,9 +49,9 @@ fonts, no CDN — and uses your page's font unless you pass `fontFamily`.
 
 Everything else — the full prop table, theming tokens, the launcher in a hostile
 page, CSP, Next.js — is in
-**[`docs/chat.md`](https://unpkg.com/@talk2view/sdk/docs/chat.md)**, which ships
-inside the package. A runnable example with no Tailwind in the host is in
-[`examples/react-chat`](https://unpkg.com/browse/@talk2view/sdk/examples/react-chat/).
+**[`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md)**, which also
+ships inside the package. A runnable example with no Tailwind in the host is in
+[`examples/react-chat`](https://github.com/Talk2View/talk2view-typescript/tree/main/examples/react-chat).
 
 ## Quick Start
 
@@ -150,7 +150,7 @@ that makes them.
 
 What counts as the public surface: everything exported from `@talk2view/sdk`,
 `/react`, `/chat` and `/assistant-ui`, and the CSS custom properties documented
-in [docs/chat.md](https://unpkg.com/@talk2view/sdk/docs/chat.md). Class names
+in [docs/chat.md](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md). Class names
 inside the chat's DOM are not — they are assistant-ui's and ours to change.
 `/ui` is deprecated and frozen: it will keep working, and will not gain
 anything.
@@ -208,7 +208,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 
 There are four React entry points, and they do different jobs:
 
-- **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://unpkg.com/@talk2view/sdk/docs/chat.md).
+- **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
 - **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 39.9 KB gzip against the packaged chat's 361.8, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
@@ -1007,6 +1007,23 @@ import type {
 } from '@talk2view/sdk/assistant-ui';
 ```
 
+## Source, issues and contributing
+
+The source is at
+[github.com/Talk2View/talk2view-typescript](https://github.com/Talk2View/talk2view-typescript).
+Bugs and feature requests go in
+[Issues](https://github.com/Talk2View/talk2view-typescript/issues); pull
+requests are welcome, and [CONTRIBUTING.md](CONTRIBUTING.md) says how the repo
+is laid out and what a reviewer looks for.
+
+Security problems do **not** go in an issue — see
+[SECURITY.md](SECURITY.md).
+
 ## License
 
-MIT License. See [LICENSE](./LICENSE) for details.
+MIT. See [LICENSE](./LICENSE).
+
+`src/chat/vendor/` contains files copied from
+[assistant-ui](https://github.com/assistant-ui/assistant-ui), also MIT; their
+licence and a per-file manifest travel with them, in the repository and inside
+the published package.
