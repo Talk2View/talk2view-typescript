@@ -432,19 +432,26 @@ describe('RTVI relay', () => {
     });
   });
 
-  it('a throwing toolCall listener still answers the call, as an error', async () => {
+  it('a throwing toolCall listener is isolated: the call still runs and is answered', async () => {
     const w = world();
-    w.voice.on('toolCall', () => {
-      throw new Error('partner bug');
-    });
-    await w.voice.start();
-    await w.client().server(CALL);
-    await tick();
-    expect(w.client().sent).toHaveLength(1);
-    expect(w.client().sent[0]!.type).toBe('t2v-tool-result');
-    expect(resultAt(w, 0)).toMatchObject({ tool_call_id: 'c1', is_error: true });
-    expect(resultAt(w, 0).result).not.toContain('partner bug');
-    expect(w.executed).toEqual([]);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      w.voice.on('toolCall', () => {
+        throw new Error('partner bug');
+      });
+      await w.voice.start();
+      await w.client().server(CALL);
+      await tick();
+      expect(w.client().sent).toEqual([
+        { type: 't2v-tool-result', data: { tool_call_id: 'c1', result: '{"ok":true}', is_error: false } },
+      ]);
+      expect(w.executed).toHaveLength(1);
+      // Logged generically: the event name only, never the payload or the error.
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log.mock.calls[0]).toEqual(['[Talk2View] a voice "toolCall" listener threw']);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('require_approval: raises a pending approval; Allow once runs it', async () => {
@@ -537,7 +544,7 @@ describe('RTVI relay', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(w.client().sent).toHaveLength(1);
     expect(resultAt(w, 0).is_error).toBe(true);
-    expect(JSON.parse(resultAt(w, 0).result).error).toMatch(/No answer in time/);
+    expect(JSON.parse(resultAt(w, 0).result)).toEqual({ error: 'The user did not answer in time' });
     expect(approvals.at(-1)).toBeNull();
     pending.decide({ action: 'once' }); // late click: ignored
     await tick();
@@ -557,7 +564,7 @@ describe('RTVI relay', () => {
       expect(w.client().sent).toEqual([]);
       await vi.advanceTimersByTimeAsync(1);
       expect(w.client().sent).toHaveLength(1);
-      expect(JSON.parse(resultAt(w, 0).result).error).toMatch(/No answer in time/);
+      expect(JSON.parse(resultAt(w, 0).result)).toEqual({ error: 'The user did not answer in time' });
     } finally {
       vi.useRealTimers();
     }
@@ -574,7 +581,12 @@ describe('RTVI relay', () => {
     await w.voice.start();
     const relay = w.client().server(CALL);
     await tick();
-    expect(() => pending.decide({ action: 'once' })).toThrow('partner bug');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      pending.decide({ action: 'once' });
+    } finally {
+      log.mockRestore();
+    }
     await relay;
     await tick();
     expect(w.executed).toHaveLength(1);
@@ -593,6 +605,7 @@ describe('RTVI relay', () => {
     await a;
     await tick();
     expect(resultAt(w, 0)).toMatchObject({ tool_call_id: 'c1', is_error: true });
+    expect(JSON.parse(resultAt(w, 0).result)).toEqual({ error: 'Superseded by a newer request' });
     expect(approvals.map((x) => x?.toolCallId ?? null)).toEqual(['c1', null, 'c2']);
     await w.voice.stop(); // denies c2 with "The call ended"
     await b;
@@ -601,6 +614,20 @@ describe('RTVI relay', () => {
     expect(w.client().sent).toHaveLength(1);
     expect(w.executed).toEqual([]);
     expect(approvals.at(-1)).toBeNull();
+  });
+
+  it('Deny without feedback says the user declined', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    pending.decide({ action: 'deny' });
+    await relay;
+    await tick();
+    expect(JSON.parse(resultAt(w, 0).result)).toEqual({ error: 'The user declined' });
   });
 
   it('a result for an ended call is never sent', async () => {
@@ -662,5 +689,80 @@ describe('RTVI relay', () => {
     expect(states).toEqual(['working', 'idle']);
     expect(w.client().sent).toEqual([]);
     expect(w.voice.state).toBe('listening');
+  });
+});
+
+describe('teardown before events (stop always releases the mic)', () => {
+  const CALL = { type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'paint', arguments: {} };
+
+  function quietConsole() {
+    return vi.spyOn(console, 'error').mockImplementation(() => {});
+  }
+
+  it('stop() with an open card disconnects although approvalChange(null) throws', async () => {
+    const log = quietConsole();
+    try {
+      const w = world();
+      w.permission.result = { action: 'require_approval' };
+      const ended: unknown[] = [];
+      w.voice.on('ended', (r) => ended.push(r));
+      w.voice.on('approvalChange', (a) => {
+        if (a === null) throw new Error('partner bug');
+      });
+      await w.voice.start();
+      const relay = w.client().server(CALL);
+      await tick();
+      await w.voice.stop();
+      await relay;
+      expect(w.client().disconnected).toBe(1);
+      expect(w.voice.state).toBe('ended');
+      expect(ended).toEqual(['stopped']);
+      expect(w.client().sent).toEqual([]);
+      expect(w.executed).toEqual([]);
+      expect(log).toHaveBeenCalledWith('[Talk2View] a voice "approvalChange" listener threw');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('a listener throwing on stateChange does not prevent the disconnect', async () => {
+    const log = quietConsole();
+    try {
+      const w = world();
+      const ended: unknown[] = [];
+      w.voice.on('ended', (r) => ended.push(r));
+      await w.voice.start();
+      w.voice.on('stateChange', () => {
+        throw new Error('partner bug');
+      });
+      await w.voice.stop();
+      expect(w.client().disconnected).toBe(1);
+      expect(w.voice.state).toBe('ended');
+      expect(ended).toEqual(['stopped']);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('disconnects before any listener hears of the ending', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    const seen: Array<[string, number]> = [];
+    const at = (name: string) => () => seen.push([name, w.client().disconnected]);
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    w.voice.on('approvalChange', at('approvalChange'));
+    w.voice.on('error', at('error'));
+    w.voice.on('stateChange', at('stateChange'));
+    w.voice.on('ended', at('ended'));
+    await w.client().server({ type: 't2v-call-ended', reason: 'budget_exhausted' });
+    await relay;
+    expect(seen).toEqual([
+      ['approvalChange', 1],
+      ['error', 1],
+      ['stateChange', 1],
+      ['ended', 1],
+    ]);
   });
 });

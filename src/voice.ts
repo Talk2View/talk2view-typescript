@@ -126,6 +126,8 @@ export class T2VVoiceController {
   private client: PipecatClientLike | null = null;
   private audio: HTMLAudioElement | null = null;
   private pendingApproval: VoicePendingApproval | null = null;
+  /** Ends the open approval without a human answer; the reason goes to the agent. */
+  private cancelApproval: ((reason: string) => void) | null = null;
   private readonly alwaysAllowed = new Set<string>();
   /**
    * Bumped by every ending. A `start()` or a client callback from an older
@@ -148,14 +150,27 @@ export class T2VVoiceController {
     return this.emitter.on(event, callback);
   }
 
+  /**
+   * Emit without letting a throwing partner listener break the caller: a hang-up
+   * must still release the mic and a tool call must still be answered. Logged
+   * by event name only, never the payload (it can carry tool arguments).
+   */
+  private safeEmit<K extends keyof VoiceEventMap & string>(event: K, ...args: VoiceEventMap[K]): void {
+    try {
+      this.emitter.emit(event, ...args);
+    } catch {
+      console.error(`[Talk2View] a voice "${event}" listener threw`);
+    }
+  }
+
   private setState(state: VoiceState): void {
     if (this._state === state) return;
     this._state = state;
-    this.emitter.emit('stateChange', state);
+    this.safeEmit('stateChange', state);
   }
 
   private emitError(type: string, message: string): void {
-    this.emitter.emit('error', { type, message } satisfies VoiceError);
+    this.safeEmit('error', { type, message } satisfies VoiceError);
   }
 
   /**
@@ -222,10 +237,10 @@ export class T2VVoiceController {
             });
           },
           onUserTranscript: (d) => {
-            if (!stale()) this.emitter.emit('transcript', { role: 'user', text: d.text, final: !!d.final });
+            if (!stale()) this.safeEmit('transcript', { role: 'user', text: d.text, final: !!d.final });
           },
           onBotTranscript: (d) => {
-            if (!stale()) this.emitter.emit('transcript', { role: 'bot', text: d.text, final: true });
+            if (!stale()) this.safeEmit('transcript', { role: 'bot', text: d.text, final: true });
           },
           onTrackStarted: (track, participant) => {
             if (stale() || participant?.local || track.kind !== 'audio') return;
@@ -280,21 +295,22 @@ export class T2VVoiceController {
     this.epoch += 1;
     const abortStart = this.abortStart;
     this.abortStart = null;
+    // Privacy first: the mic is released and the client disconnected before any
+    // partner listener runs.
+    await this.teardown();
+    abortStart?.();
     if (reason === 'budget_exhausted') {
       this.emitError('insufficient_credit', 'You have used up your credits for now.');
     } else if (reason === 'auth_expired') {
       this.emitError('auth_expired', 'Your sign-in expired. Sign in again to keep talking.');
     }
-    await this.teardown();
-    abortStart?.();
     this.setState('ended');
-    this.emitter.emit('ended', reason);
+    this.safeEmit('ended', reason);
   }
 
   private async teardown(): Promise<void> {
     const client = this.client;
     this.client = null;
-    this.resolveApproval({ action: 'deny', feedback: 'The call ended' });
     if (this.audio) {
       this.audio.srcObject = null;
       this.audio.remove();
@@ -307,6 +323,9 @@ export class T2VVoiceController {
         // already gone
       }
     }
+    // Last: closing the card emits `approvalChange(null)`. Nothing is sent for
+    // it, since the client is gone.
+    this.endApproval('The call ended');
   }
 
   private attachAudio = (track: MediaStreamTrack): void => {
@@ -341,7 +360,7 @@ export class T2VVoiceController {
         return;
       }
       case 't2v-agent-state':
-        this.emitter.emit('agentState', msg.state === 'working' ? 'working' : 'idle');
+        this.safeEmit('agentState', msg.state === 'working' ? 'working' : 'idle');
         return;
       case 't2v-call-ended':
         await this.finish((msg.reason as VoiceEndReason) ?? 'error');
@@ -359,12 +378,11 @@ export class T2VVoiceController {
 
     let outcome: { result: string; isError: boolean };
     try {
-      // Inside the try: a throwing `toolCall` listener must not leave the
-      // agent waiting out the service's tool timeout for an answer.
-      this.emitter.emit('toolCall', { toolCallId, toolName, arguments: args });
+      // A throwing `toolCall` listener is isolated: the call still runs and is answered.
+      this.safeEmit('toolCall', { toolCallId, toolName, arguments: args });
       outcome = await this.runToolCall(toolCallId, toolName, args);
     } catch {
-      // A throwing listener, permission callback or tool: the agent still gets an answer.
+      // A throwing permission callback or tool: the agent still gets an answer.
       outcome = { result: JSON.stringify({ error: 'The application could not run this tool' }), isError: true };
     }
     // Only to the call that asked: a result for an ended call goes nowhere.
@@ -386,8 +404,10 @@ export class T2VVoiceController {
     if (perm.action === 'deny') {
       outcome = { result: JSON.stringify({ error: perm.message ?? 'Denied by the application' }), isError: true };
     } else if (perm.action === 'require_approval' && !this.alwaysAllowed.has(toolName)) {
-      const decision = await this.awaitApproval(toolCallId, toolName, args);
-      if (decision.action === 'deny') {
+      const { decision, endedBecause } = await this.awaitApproval(toolCallId, toolName, args);
+      if (endedBecause) {
+        outcome = { result: JSON.stringify({ error: endedBecause }), isError: true };
+      } else if (decision.action === 'deny') {
         const why = decision.feedback ? `The user declined: ${decision.feedback}` : 'The user declined';
         outcome = { result: JSON.stringify({ error: why }), isError: true };
       } else {
@@ -400,37 +420,44 @@ export class T2VVoiceController {
     return outcome;
   }
 
-  private resolveApproval(decision: HumanDecision): void {
-    const pending = this.pendingApproval;
-    if (!pending) return;
-    pending.decide(decision);
+  /** Close the open card without a human answer, telling the agent why. */
+  private endApproval(reason: string): void {
+    this.cancelApproval?.(reason);
   }
 
-  private awaitApproval(toolCallId: string, toolName: string, args: Record<string, unknown>): Promise<HumanDecision> {
+  private awaitApproval(
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<{ decision: HumanDecision; endedBecause?: string }> {
     // One at a time: a second approval while one waits denies the first.
-    this.resolveApproval({ action: 'deny', feedback: 'Superseded by a newer request' });
-    return new Promise<HumanDecision>((resolve) => {
+    this.endApproval('Superseded by a newer request');
+    return new Promise((resolve) => {
       const timeoutMs = this.deps.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
       let settled = false;
-      const settle = (decision: HumanDecision): void => {
+      const settle = (decision: HumanDecision, endedBecause?: string): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (this.pendingApproval === pending) this.pendingApproval = null;
-        // Resolve first: a throwing listener must not strand the tool call.
-        resolve(decision);
-        this.emitter.emit('approvalChange', null);
+        if (this.pendingApproval === pending) {
+          this.pendingApproval = null;
+          this.cancelApproval = null;
+        }
+        resolve(endedBecause ? { decision, endedBecause } : { decision });
+        this.safeEmit('approvalChange', null);
       };
-      const timer = setTimeout(() => settle({ action: 'deny', feedback: 'No answer in time' }), timeoutMs);
+      const end = (reason: string): void => settle({ action: 'deny' }, reason);
+      const timer = setTimeout(() => end('The user did not answer in time'), timeoutMs);
       const pending: VoicePendingApproval = {
         toolCallId,
         toolName,
         arguments: args,
         description: this.deps.tools.getDescription(toolName),
-        decide: settle,
+        decide: (decision) => settle(decision),
       };
       this.pendingApproval = pending;
-      this.emitter.emit('approvalChange', pending);
+      this.cancelApproval = end;
+      this.safeEmit('approvalChange', pending);
     });
   }
 }
