@@ -30,11 +30,13 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Measured on 2026-09-18 at commit b0c74b0 + Task 7, Node 20, esbuild 0.27.3.
+// Measured on 2026-09-24 with code splitting, after the voice agent (T2VVoice)
+// joined core; up-front chunks only. Previously 9.35 / 39.93 / 361.77 KB gzip
+// (2026-09-18, b0c74b0 + Task 7, no splitting).
 const MEASURED = {
-  core: { raw: 30.1, gzip: 9.35 },
-  ui: { raw: 122.6, gzip: 39.93 },
-  chat: { raw: 1160.0, gzip: 361.77 },
+  core: { raw: 38.1, gzip: 11.97 },
+  ui: { raw: 123.2, gzip: 40.25 },
+  chat: { raw: 1187.7, gzip: 370.19 },
 };
 
 /**
@@ -52,11 +54,23 @@ const alias = {
 };
 
 interface Bundled {
+  /** What the page loads up front: the entry chunk plus the chunks it statically imports. */
   code: string;
   rawKB: number;
   gzipKB: number;
-  /** npm package names reachable in the module graph, e.g. `@assistant-ui/react`. */
+  /** npm package names in the up-front chunks, e.g. `@assistant-ui/react`. */
   packages: Set<string>;
+  /** npm package names that only arrive through a dynamic `import()` (lazy chunks). */
+  lazyPackages: Set<string>;
+}
+
+function packagesOf(inputs: Record<string, unknown>): Set<string> {
+  const packages = new Set<string>();
+  for (const file of Object.keys(inputs)) {
+    const match = /node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(file);
+    if (match) packages.add(match[1]!);
+  }
+  return packages;
 }
 
 async function bundle(entry: string): Promise<Bundled> {
@@ -65,6 +79,10 @@ async function bundle(entry: string): Promise<Bundled> {
     bundle: true,
     minify: true,
     format: 'esm',
+    // Code splitting, as Vite and webpack do: a dynamic `import()` becomes its
+    // own chunk that loads on demand (the voice agent's Pipecat libraries).
+    splitting: true,
+    outdir: 'tree-shake-out', // never written (write: false); esbuild needs it to split
     write: false,
     metafile: true,
     alias,
@@ -74,12 +92,29 @@ async function bundle(entry: string): Promise<Bundled> {
     logLevel: 'silent',
   });
 
-  const code = result.outputFiles[0]!.text;
-  const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]!]!;
+  const outputs = result.metafile.outputs;
+  const entryChunk = Object.keys(outputs).find((name) => outputs[name]!.entryPoint === '<stdin>')!;
+  // The up-front set: the entry chunk and whatever it statically imports.
+  const upFront = new Set<string>();
+  const visit = (name: string): void => {
+    if (upFront.has(name)) return;
+    upFront.add(name);
+    for (const imp of outputs[name]!.imports) {
+      if (imp.kind === 'import-statement' && !imp.external) visit(imp.path);
+    }
+  };
+  visit(entryChunk);
+
+  const text = new Map(
+    result.outputFiles.map((f) => [path.relative(process.cwd(), f.path), f.text] as const),
+  );
+  const code = [...upFront].map((name) => text.get(name)!).join('\n');
   const packages = new Set<string>();
-  for (const file of Object.keys(output.inputs)) {
-    const match = /node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(file);
-    if (match) packages.add(match[1]!);
+  const lazyPackages = new Set<string>();
+  for (const [name, output] of Object.entries(outputs)) {
+    for (const pkg of packagesOf(output.inputs)) {
+      (upFront.has(name) ? packages : lazyPackages).add(pkg);
+    }
   }
 
   return {
@@ -87,8 +122,12 @@ async function bundle(entry: string): Promise<Bundled> {
     rawKB: Buffer.byteLength(code) / 1024,
     gzipKB: gzipSync(code).length / 1024,
     packages,
+    lazyPackages,
   };
 }
+
+/** The voice agent's WebRTC stack: allowed only in lazy chunks. */
+const isVoiceStack = (p: string): boolean => p.startsWith('@pipecat-ai/') || p.startsWith('@daily-co/');
 
 const sizes: string[] = [];
 function record(name: string, b: Bundled) {
@@ -119,9 +158,16 @@ describe('what a consumer pays for the entry points they use', () => {
       expect(core.code).not.toContain('@assistant-ui');
       expect(core.code).not.toContain('base-ui');
 
+      // The voice agent's WebRTC stack loads on `t2v.voice.start()`, never up front.
+      expect([...core.packages].filter(isVoiceStack)).toEqual([]);
+      expect(core.code).not.toContain('@pipecat-ai');
+      expect([...core.lazyPackages].some((p) => p.startsWith('@pipecat-ai'))).toBe(true);
+
       expect(core.rawKB).toBeLessThan(40);
-      // Fence, not a budget. Measured 9.35 KB gzip.
-      expect(core.gzipKB).toBeLessThan(11);
+      // Fence, not a budget. Measured 9.35 KB gzip before the voice agent; the
+      // growth to ~11.7 KB is the T2VVoice controller (~2 KB gzip) behind the
+      // `t2v.voice` getter. Pipecat itself stays in lazy chunks (asserted above).
+      expect(core.gzipKB).toBeLessThan(12);
     },
     120_000,
   );
@@ -139,7 +185,7 @@ describe('what a consumer pays for the entry points they use', () => {
 
       // `/ui` is the older panel and is not growing; the fence is loose enough
       // that a bug fix does not trip it and tight enough to catch a new
-      // dependency. Measured 39.93 KB gzip.
+      // dependency. Measured 40.25 KB gzip.
       expect(ui.gzipKB).toBeLessThan(45);
     },
     120_000,
@@ -158,8 +204,10 @@ describe('what a consumer pays for the entry points they use', () => {
       // so a refactor that quietly stops bundling it fails here too.
       expect([...chat.packages].some((p) => p.startsWith('@assistant-ui'))).toBe(true);
       expect([...chat.packages].some((p) => p.startsWith('@base-ui'))).toBe(true);
+      // The voice agent's WebRTC stack stays lazy here too.
+      expect([...chat.packages].filter(isVoiceStack)).toEqual([]);
 
-      // 361.77 KB gzip measured, excluding React (a peer) and the host app.
+      // 370.19 KB gzip measured, excluding React (a peer) and the host app.
       // A page containing only the chat and React measures about 429 KB gzip.
       // Fence at 400 KB: loud on a regression, not a budget to shave against.
       expect(chat.gzipKB).toBeLessThan(400);
