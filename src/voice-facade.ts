@@ -12,8 +12,10 @@ import type { VoiceEventMap, VoiceState } from './types.js';
 import type { T2VVoiceController, T2VVoiceDeps } from './voice.js';
 import { VoiceStartError } from './voice-error.js';
 
+/** @internal Loads the voice controller class. Exported for typing; not part of the supported surface. */
 export type VoiceControllerLoader = () => Promise<new (deps: T2VVoiceDeps) => T2VVoiceController>;
 
+/** @internal What `Talk2View` builds `t2v.voice` from. Exported for typing; construct {@link Talk2View} instead. */
 export interface T2VVoiceOptions extends T2VVoiceDeps {
   /** Loads the controller class. Default: `import('./voice.js')`. Tests hand in their own. */
   loadController?: VoiceControllerLoader;
@@ -69,7 +71,7 @@ export class T2VVoice {
       if (epoch !== this.epoch) return;
       this.awaitingLoad = false;
       const message = 'Could not load voice. Check your connection and try again.';
-      this.emitter.emit('error', { type: 'voice_error', message });
+      this.safeEmit('error', { type: 'voice_error', message });
       this.setState('error');
       throw new VoiceStartError('voice_error', message, { cause: err });
     }
@@ -85,16 +87,45 @@ export class T2VVoice {
     if (this.awaitingLoad) {
       this.awaitingLoad = false;
       this.setState('ended');
-      this.emitter.emit('ended', 'stopped');
+      this.safeEmit('ended', 'stopped');
       return;
     }
     await this.controller?.stop();
   }
 
+  /**
+   * @internal The signed-in session died (not a deliberate sign-out). Ends any
+   * call, starting or live, as `auth_expired` with an `auth_expired` error.
+   * `Talk2View` calls this; partners call {@link stop}.
+   */
+  async expire(): Promise<void> {
+    this.epoch += 1;
+    if (this.awaitingLoad) {
+      this.awaitingLoad = false;
+      this.safeEmit('error', { type: 'auth_expired', message: 'Your sign-in expired. Sign in again to keep talking.' });
+      this.setState('ended');
+      this.safeEmit('ended', 'auth_expired');
+      return;
+    }
+    await this.controller?.expire();
+  }
+
   private setState(state: VoiceState): void {
     if (this._state === state) return;
     this._state = state;
-    this.emitter.emit('stateChange', state);
+    this.safeEmit('stateChange', state);
+  }
+
+  /**
+   * Emit without letting a throwing partner listener reject `start()` or
+   * `stop()`. Logged by event name only, never the payload.
+   */
+  private safeEmit<K extends keyof VoiceEventMap & string>(event: K, ...args: VoiceEventMap[K]): void {
+    try {
+      this.emitter.emit(event, ...args);
+    } catch {
+      console.error(`[Talk2View] a voice "${event}" listener threw`);
+    }
   }
 
   private load(): Promise<T2VVoiceController> {
@@ -104,7 +135,7 @@ export class T2VVoice {
       controller.on('stateChange', (state) => this.setState(state));
       for (const event of FORWARDED) {
         controller.on(event, (...args: unknown[]) =>
-          (this.emitter.emit as (e: string, ...a: unknown[]) => void)(event, ...args),
+          (this.safeEmit as (e: string, ...a: unknown[]) => void).call(this, event, ...args),
         );
       }
       this.controller = controller;

@@ -14,6 +14,7 @@ vi.mock('../../src/auth', () => ({
     }),
     getUser: vi.fn().mockReturnValue(null),
     isAnonymous: vi.fn().mockReturnValue(false),
+    signingOut: false,
   })),
 }));
 
@@ -213,7 +214,109 @@ describe('T2VVoice facade', () => {
   });
 });
 
+describe('T2VVoice facade: final review fixes', () => {
+  it('expire() during the lazy load ends the call as auth_expired, with an error (I2)', async () => {
+    const load = deferred<typeof T2VVoiceController>();
+    const { voice, options } = facade({ loadController: () => load.promise });
+    const errors: Array<{ type: string }> = [];
+    const ended: unknown[] = [];
+    voice.on('error', (e) => errors.push(e));
+    voice.on('ended', (r) => ended.push(r));
+    const starting = voice.start();
+    await tick();
+    await voice.expire();
+    load.resolve(T2VVoiceController);
+    await starting;
+    expect(voice.state).toBe('ended');
+    expect(errors.map((e) => e.type)).toEqual(['auth_expired']);
+    expect(ended).toEqual(['auth_expired']);
+    expect(options.request).not.toHaveBeenCalled();
+  });
+
+  it('expire() on a live call reaches the controller (I2)', async () => {
+    const { voice } = facade({ loadController: async () => T2VVoiceController });
+    const errors: Array<{ type: string }> = [];
+    const ended: unknown[] = [];
+    voice.on('error', (e) => errors.push(e));
+    voice.on('ended', (r) => ended.push(r));
+    await voice.start();
+    await voice.expire();
+    expect(errors.map((e) => e.type)).toEqual(['auth_expired']);
+    expect(ended).toEqual(['auth_expired']);
+    expect(FakePipecatClient.instances[0]!.disconnected).toBe(1);
+  });
+
+  it('a throwing listener cannot reject stop() during the load, or a failed start() with its own error', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const load = deferred<typeof T2VVoiceController>();
+      const a = facade({ loadController: () => load.promise });
+      a.voice.on('ended', () => {
+        throw new Error('partner bug');
+      });
+      a.voice.on('stateChange', () => {
+        throw new Error('partner bug');
+      });
+      const starting = a.voice.start();
+      await tick();
+      await expect(a.voice.stop()).resolves.toBeUndefined();
+      load.resolve(T2VVoiceController);
+      await starting;
+      expect(a.voice.state).toBe('ended');
+
+      const b = facade({ loadController: async () => { throw new Error('chunk failed'); } });
+      b.voice.on('error', () => {
+        throw new Error('partner bug');
+      });
+      // Rejects with the load failure, not the listener's exception.
+      await expect(b.voice.start()).rejects.toMatchObject({ name: 'VoiceStartError', type: 'voice_error' });
+      expect(b.voice.state).toBe('error');
+      expect(log).toHaveBeenCalledWith('[Talk2View] a voice "ended" listener threw');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('a throwing listener on a forwarded event does not break the call', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { voice } = facade({ loadController: async () => T2VVoiceController });
+      voice.on('ended', () => {
+        throw new Error('partner bug');
+      });
+      await voice.start();
+      await expect(voice.stop()).resolves.toBeUndefined();
+      expect(FakePipecatClient.instances[0]!.disconnected).toBe(1);
+      expect(log).toHaveBeenCalledWith('[Talk2View] a voice "ended" listener threw');
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
 describe('Talk2View.voice', () => {
+  it('a dead session (identity -> null, no logout) ends the call as auth_expired (I2)', async () => {
+    const t2v = new Talk2View({ partnerKey: 'pk_test', baseUrl: 'http://localhost' });
+    h.cb!({ id: 'user-1', email: 'a@x.com' });
+    const stop = vi.spyOn(t2v.voice, 'stop');
+    const expire = vi.spyOn(t2v.voice, 'expire');
+    h.cb!(null);
+    expect(expire).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('a deliberate logout() (identity -> null while signing out) stops the call (I2)', async () => {
+    const t2v = new Talk2View({ partnerKey: 'pk_test', baseUrl: 'http://localhost' });
+    h.cb!({ id: 'user-1', email: 'a@x.com' });
+    const stop = vi.spyOn(t2v.voice, 'stop');
+    const expire = vi.spyOn(t2v.voice, 'expire');
+    (t2v.auth as unknown as { signingOut: boolean }).signingOut = true;
+    h.cb!(null);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(expire).not.toHaveBeenCalled();
+  });
+
+
   it('an identity change stops the active call through the facade', async () => {
     const t2v = new Talk2View({ partnerKey: 'pk_test', baseUrl: 'http://localhost' });
     const stop = vi.spyOn(t2v.voice, 'stop');

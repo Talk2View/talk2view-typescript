@@ -191,6 +191,7 @@ export class Talk2View {
       if (userId !== this._authUserId) {
         this._warmUp = null; // a different end-user has a different key
         this._authUserId = userId;
+        this.endVoiceCallForIdentityChange(userId);
         this.resetSessionForIdentityChange();
       }
     });
@@ -696,6 +697,18 @@ export class Talk2View {
   }
 
   /**
+   * A call belongs to the account that started it. A deliberate sign-out or a
+   * switch to another account hangs it up (`stopped`); a session that died
+   * under it (`null` without {@link T2VAuth.logout}) ends it as `auth_expired`,
+   * with an `auth_expired` error, so the end-user is told to sign in again.
+   */
+  private endVoiceCallForIdentityChange(userId: string | null): void {
+    if (!this._voice) return;
+    const expired = userId === null && !this.auth.signingOut;
+    void (expired ? this._voice.expire() : this._voice.stop());
+  }
+
+  /**
    * Drop the cached session when the signed-in identity changes, so the next
    * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
    * this does NOT delete the old session on the server: it belongs to the previous
@@ -704,7 +717,6 @@ export class Talk2View {
    * resumed in the new session.
    */
   private resetSessionForIdentityChange(): void {
-    void this._voice?.stop(); // a call belongs to the account that started it
     const hadSession = this.currentSession !== null;
     this.currentSession = null;
     this.setThreadId(null);
@@ -1128,6 +1140,7 @@ export { T2VTools } from './tools.js';
 export { TypedEventEmitter } from './event-emitter.js';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
 export { T2VVoice } from './voice-facade.js';
+/** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
 export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
 export { VoiceStartError } from './voice-error.js';
 // Type-only: the controller itself stays a lazy chunk.

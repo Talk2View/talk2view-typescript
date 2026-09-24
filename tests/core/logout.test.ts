@@ -48,3 +48,24 @@ describe('T2VClient.request — 204 No Content', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe('T2VAuth.signingOut', () => {
+  it('is true while logout() announces the sign-out, and false otherwise', async () => {
+    vi.spyOn(storage, 'getAccessToken').mockReturnValue('tok');
+    const request = vi.fn().mockResolvedValue(undefined);
+    const auth = new T2VAuth({ request } as unknown as T2VClient);
+    const seen: boolean[] = [];
+    auth.onAuthStateChange(() => seen.push(auth.signingOut));
+
+    expect(auth.signingOut).toBe(false);
+    await auth.logout();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(Boolean)).toBe(true);
+    expect(auth.signingOut).toBe(false);
+
+    // A session that dies on its own is not a sign-out.
+    seen.length = 0;
+    window.dispatchEvent(new Event('talk2view_auth_cleared'));
+    expect(seen).toEqual([false]);
+  });
+});
