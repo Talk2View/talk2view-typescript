@@ -34,6 +34,7 @@ export {
   type Talk2ViewChatLauncherProps,
 } from './launcher.js';
 export type { LauncherColourway } from './lib/launcher-variant.js';
+export { VoiceButton, type VoiceButtonProps } from './voice-button.js';
 export { useTalk2ViewChatClient } from './provider.js';
 export type {
   Talk2ViewChatProps,

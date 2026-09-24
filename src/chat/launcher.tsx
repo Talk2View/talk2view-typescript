@@ -41,6 +41,7 @@ import { cn } from './lib/cn.js';
 import { usePortalHost } from './lib/portal-host.js';
 import { ChatProvider, useChatContext, type Talk2ViewChatProps } from './provider.js';
 import { ChatShell, type ChatView } from './chat.js';
+import { VoiceButton, shouldShowVoice } from './voice-button.js';
 import {
   DEFAULT_LAUNCHER_COLOURWAY,
   LauncherOptionsContext,
@@ -131,7 +132,7 @@ const LauncherFrame: FC<LauncherFrameProps> = ({
   const { size, reset, handleProps } = usePanelSize(popupRef);
   const options = useLauncherOptions();
   const colourway = useLauncherColourway(options.colourway, options.visitorColourway);
-  const { client, dark } = useChatContext();
+  const { client, dark, config, features } = useChatContext();
 
   // Every way in goes through here: the panel opens on the thread, and the
   // label has done its job.
@@ -228,6 +229,13 @@ const LauncherFrame: FC<LauncherFrameProps> = ({
         style={anchorStyle}
         data-sheet={sheet ? '' : undefined}
       >
+        {/* Beside the mark, before it: the anchor is a row that ends at the
+            corner, so the mark keeps the corner and voice sits to its left. */}
+        {shouldShowVoice(features, config) ? (
+          // Over an open sheet the tile would sit on the composer; it steps
+          // aside there unless a call is live (chat.src.css).
+          <VoiceButton className={open && sheet ? 't2v-voice-tucked' : undefined} />
+        ) : null}
         <PopoverPrimitive.Trigger
           render={(triggerProps, state) => (
             <LauncherButton
