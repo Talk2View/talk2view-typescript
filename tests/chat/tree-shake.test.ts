@@ -32,12 +32,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // Measured on 2026-09-24 with code splitting, up-front chunks only, after the
 // voice agent landed behind a lazy facade (controller + Pipecat are lazy
-// chunks). Previously 9.35 / 39.93 / 361.77 KB gzip (2026-09-18, b0c74b0 +
-// Task 7, no splitting).
+// chunks) and the final-review fixes (facade `expire()` + safe emit).
+// Previously 9.35 / 39.93 / 361.77 KB gzip (2026-09-18, b0c74b0 + Task 7, no
+// splitting).
 const MEASURED = {
-  core: { raw: 34.9, gzip: 10.97 },
+  core: { raw: 35.6, gzip: 11.14 },
   ui: { raw: 123.2, gzip: 40.25 },
-  chat: { raw: 1194.1, gzip: 372.18 },
+  chat: { raw: 1194.8, gzip: 372.38 },
 };
 
 /**
@@ -180,10 +181,10 @@ describe('what a consumer pays for the entry points they use', () => {
       expect(core.lazyModules.has('dist/voice.js')).toBe(true);
 
       expect(core.rawKB).toBeLessThan(40);
-      // Fence, not a budget. Measured 9.35 KB gzip before the voice agent. The
-      // voice controller and Pipecat are both lazy chunks (asserted above); only
-      // the facade (~1 KB gzip) is up front.
-      expect(core.gzipKB).toBeLessThan(11);
+      // Fence, not a budget: measured + ~10%. 9.35 KB gzip before the voice
+      // agent; the `t2v.voice` facade (~1.6 KB gzip) is now in core. The voice
+      // controller and Pipecat stay lazy chunks (asserted above).
+      expect(core.gzipKB).toBeLessThan(12);
     },
     120_000,
   );
