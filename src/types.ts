@@ -436,6 +436,8 @@ export interface PartnerConfig {
   default_stt_model: string | null;
   default_image_model: string | null;
   system_prompt: string | null;
+  /** Realtime voice agent enabled for this partner (`<VoiceButton>` shows only when true). */
+  voice_agent_enabled?: boolean;
 }
 
 // ── User Preferences ──
@@ -536,4 +538,67 @@ export interface Talk2ViewTheme {
   surfaceHover?: string;
   /** Box-shadow used for elevated surfaces (composer, dropdowns, cards). */
   shadow?: string;
+}
+
+// ── Voice ──
+
+export interface VoiceIceServer {
+  urls: string[];
+  username?: string | null;
+  credential?: string | null;
+}
+
+/** Engine response to `POST /v1/voice/sessions`. The ticket is single-use and short-lived. */
+export interface VoiceSessionResponse {
+  ticket: string;
+  voice_url: string;
+  session_id: string;
+  ice_servers: VoiceIceServer[];
+  expires_in: number;
+  model: string;
+}
+
+export type VoiceState = 'idle' | 'connecting' | 'listening' | 'ended' | 'error';
+
+export type VoiceEndReason =
+  | 'stopped'
+  | 'disconnected'
+  | 'session_cap'
+  | 'idle'
+  | 'budget_exhausted'
+  | 'auth_expired'
+  | 'error';
+
+export interface VoiceError {
+  /** `voice_disabled`, `account_required`, `insufficient_credit`, `service_unavailable`, `voice_at_capacity`, `auth_expired`, `transport_error`, `voice_error`. */
+  type: string;
+  message: string;
+}
+
+export interface VoiceTranscript {
+  role: 'user' | 'bot';
+  text: string;
+  final: boolean;
+}
+
+export interface VoiceToolCall {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+/** A client tool waiting for the end-user (permission: true). `decide` answers it once. */
+export interface VoicePendingApproval extends PendingApproval {
+  decide: (decision: HumanDecision) => void;
+}
+
+export interface VoiceEventMap {
+  [key: string]: unknown[];
+  stateChange: [VoiceState];
+  transcript: [VoiceTranscript];
+  toolCall: [VoiceToolCall];
+  agentState: ['working' | 'idle'];
+  approvalChange: [VoicePendingApproval | null];
+  error: [VoiceError];
+  ended: [VoiceEndReason];
 }

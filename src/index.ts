@@ -40,6 +40,7 @@ import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
+import { T2VVoice } from './voice.js';
 import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
@@ -152,6 +153,7 @@ export class Talk2View {
   /** True between stop() and stream teardown, so the abort isn't surfaced as an error. */
   private _stopped = false;
   private readonly emitter = new TypedEventEmitter<T2VEventMap>();
+  private _voice: T2VVoice | null = null;
 
   private debug(...args: unknown[]): void {
     if (this.config.debug) console.log('[T2V]', ...args);
@@ -192,6 +194,23 @@ export class Talk2View {
         this.resetSessionForIdentityChange();
       }
     });
+  }
+
+  /**
+   * The realtime voice agent (`<VoiceButton>` uses this). Built on first
+   * access; the Pipecat client libraries load on the first `start()`.
+   */
+  get voice(): T2VVoice {
+    if (!this._voice) {
+      this._voice = new T2VVoice({
+        request: (endpoint, options) => this.client.request(endpoint, options),
+        ensureSession: () => this.ensureSession(),
+        getValidAccessToken: (opts) => this.auth.getValidAccessToken(opts),
+        tools: this.tools,
+        partnerKey: this.config.partnerKey,
+      });
+    }
+    return this._voice;
   }
 
   /**
@@ -684,6 +703,7 @@ export class Talk2View {
    * resumed in the new session.
    */
   private resetSessionForIdentityChange(): void {
+    void this._voice?.stop(); // a call belongs to the account that started it
     const hadSession = this.currentSession !== null;
     this.currentSession = null;
     this.setThreadId(null);
@@ -1106,6 +1126,8 @@ export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
+export { T2VVoice, VoiceStartError } from './voice.js';
+export type { T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
 export type {
   T2VEventMap,
   T2VConfig,
@@ -1151,4 +1173,13 @@ export type {
   UserPreferences,
   DisplayMessage,
   ToolStep,
+  VoiceSessionResponse,
+  VoiceState,
+  VoiceEndReason,
+  VoiceError,
+  VoiceTranscript,
+  VoiceToolCall,
+  VoicePendingApproval,
+  VoiceEventMap,
+  VoiceIceServer,
 } from './types.js';
