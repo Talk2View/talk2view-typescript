@@ -1,5 +1,9 @@
 /**
- * Voice module — the realtime voice agent (`t2v.voice`).
+ * Voice controller — the realtime voice agent behind `t2v.voice`.
+ *
+ * Core never imports this module statically: the `T2VVoice` facade
+ * (`voice-facade.ts`) loads it with `import()` on the first `start()`, and it
+ * in turn loads the Pipecat libraries, so chat-only partners ship neither.
  *
  * The engine mints a ticket (`POST /v1/voice/sessions`); the Pipecat client
  * libraries are loaded on first `start()` so chat-only partners never ship
@@ -9,6 +13,7 @@
  */
 
 import { TypedEventEmitter } from './event-emitter.js';
+import { VoiceStartError } from './voice-error.js';
 import type { T2VTools } from './tools.js';
 import type {
   HumanDecision,
@@ -77,17 +82,6 @@ export interface T2VVoiceDeps {
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 25_000;
 
-export class VoiceStartError extends Error {
-  constructor(
-    public readonly type: string,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-    this.name = 'VoiceStartError';
-  }
-}
-
 /** What the voice service's refusal statuses mean when its JSON body is unreadable. */
 const OFFER_STATUS: Record<number, VoiceError> = {
   401: { type: 'voice_ticket_invalid', message: 'The voice session expired before it connected. Try again.' },
@@ -123,7 +117,10 @@ async function describeStartError(err: unknown, connecting: boolean): Promise<Vo
   return { type: connecting ? 'transport_error' : 'voice_error', message };
 }
 
-export class T2VVoice {
+export { VoiceStartError };
+
+/** The voice controller. Construct the {@link T2VVoice} facade (`t2v.voice`) instead. */
+export class T2VVoiceController {
   private readonly emitter = new TypedEventEmitter<VoiceEventMap>();
   private _state: VoiceState = 'idle';
   private client: PipecatClientLike | null = null;

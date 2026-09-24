@@ -30,13 +30,14 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Measured on 2026-09-24 with code splitting, after the voice agent (T2VVoice)
-// joined core; up-front chunks only. Previously 9.35 / 39.93 / 361.77 KB gzip
-// (2026-09-18, b0c74b0 + Task 7, no splitting).
+// Measured on 2026-09-24 with code splitting, up-front chunks only, after the
+// voice agent landed behind a lazy facade (controller + Pipecat are lazy
+// chunks). Previously 9.35 / 39.93 / 361.77 KB gzip (2026-09-18, b0c74b0 +
+// Task 7, no splitting).
 const MEASURED = {
-  core: { raw: 38.1, gzip: 11.97 },
+  core: { raw: 34.9, gzip: 10.97 },
   ui: { raw: 123.2, gzip: 40.25 },
-  chat: { raw: 1187.7, gzip: 370.19 },
+  chat: { raw: 1184.5, gzip: 369.18 },
 };
 
 /**
@@ -62,6 +63,10 @@ interface Bundled {
   packages: Set<string>;
   /** npm package names that only arrive through a dynamic `import()` (lazy chunks). */
   lazyPackages: Set<string>;
+  /** Input files (repo-relative, e.g. `dist/voice.js`) in the up-front chunks. */
+  modules: Set<string>;
+  /** Input files that only arrive in lazy chunks. */
+  lazyModules: Set<string>;
 }
 
 function packagesOf(inputs: Record<string, unknown>): Set<string> {
@@ -111,9 +116,14 @@ async function bundle(entry: string): Promise<Bundled> {
   const code = [...upFront].map((name) => text.get(name)!).join('\n');
   const packages = new Set<string>();
   const lazyPackages = new Set<string>();
+  const modules = new Set<string>();
+  const lazyModules = new Set<string>();
   for (const [name, output] of Object.entries(outputs)) {
     for (const pkg of packagesOf(output.inputs)) {
       (upFront.has(name) ? packages : lazyPackages).add(pkg);
+    }
+    for (const file of Object.keys(output.inputs)) {
+      (upFront.has(name) ? modules : lazyModules).add(file);
     }
   }
 
@@ -123,6 +133,8 @@ async function bundle(entry: string): Promise<Bundled> {
     gzipKB: gzipSync(code).length / 1024,
     packages,
     lazyPackages,
+    modules,
+    lazyModules,
   };
 }
 
@@ -162,12 +174,16 @@ describe('what a consumer pays for the entry points they use', () => {
       expect([...core.packages].filter(isVoiceStack)).toEqual([]);
       expect(core.code).not.toContain('@pipecat-ai');
       expect([...core.lazyPackages].some((p) => p.startsWith('@pipecat-ai'))).toBe(true);
+      // So does the voice controller: core carries only the thin `t2v.voice`
+      // facade (dist/voice-facade.js), which import()s dist/voice.js on start().
+      expect(core.modules.has('dist/voice.js')).toBe(false);
+      expect(core.lazyModules.has('dist/voice.js')).toBe(true);
 
       expect(core.rawKB).toBeLessThan(40);
-      // Fence, not a budget. Measured 9.35 KB gzip before the voice agent; the
-      // growth to ~11.7 KB is the T2VVoice controller (~2 KB gzip) behind the
-      // `t2v.voice` getter. Pipecat itself stays in lazy chunks (asserted above).
-      expect(core.gzipKB).toBeLessThan(12);
+      // Fence, not a budget. Measured 9.35 KB gzip before the voice agent. The
+      // voice controller and Pipecat are both lazy chunks (asserted above); only
+      // the facade (~1 KB gzip) is up front.
+      expect(core.gzipKB).toBeLessThan(11);
     },
     120_000,
   );
@@ -207,7 +223,7 @@ describe('what a consumer pays for the entry points they use', () => {
       // The voice agent's WebRTC stack stays lazy here too.
       expect([...chat.packages].filter(isVoiceStack)).toEqual([]);
 
-      // 370.19 KB gzip measured, excluding React (a peer) and the host app.
+      // 369.18 KB gzip measured, excluding React (a peer) and the host app.
       // A page containing only the chat and React measures about 429 KB gzip.
       // Fence at 400 KB: loud on a regression, not a budget to shave against.
       expect(chat.gzipKB).toBeLessThan(400);

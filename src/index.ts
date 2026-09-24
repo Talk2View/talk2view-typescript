@@ -40,7 +40,7 @@ import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
-import { T2VVoice } from './voice.js';
+import { T2VVoice } from './voice-facade.js';
 import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
@@ -197,8 +197,9 @@ export class Talk2View {
   }
 
   /**
-   * The realtime voice agent (`<VoiceButton>` uses this). Built on first
-   * access; the Pipecat client libraries load on the first `start()`.
+   * The realtime voice agent (`<VoiceButton>` uses this). A thin facade built
+   * on first access; the voice controller and the Pipecat client libraries
+   * load on the first `start()`.
    */
   get voice(): T2VVoice {
     if (!this._voice) {
@@ -1126,8 +1127,11 @@ export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
-export { T2VVoice, VoiceStartError } from './voice.js';
-export type { T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
+export { T2VVoice } from './voice-facade.js';
+export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
+export { VoiceStartError } from './voice-error.js';
+// Type-only: the controller itself stays a lazy chunk.
+export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
 export type {
   T2VEventMap,
   T2VConfig,

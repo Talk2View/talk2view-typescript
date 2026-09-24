@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { T2VVoice, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
+import { T2VVoiceController as T2VVoice, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
 import type { PermissionCheckResult, VoiceState } from '../../src/types.js';
 
 type Callbacks = Record<string, (...args: any[]) => void>;
