@@ -35,6 +35,8 @@ export interface PipecatCallbacks {
   onUserTranscript?: (data: { text: string; final?: boolean }) => void;
   onBotTranscript?: (data: { text: string }) => void;
   onTrackStarted?: (track: MediaStreamTrack, participant?: { local?: boolean }) => void;
+  /** client-js 1.13.1 passes a `DeviceError` (`devices`, `type`, `message`). */
+  onDeviceError?: (error: { devices?: string[]; type?: string; message?: string }) => void;
 }
 
 export interface PipecatClientLike {
@@ -65,6 +67,27 @@ export const loadPipecatLibs: VoiceLibLoader = async () => {
     PipecatClient: client.PipecatClient as unknown as VoiceLibs['PipecatClient'],
     SmallWebRTCTransport: transport.SmallWebRTCTransport as unknown as VoiceLibs['SmallWebRTCTransport'],
   };
+};
+
+/** Every `VoiceEndReason`; a `t2v-call-ended` reason outside it is reported as `'error'`. */
+const END_REASONS: ReadonlySet<string> = new Set<VoiceEndReason>([
+  'stopped',
+  'disconnected',
+  'session_cap',
+  'idle',
+  'budget_exhausted',
+  'auth_expired',
+  'error',
+]);
+
+const MIC_UNAVAILABLE: VoiceError = {
+  type: 'mic_unavailable',
+  message: 'Voice needs microphone access. Allow the microphone and try again.',
+};
+
+const AUTH_EXPIRED: VoiceError = {
+  type: 'auth_expired',
+  message: 'Your sign-in expired. Sign in again to keep talking.',
 };
 
 export interface T2VVoiceDeps {
@@ -136,8 +159,12 @@ export class T2VVoiceController {
   private epoch = 0;
   /** Settles the in-flight `start()`'s connect wait when the call is hung up mid-start. */
   private abortStart: (() => void) | null = null;
-  /** The hang-up in progress; a concurrent `stop()` joins it. */
-  private ending: Promise<void> | null = null;
+  /**
+   * The hang-up in progress; a concurrent `stop()` joins it. Tagged with the
+   * epoch it ended, so a `stop()` for a call started after it (say, from an
+   * `ended` listener) is not mistaken for a second hang-up of the old one.
+   */
+  private ending: { epoch: number; promise: Promise<void> } | null = null;
 
   constructor(private readonly deps: T2VVoiceDeps) {}
 
@@ -188,14 +215,29 @@ export class T2VVoiceController {
       this.abortStart = resolve;
     });
     let connecting = false;
+    let client: PipecatClientLike | null = null;
+    let connectCall: Promise<unknown> | null = null;
+    // A hang-up while the browser is still asking for the microphone reaches
+    // the client before its transport exists: client-js 1.13.1's connect()
+    // awaits initDevices() before Transport.connect() makes its AbortController,
+    // and the transport's stop() returns early without a peer connection. So
+    // that disconnect() cancels nothing, and once the prompt is answered the
+    // call comes up anyway. Hang up again when connect() settles (on bot-ready
+    // or failure), which closes the peer connection and releases the mic.
+    const abandon = (): void => {
+      const orphan = client;
+      if (!orphan || !connectCall) return;
+      connectCall.then(() => orphan.disconnect(), () => undefined).catch(() => undefined);
+    };
     try {
       if (!(await this.deps.ensureSession())) {
         throw new VoiceStartError('account_required', 'Sign in to use voice');
       }
       if (stale()) return;
-      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
-      if (stale()) return;
+      // Before the mint: a chunk that fails to load must not burn a ticket.
       const libs = await (this.deps.loadLibs ?? loadPipecatLibs)();
+      if (stale()) return;
+      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
       if (stale()) return;
       const token = await this.deps.getValidAccessToken();
       if (stale()) return;
@@ -216,13 +258,18 @@ export class T2VVoiceController {
       const retry = transport as { maxReconnectionAttempts?: number };
       const retries = retry.maxReconnectionAttempts;
       if (typeof retries === 'number') retry.maxReconnectionAttempts = 0;
-      const client = new libs.PipecatClient({
+      const pipecat = new libs.PipecatClient({
         transport,
         enableMic: true,
         enableCam: false,
         callbacks: {
           onConnected: () => {
-            if (stale()) return;
+            // A call that comes up after it was hung up (see `abandon`) is
+            // closed at once, not left streaming the mic until bot-ready.
+            if (stale()) {
+              pipecat.disconnect().catch(() => undefined);
+              return;
+            }
             if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
             this.setState('listening');
           },
@@ -248,23 +295,33 @@ export class T2VVoiceController {
             if (stale() || participant?.local || track.kind !== 'audio') return;
             (this.deps.attachAudio ?? this.attachAudio)(track);
           },
+          onDeviceError: (error) => {
+            if (stale()) return;
+            // The call is audio-only: a camera error is not ours to report.
+            if (Array.isArray(error?.devices) && !error.devices.includes('mic')) return;
+            // No microphone means a call that listens to nothing: end it and say why.
+            void this.finish('error', MIC_UNAVAILABLE);
+          },
         },
       });
-      this.client = client;
+      client = pipecat;
+      this.client = pipecat;
       connecting = true;
+      connectCall = pipecat.connect({
+        webrtcRequestParams: {
+          endpoint: mint.voice_url,
+          requestData: { ticket: mint.ticket, partner_key: this.deps.partnerKey, access_token: token },
+        },
+      });
       // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
-      await Promise.race([
-        client.connect({
-          webrtcRequestParams: {
-            endpoint: mint.voice_url,
-            requestData: { ticket: mint.ticket, partner_key: this.deps.partnerKey, access_token: token },
-          },
-        }),
-        aborted,
-      ]);
+      await Promise.race([connectCall, aborted]);
+      if (stale()) abandon();
     } catch (err) {
       // Hung up mid-start: stop() already tore down and reported the ending.
-      if (stale()) return;
+      if (stale()) {
+        abandon();
+        return;
+      }
       this.abortStart = null;
       this.epoch += 1; // late callbacks from this failed client are not this call's
       await this.teardown();
@@ -284,10 +341,19 @@ export class T2VVoiceController {
     await this.finish('stopped');
   }
 
-  private finish(reason: VoiceEndReason): Promise<void> {
+  /**
+   * @internal The signed-in session died (not a deliberate sign-out): end any
+   * call, starting or live, as `auth_expired` with an `auth_expired` error.
+   */
+  async expire(): Promise<void> {
+    await this.finish('auth_expired');
+  }
+
+  private finish(reason: VoiceEndReason, error?: VoiceError): Promise<void> {
     // A second hang-up while the first is still tearing down joins it: one
-    // disconnect, one `ended`.
-    if (this.ending) return this.ending;
+    // disconnect, one `ended`. Only the same call's: a call started since
+    // (a new epoch) gets its own ending.
+    if (this.ending && this.ending.epoch === this.epoch) return this.ending.promise;
     if (this._state === 'idle' || this._state === 'ended' || this._state === 'error') return Promise.resolve();
     // teardown() nulls the client before disconnecting, so the onDisconnected
     // our own hang-up triggers is not a second, spurious ending.
@@ -295,14 +361,17 @@ export class T2VVoiceController {
     // A transport that fails to connect fires onDisconnected before connect()
     // rejects; start()'s catch reports that failure as an error, not an ending.
     if (reason === 'disconnected' && this._state === 'connecting') return Promise.resolve();
-    const ending = this.endCall(reason).finally(() => {
+    // endCall() bumps the epoch synchronously, before its first await.
+    const promise = this.endCall(reason, error);
+    const ending = { epoch: this.epoch, promise };
+    this.ending = ending;
+    void promise.finally(() => {
       if (this.ending === ending) this.ending = null;
     });
-    this.ending = ending;
-    return ending;
+    return promise;
   }
 
-  private async endCall(reason: VoiceEndReason): Promise<void> {
+  private async endCall(reason: VoiceEndReason, error?: VoiceError): Promise<void> {
     // Everything from the call being ended (a start still in flight, late
     // callbacks, tool calls mid-relay) is now stale.
     this.epoch += 1;
@@ -312,10 +381,12 @@ export class T2VVoiceController {
     // partner listener runs.
     await this.teardown();
     abortStart?.();
-    if (reason === 'budget_exhausted') {
+    if (error) {
+      this.emitError(error.type, error.message);
+    } else if (reason === 'budget_exhausted') {
       this.emitError('insufficient_credit', 'You have used up your credits for now.');
     } else if (reason === 'auth_expired') {
-      this.emitError('auth_expired', 'Your sign-in expired. Sign in again to keep talking.');
+      this.emitError(AUTH_EXPIRED.type, AUTH_EXPIRED.message);
     }
     this.setState('ended');
     this.safeEmit('ended', reason);
@@ -324,11 +395,7 @@ export class T2VVoiceController {
   private async teardown(): Promise<void> {
     const client = this.client;
     this.client = null;
-    if (this.audio) {
-      this.audio.srcObject = null;
-      this.audio.remove();
-      this.audio = null;
-    }
+    this.detachAudio();
     if (client) {
       try {
         await client.disconnect();
@@ -343,6 +410,8 @@ export class T2VVoiceController {
 
   private attachAudio = (track: MediaStreamTrack): void => {
     if (typeof document === 'undefined') return;
+    // A renegotiation (ICE recovery) fires onTrackStarted again: one sink, not two.
+    this.detachAudio();
     const el = document.createElement('audio');
     el.autoplay = true;
     el.srcObject = new MediaStream([track]);
@@ -350,6 +419,13 @@ export class T2VVoiceController {
     document.body.appendChild(el);
     this.audio = el;
   };
+
+  private detachAudio(): void {
+    if (!this.audio) return;
+    this.audio.srcObject = null;
+    this.audio.remove();
+    this.audio = null;
+  }
 
   // ── RTVI relay ──
 
@@ -376,7 +452,9 @@ export class T2VVoiceController {
         this.safeEmit('agentState', msg.state === 'working' ? 'working' : 'idle');
         return;
       case 't2v-call-ended':
-        await this.finish((msg.reason as VoiceEndReason) ?? 'error');
+        await this.finish(
+          typeof msg.reason === 'string' && END_REASONS.has(msg.reason) ? (msg.reason as VoiceEndReason) : 'error',
+        );
         return;
       default:
         return;

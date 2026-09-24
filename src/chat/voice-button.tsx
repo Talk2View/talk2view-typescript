@@ -95,6 +95,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   voice_ticket_invalid: 'The call took too long to connect. Try again.',
   upstream_error: 'Voice couldn’t reach the assistant. Try again.',
   transport_error: 'The call couldn’t connect. Check your connection and try again.',
+  mic_unavailable: 'Voice needs microphone access. Allow the microphone and try again.',
 };
 
 export function voiceErrorMessage(error: VoiceError): string {

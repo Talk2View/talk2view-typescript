@@ -354,6 +354,12 @@ describe('voiceErrorMessage', () => {
     );
     expect(voiceErrorMessage({ type: 'something_new', message: '' })).toMatch(/went wrong/);
   });
+
+  it('tells the end-user to allow the microphone when it is unavailable', () => {
+    expect(voiceErrorMessage({ type: 'mic_unavailable', message: 'raw' })).toBe(
+      'Voice needs microphone access. Allow the microphone and try again.',
+    );
+  });
 });
 
 describe('shouldShowVoice', () => {
