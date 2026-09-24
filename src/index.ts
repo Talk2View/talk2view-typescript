@@ -40,6 +40,7 @@ import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
+import { T2VVoice } from './voice-facade.js';
 import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
@@ -152,6 +153,7 @@ export class Talk2View {
   /** True between stop() and stream teardown, so the abort isn't surfaced as an error. */
   private _stopped = false;
   private readonly emitter = new TypedEventEmitter<T2VEventMap>();
+  private _voice: T2VVoice | null = null;
 
   private debug(...args: unknown[]): void {
     if (this.config.debug) console.log('[T2V]', ...args);
@@ -189,9 +191,28 @@ export class Talk2View {
       if (userId !== this._authUserId) {
         this._warmUp = null; // a different end-user has a different key
         this._authUserId = userId;
+        this.endVoiceCallForIdentityChange(userId);
         this.resetSessionForIdentityChange();
       }
     });
+  }
+
+  /**
+   * The realtime voice agent (`<VoiceButton>` uses this). A thin facade built
+   * on first access; the voice controller and the Pipecat client libraries
+   * load on the first `start()`.
+   */
+  get voice(): T2VVoice {
+    if (!this._voice) {
+      this._voice = new T2VVoice({
+        request: (endpoint, options) => this.client.request(endpoint, options),
+        ensureSession: () => this.ensureSession(),
+        getValidAccessToken: (opts) => this.auth.getValidAccessToken(opts),
+        tools: this.tools,
+        partnerKey: this.config.partnerKey,
+      });
+    }
+    return this._voice;
   }
 
   /**
@@ -676,6 +697,18 @@ export class Talk2View {
   }
 
   /**
+   * A call belongs to the account that started it. A deliberate sign-out or a
+   * switch to another account hangs it up (`stopped`); a session that died
+   * under it (`null` without {@link T2VAuth.logout}) ends it as `auth_expired`,
+   * with an `auth_expired` error, so the end-user is told to sign in again.
+   */
+  private endVoiceCallForIdentityChange(userId: string | null): void {
+    if (!this._voice) return;
+    const expired = userId === null && !this.auth.signingOut;
+    void (expired ? this._voice.expire() : this._voice.stop());
+  }
+
+  /**
    * Drop the cached session when the signed-in identity changes, so the next
    * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
    * this does NOT delete the old session on the server: it belongs to the previous
@@ -1106,6 +1139,12 @@ export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
 export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
+export { T2VVoice } from './voice-facade.js';
+/** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
+export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
+export { VoiceStartError } from './voice-error.js';
+// Type-only: the controller itself stays a lazy chunk.
+export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
 export type {
   T2VEventMap,
   T2VConfig,
@@ -1151,4 +1190,13 @@ export type {
   UserPreferences,
   DisplayMessage,
   ToolStep,
+  VoiceSessionResponse,
+  VoiceState,
+  VoiceEndReason,
+  VoiceError,
+  VoiceTranscript,
+  VoiceToolCall,
+  VoicePendingApproval,
+  VoiceEventMap,
+  VoiceIceServer,
 } from './types.js';

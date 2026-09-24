@@ -358,6 +358,180 @@
   }
 }
 
+/* ── the voice button beside the launcher ─────────────────────────────────
+   <VoiceButton> (voice-button.tsx): press to talk to the agent, press again to
+   hang up. Beside the launcher it is a descendant of the anchor; standalone its
+   own wrapper carries `.t2v-chat`, which is why each wrapper rule is written
+   twice (`:root.…` is the element itself — see the anchor's note above).
+
+   The tile is the launcher's: square, the same 4rem, the same drop shadow. Its
+   face is the composer's dictation face in the same two tokens — Smoke on Teal
+   at rest, inverted to Teal on Smoke while the call is live — so a partner who
+   rethemes `--primary` gets a voice button that follows. */
+.t2v-voice,
+:root.t2v-voice {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+.t2v-voice {
+  margin-inline-end: 0.5rem;
+}
+:root.t2v-voice {
+  display: inline-flex;
+  height: auto;
+}
+.t2v-voice-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  box-shadow: 0 6px 20px -8px rgb(2 28 37 / 0.55);
+}
+.t2v-voice-button:hover {
+  filter: brightness(0.95);
+}
+.t2v-voice-button:active {
+  scale: 0.96;
+}
+.t2v-voice-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 6px;
+}
+/* Live: the face inverts and a Teal ring holds around it. The ring is the
+   static "listening" signal — it is all a visitor with reduced motion gets, so
+   it has to read on its own; the pulse below only adds to it. */
+.t2v-voice-button[data-state='listening'] {
+  background-color: var(--primary-foreground);
+  color: var(--primary);
+  box-shadow:
+    0 6px 20px -8px rgb(2 28 37 / 0.55),
+    0 0 0 3px var(--primary);
+}
+/* Connecting is a loader, and a loader never freezes: it spins under reduced
+   motion too. */
+.t2v-voice-spin {
+  animation: t2v-voice-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .t2v-voice-button {
+    transition: scale 150ms ease-out;
+  }
+  .t2v-voice-button[data-state='listening'] {
+    animation: t2v-voice-pulse 1.6s ease-in-out infinite;
+  }
+}
+/* The waveform bars keep their shape and stop moving: the inverted face, the
+   ring and the status above say what the call is doing. */
+@media (prefers-reduced-motion: reduce) {
+  .t2v-voice-button .t2v-wave-bar {
+    animation: none;
+  }
+}
+
+/* What the call is doing, any error, and an approval, stacked above the tile. */
+.t2v-voice-popover {
+  position: absolute;
+  inset-block-end: calc(100% + 0.75rem);
+  inset-inline-end: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.t2v-voice-status,
+.t2v-voice-error {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 6px 20px -8px rgb(2 28 37 / 0.35);
+}
+.t2v-voice-status {
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.t2v-voice-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-inline-start: 3px solid var(--destructive);
+}
+.t2v-voice-dismiss {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.125rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.t2v-voice-dismiss:hover {
+  color: var(--popover-foreground);
+}
+.t2v-voice-dismiss:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+/* The approval card is /ui's, which reads the --t2v-* token names and paints
+   its primary button white-on-foreground. It sits on a light card in both
+   palettes: mapped to the dark tokens that button would be white on Ivory. */
+.t2v-voice-approval {
+  width: 20rem;
+  max-width: 100%;
+  color-scheme: light;
+  background-color: #ffffff;
+  box-shadow: 0 16px 48px -24px rgb(0 0 0 / 0.35);
+  --t2v-bg: #ffffff;
+  --t2v-foreground: var(--t2v-smoke);
+  --t2v-surface: var(--t2v-ivory);
+  --t2v-surface-hover: color-mix(in srgb, var(--t2v-stone) 25%, var(--t2v-ivory));
+  --t2v-muted: var(--t2v-slate);
+  --t2v-border: var(--t2v-stone);
+  --t2v-error: #bb524e;
+  --t2v-radius-sm: calc(var(--radius) * 0.6);
+  --t2v-radius-md: calc(var(--radius) * 0.8);
+  --t2v-radius-lg: var(--radius);
+  --t2v-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.t2v-voice-approval > [role='region'] {
+  margin: 0 !important;
+}
+/* Heard, not seen: the one live region, always in the DOM. */
+.t2v-voice-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* On a phone the open panel is a full-screen sheet, and the tile would sit on
+   its composer. It steps aside unless a call is live: hiding a live call's only
+   control would leave a microphone open with no way to see it. The launcher
+   sets the class; a rule keyed on the anchor's own attributes cannot reach it,
+   because the scoping writes `:root.x .y` as a descendant of the scope class. */
+.t2v-voice-tucked:not([data-on]) {
+  display: none;
+}
+
 /* ── launcher beam ────────────────────────────────────────────────────────
    One beam for every colourway: Teal into Highlight into white. Some part of it
    shows on each tile — Highlight and white on Teal, all of it on Smoke, Teal
@@ -494,6 +668,13 @@
 @keyframes t2v-cursor-blink {
   0%, 66% { opacity: 1; }
   67%, 100% { opacity: 0; }
+}
+@keyframes t2v-voice-spin {
+  to { rotate: 360deg; }
+}
+@keyframes t2v-voice-pulse {
+  0%, 100% { box-shadow: 0 6px 20px -8px rgb(2 28 37 / 0.55), 0 0 0 3px var(--primary); }
+  50% { box-shadow: 0 6px 20px -8px rgb(2 28 37 / 0.55), 0 0 0 7px color-mix(in srgb, var(--primary) 45%, transparent); }
 }
 @keyframes collapsible-down {
   from { height: 0; }

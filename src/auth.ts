@@ -82,6 +82,9 @@ export class T2VAuth {
   /** Whether the window listeners below are currently registered. */
   private listening = false;
 
+  /** Set for the duration of {@link logout}; see {@link signingOut}. */
+  private _signingOut = false;
+
   constructor(private readonly client: T2VClient) {
     // Listening from construction, as this class always has: a plain
     // `new Talk2View()` must keep syncing auth across tabs without anyone
@@ -400,18 +403,32 @@ export class T2VAuth {
    * Sign out the current user.
    */
   async logout(): Promise<void> {
-    // Only hit the server when we actually hold a token to revoke. Without one
-    // the endpoint just 401s (it requires a valid JWT), so skip the call and
-    // clear local state directly.
-    if (getAccessToken()) {
-      try {
-        await this.client.request<void>('/v1/auth/logout', { method: 'POST' });
-      } catch {
-        // Server-side logout is best-effort; we always clear locally below.
+    this._signingOut = true;
+    try {
+      // Only hit the server when we actually hold a token to revoke. Without one
+      // the endpoint just 401s (it requires a valid JWT), so skip the call and
+      // clear local state directly.
+      if (getAccessToken()) {
+        try {
+          await this.client.request<void>('/v1/auth/logout', { method: 'POST' });
+        } catch {
+          // Server-side logout is best-effort; we always clear locally below.
+        }
       }
+      clearAuth();
+      this.notifyListeners(null);
+    } finally {
+      this._signingOut = false;
     }
-    clearAuth();
-    this.notifyListeners(null);
+  }
+
+  /**
+   * @internal True while {@link logout} runs, so a listener hearing `null` can
+   * tell a deliberate sign-out from a session that died (a refresh token
+   * revoked or expired, a sibling tab's sign-out).
+   */
+  get signingOut(): boolean {
+    return this._signingOut;
   }
 
   /**

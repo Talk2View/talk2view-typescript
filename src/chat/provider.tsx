@@ -47,6 +47,11 @@ export interface Talk2ViewChatFeatures {
   threadList?: boolean;
   /** The end-user's own markdown skills, written in the chat (default true). */
   skills?: boolean;
+  /**
+   * The realtime voice button beside the launcher (default true). Shown only
+   * when the partner has voice enabled (`/v1/config` → `voice_agent_enabled`).
+   */
+  voice?: boolean;
 }
 
 export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
@@ -141,6 +146,11 @@ export function useChatContext(): Talk2ViewChatContextValue {
   return value;
 }
 
+/** The chat context when rendered inside a chat, or null when standalone. */
+export function useOptionalChatContext(): Talk2ViewChatContextValue | null {
+  return useContext(ChatContext);
+}
+
 /** The client behind the chat, for the host's own UI (sign-out buttons and the like). */
 export function useTalk2ViewChatClient(): Talk2View {
   return useChatContext().client;
@@ -153,6 +163,7 @@ const FEATURE_DEFAULTS: Required<Talk2ViewChatFeatures> = {
   account: true,
   threadList: true,
   skills: true,
+  voice: true,
 };
 
 const NO_WELCOME: Talk2ViewChatWelcome = {};
@@ -225,12 +236,28 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     // Single-flighted and cached by the client, so Settings asking again is free.
     // A brand-new visitor has no session yet and this 401s; Settings retries
     // once the model list has started a guest session.
-    client
-      .getConfig()
-      .then((value) => live && value && setPartnerConfig(value))
-      .catch(() => {});
+    const load = () =>
+      client
+        .getConfig()
+        .then((value) => live && value && setPartnerConfig(value))
+        .catch(() => {});
+    load();
+    // Ask again when someone signs in — a guest session starting, or a real
+    // sign-in — which is what brings in the config a guest's first 401 missed,
+    // and with it anything gated on it, like the voice button beside the
+    // launcher. ONLY then: a sign-out (`null`) must never be answered with a
+    // request. A sessionless /v1/config 401s, the client clears auth on that
+    // 401, clearing auth announces `null`, and answering it would loop.
+    let seen = client.auth.getUser?.()?.id ?? null;
+    const off = client.auth.onAuthStateChange((user) => {
+      const id = user?.id ?? null;
+      const changed = id !== seen;
+      seen = id;
+      if (id !== null && changed) void load();
+    });
     return () => {
       live = false;
+      off?.();
     };
   }, [client]);
 

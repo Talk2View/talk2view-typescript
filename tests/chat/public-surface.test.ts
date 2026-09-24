@@ -27,12 +27,14 @@ const CONTRACT_EXPORTS = [
   'Talk2ViewChatLauncher',
   'injectTalk2ViewChatStyles',
   'useTalk2ViewChatClient',
+  'VoiceButton',
   // Types
   'Talk2ViewChatProps',
   'Talk2ViewChatLauncherProps',
   'Talk2ViewChatFeatures',
   'Talk2ViewChatWelcome',
   'LauncherColourway',
+  'VoiceButtonProps',
 ].sort();
 
 /** The props named in the contract, beyond what `T2VConfig` already carries. */
@@ -115,11 +117,17 @@ describe('the `/chat` entry point', () => {
     expect(exportedNames()).toEqual(CONTRACT_EXPORTS);
   });
 
-  it('exports the four documented functions as callable values', async () => {
+  it('exports the five documented functions as callable values', async () => {
     const chat = await import('../../src/chat/index.js');
     const values = Object.keys(chat).sort();
     expect(values).toEqual(
-      ['Talk2ViewChat', 'Talk2ViewChatLauncher', 'injectTalk2ViewChatStyles', 'useTalk2ViewChatClient'].sort(),
+      [
+        'Talk2ViewChat',
+        'Talk2ViewChatLauncher',
+        'VoiceButton',
+        'injectTalk2ViewChatStyles',
+        'useTalk2ViewChatClient',
+      ].sort(),
     );
     for (const name of values) {
       expect(typeof (chat as Record<string, unknown>)[name], `${name} is not a function`).toBe('function');

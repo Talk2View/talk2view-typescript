@@ -436,6 +436,8 @@ export interface PartnerConfig {
   default_stt_model: string | null;
   default_image_model: string | null;
   system_prompt: string | null;
+  /** Realtime voice agent enabled for this partner (`<VoiceButton>` shows only when true). */
+  voice_agent_enabled?: boolean;
 }
 
 // ── User Preferences ──
@@ -536,4 +538,80 @@ export interface Talk2ViewTheme {
   surfaceHover?: string;
   /** Box-shadow used for elevated surfaces (composer, dropdowns, cards). */
   shadow?: string;
+}
+
+// ── Voice ──
+
+export interface VoiceIceServer {
+  urls: string[];
+  username?: string | null;
+  credential?: string | null;
+}
+
+/** Engine response to `POST /v1/voice/sessions`. The ticket is single-use and short-lived. */
+export interface VoiceSessionResponse {
+  ticket: string;
+  voice_url: string;
+  session_id: string;
+  ice_servers: VoiceIceServer[];
+  expires_in: number;
+  model: string;
+}
+
+export type VoiceState = 'idle' | 'connecting' | 'listening' | 'ended' | 'error';
+
+export type VoiceEndReason =
+  | 'stopped'
+  | 'disconnected'
+  | 'session_cap'
+  | 'idle'
+  | 'budget_exhausted'
+  | 'auth_expired'
+  | 'error';
+
+export interface VoiceError {
+  /**
+   * Why voice failed.
+   * - Minting the call (engine): `voice_disabled`, `account_required`,
+   *   `no_api_key`, `insufficient_credit`, `credit_check_unavailable`,
+   *   `service_unavailable`, `upstream_error`.
+   * - Connecting (voice service): `voice_at_capacity`, `voice_ticket_invalid`,
+   *   `voice_offer_invalid`, `service_unavailable`, `upstream_error`.
+   * - The SDK and the browser: `auth_expired` (the sign-in expired, before or
+   *   during a call), `mic_unavailable` (no microphone access, or none found),
+   *   `transport_error` (the WebRTC connection failed), `insufficient_credit`
+   *   (credit ran out mid-call), and `voice_error`, the catch-all.
+   *
+   * A type added later is not listed here: fall back to `message`.
+   */
+  type: string;
+  message: string;
+}
+
+export interface VoiceTranscript {
+  role: 'user' | 'bot';
+  text: string;
+  final: boolean;
+}
+
+export interface VoiceToolCall {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+/** A client tool waiting for the end-user (permission: true). `decide` answers it once. */
+export interface VoicePendingApproval extends PendingApproval {
+  decide: (decision: HumanDecision) => void;
+}
+
+export interface VoiceEventMap {
+  [key: string]: unknown[];
+  stateChange: [VoiceState];
+  transcript: [VoiceTranscript];
+  toolCall: [VoiceToolCall];
+  agentState: ['working' | 'idle'];
+  approvalChange: [VoicePendingApproval | null];
+  error: [VoiceError];
+  ended: [VoiceEndReason];
 }

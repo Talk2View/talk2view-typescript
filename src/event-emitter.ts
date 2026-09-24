@@ -13,6 +13,10 @@ export class TypedEventEmitter<TEvents extends Record<string, unknown[]>> {
     return () => set.delete(callback as (...args: unknown[]) => void);
   }
 
+  off<K extends keyof TEvents>(event: K, callback: (...args: TEvents[K]) => void): void {
+    this.listeners.get(event)?.delete(callback as (...args: unknown[]) => void);
+  }
+
   emit<K extends keyof TEvents>(event: K, ...args: TEvents[K]): void {
     const set = this.listeners.get(event);
     if (set) {

@@ -44,8 +44,14 @@ Theming is the custom properties on `.t2v-chat` (`--radius`, `--primary`, the
 rest); dark mode is `className="dark"`. The chat fetches nothing at runtime — no
 fonts, no CDN — and uses your page's font unless you pass `fontFamily`.
 
-**It is large: 361.8 KB gzip, excluding React.** A consumer who never imports
+**It is large: 372.4 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
+
+**Voice.** For partners with the realtime voice agent enabled, the launcher
+shows a microphone beside the mark: press to talk, press again to hang up. The
+agent uses the same tools, permissions and approval card as the chat. Standalone
+it is `<VoiceButton client={t2v} />`; without a UI it is `t2v.voice`. See
+**[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
 
 Everything else — the full prop table, theming tokens, the launcher in a hostile
 page, CSP, Next.js — is in
@@ -209,7 +215,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 There are four React entry points, and they do different jobs:
 
 - **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
-- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 39.9 KB gzip against the packaged chat's 361.8, and no assistant-ui.
+- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.3 KB gzip against the packaged chat's 372.4, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
 

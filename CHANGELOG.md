@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-24
+
+### Added
+
+- **The realtime voice agent: `t2v.voice` and `<VoiceButton>` (`@talk2view/sdk/chat`).** Press to talk, press again to hang up; a press while the call is still connecting cancels it. The agent runs the same client tools, permissions and approval card as the chat, so there is no new code to write for voice. The launcher shows the button beside its mark only for partners with voice enabled (`/v1/config` → `voice_agent_enabled`); `features.voice: false` hides it. The button says what the call is doing — connecting, listening, working, why it ended — and turns each failure into a line an end-user can act on ("Voice is busy right now. Try again shortly."). The Pipecat client libraries load on the first press, so a chat-only integration ships none of them: core grows by 1.8 KB gzip, from 9.35 to 11.14, for the thin `t2v.voice` facade, and `/chat` is 372.4 KB gzip.
+
+### Fixed
+
+- **The packaged chat asks for the partner config again when someone signs in.** It asked once, on mount, and a brand-new visitor's request 401s because no session exists yet, so anything gated on the config stayed off for the rest of the page view. It now asks again when a user signs in (a guest session starting counts) and the identity differs from the last one it saw. A sign-out is never answered with a request: a sessionless 401 clears auth, and clearing auth announces a sign-out, so answering it would loop.
+
 ## [0.19.0] - 2026-09-22
 
 First release from the standalone repository, published over npm trusted
