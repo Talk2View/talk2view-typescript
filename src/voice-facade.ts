@@ -63,9 +63,11 @@ export class T2VVoice {
     try {
       controller = await this.load();
     } catch (err) {
+      // Before the epoch check: a load that fails after a stop() must not stay
+      // cached, or the next start() would fail without retrying the import.
+      this.loading = null; // a failed chunk load can be retried
       if (epoch !== this.epoch) return;
       this.awaitingLoad = false;
-      this.loading = null; // a failed chunk load can be retried
       const message = 'Could not load voice. Check your connection and try again.';
       this.emitter.emit('error', { type: 'voice_error', message });
       this.setState('error');

@@ -164,6 +164,53 @@ describe('T2VVoice facade', () => {
     await voice.start();
     expect(voice.state).toBe('listening');
   });
+
+  it('stop() during a lazy load that then fails: the next start() retries the import', async () => {
+    const first = deferred<typeof T2VVoiceController>();
+    const loadController = vi
+      .fn<VoiceControllerLoader>()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementation(async () => T2VVoiceController);
+    const { voice } = facade({ loadController });
+    const errors: unknown[] = [];
+    voice.on('error', (e) => errors.push(e));
+    const starting = voice.start();
+    await tick();
+    await voice.stop();
+    first.reject(new Error('chunk failed'));
+    await starting; // stale: resolves quietly, reports nothing
+    expect(errors).toEqual([]);
+    expect(voice.state).toBe('ended');
+
+    await voice.start();
+    expect(loadController).toHaveBeenCalledTimes(2);
+    expect(voice.state).toBe('listening');
+  });
+
+  it('forwards the relay events: toolCall and approvalChange reach facade listeners', async () => {
+    const { voice } = facade({
+      loadController: async () => T2VVoiceController,
+      tools: {
+        checkPermission: vi.fn(async () => ({ action: 'require_approval' as const })),
+        executeToolCall: vi.fn(async () => ({ result: '{"ok":true}', isError: false })),
+        getDescription: () => 'Paints',
+      } as unknown as T2VVoiceOptions['tools'],
+    });
+    const log: unknown[] = [];
+    voice.on('toolCall', (c) => log.push(['toolCall', c.toolCallId]));
+    voice.on('approvalChange', (a) => log.push(['approvalChange', a?.toolCallId ?? null]));
+    await voice.start();
+    const client = FakePipecatClient.instances[0]!;
+    const sent: unknown[] = [];
+    client.sendClientMessage = (type: string, data?: unknown) => sent.push({ type, data });
+    client.opts.callbacks.onServerMessage?.({ type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'paint', arguments: {} });
+    await tick();
+    expect(log).toEqual([['toolCall', 'c1'], ['approvalChange', 'c1']]);
+    await voice.stop();
+    await tick();
+    expect(log.at(-1)).toEqual(['approvalChange', null]);
+    expect(sent).toEqual([]);
+  });
 });
 
 describe('Talk2View.voice', () => {

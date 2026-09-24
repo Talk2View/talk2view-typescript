@@ -356,13 +356,15 @@ export class T2VVoiceController {
     const toolName = msg.tool_name;
     const args = msg.arguments ?? {};
     const client = this.client;
-    this.emitter.emit('toolCall', { toolCallId, toolName, arguments: args });
 
     let outcome: { result: string; isError: boolean };
     try {
+      // Inside the try: a throwing `toolCall` listener must not leave the
+      // agent waiting out the service's tool timeout for an answer.
+      this.emitter.emit('toolCall', { toolCallId, toolName, arguments: args });
       outcome = await this.runToolCall(toolCallId, toolName, args);
     } catch {
-      // A throwing permission callback or tool: the agent still gets an answer.
+      // A throwing listener, permission callback or tool: the agent still gets an answer.
       outcome = { result: JSON.stringify({ error: 'The application could not run this tool' }), isError: true };
     }
     // Only to the call that asked: a result for an ended call goes nowhere.
@@ -415,8 +417,9 @@ export class T2VVoiceController {
         settled = true;
         clearTimeout(timer);
         if (this.pendingApproval === pending) this.pendingApproval = null;
-        this.emitter.emit('approvalChange', null);
+        // Resolve first: a throwing listener must not strand the tool call.
         resolve(decision);
+        this.emitter.emit('approvalChange', null);
       };
       const timer = setTimeout(() => settle({ action: 'deny', feedback: 'No answer in time' }), timeoutMs);
       const pending: VoicePendingApproval = {
