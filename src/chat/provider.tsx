@@ -242,11 +242,19 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
         .then((value) => live && value && setPartnerConfig(value))
         .catch(() => {});
     load();
-    // The config is auth-scoped, and the client drops its cache on every auth
-    // change (its own listener runs first, registered at construction). Asking
-    // again here is what brings in the config a guest's first 401 missed — and
-    // with it anything gated on it, like the voice button beside the launcher.
-    const off = client.auth.onAuthStateChange(() => void load());
+    // Ask again when someone signs in — a guest session starting, or a real
+    // sign-in — which is what brings in the config a guest's first 401 missed,
+    // and with it anything gated on it, like the voice button beside the
+    // launcher. ONLY then: a sign-out (`null`) must never be answered with a
+    // request. A sessionless /v1/config 401s, the client clears auth on that
+    // 401, clearing auth announces `null`, and answering it would loop.
+    let seen = client.auth.getUser?.()?.id ?? null;
+    const off = client.auth.onAuthStateChange((user) => {
+      const id = user?.id ?? null;
+      const changed = id !== seen;
+      seen = id;
+      if (id !== null && changed) void load();
+    });
     return () => {
       live = false;
       off?.();

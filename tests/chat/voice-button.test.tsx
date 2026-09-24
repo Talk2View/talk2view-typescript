@@ -426,6 +426,19 @@ describe('beside the launcher', () => {
     });
     expect(getConfig).toHaveBeenCalledTimes(2);
     expect(voiceButton()).not.toBeNull();
+
+    // A sign-out is never answered with a request (that is how a sessionless
+    // 401 looped), and neither is the same user announced again.
+    const announce = async (user: unknown) =>
+      act(async () => {
+        for (const [listener] of onAuth.mock.calls) listener(user);
+      });
+    await announce({ id: 'guest-1' });
+    await announce(null);
+    expect(getConfig).toHaveBeenCalledTimes(2);
+    // A different user signing in afterwards is asked for again.
+    await announce({ id: 'user-2' });
+    expect(getConfig).toHaveBeenCalledTimes(3);
   });
 
   it('is not there when the integrator turns it off', async () => {

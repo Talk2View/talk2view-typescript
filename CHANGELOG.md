@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- **The packaged chat asks for the partner config again after a sign-in.** It asked once, on mount, and a brand-new visitor's request 401s because no session exists yet, so anything gated on the config stayed off for the rest of the page view. It now asks again on every auth change, as the client already drops its cached config on each one.
+- **The packaged chat asks for the partner config again when someone signs in.** It asked once, on mount, and a brand-new visitor's request 401s because no session exists yet, so anything gated on the config stayed off for the rest of the page view. It now asks again when a user signs in (a guest session starting counts) and the identity differs from the last one it saw. A sign-out is never answered with a request: a sessionless 401 clears auth, and clearing auth announces a sign-out, so answering it would loop.
 
 ## [0.19.0] - 2026-09-22
 

@@ -37,7 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const MEASURED = {
   core: { raw: 34.9, gzip: 10.97 },
   ui: { raw: 123.2, gzip: 40.25 },
-  chat: { raw: 1194.0, gzip: 372.17 },
+  chat: { raw: 1194.1, gzip: 372.18 },
 };
 
 /**
@@ -223,7 +223,7 @@ describe('what a consumer pays for the entry points they use', () => {
       // The voice agent's WebRTC stack stays lazy here too.
       expect([...chat.packages].filter(isVoiceStack)).toEqual([]);
 
-      // 372.17 KB gzip measured (369.18 before <VoiceButton>), excluding React (a peer) and the host app.
+      // 372.18 KB gzip measured (369.18 before <VoiceButton>), excluding React (a peer) and the host app.
       // A page containing only the chat and React measures about 429 KB gzip.
       // Fence at 400 KB: loud on a regression, not a budget to shave against.
       expect(chat.gzipKB).toBeLessThan(400);
