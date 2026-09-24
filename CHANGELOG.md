@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-24
+
 ### Added
 
 - **The realtime voice agent: `t2v.voice` and `<VoiceButton>` (`@talk2view/sdk/chat`).** Press to talk, press again to hang up; a press while the call is still connecting cancels it. The agent runs the same client tools, permissions and approval card as the chat, so there is no new code to write for voice. The launcher shows the button beside its mark only for partners with voice enabled (`/v1/config` → `voice_agent_enabled`); `features.voice: false` hides it. The button says what the call is doing — connecting, listening, working, why it ended — and turns each failure into a line an end-user can act on ("Voice is busy right now. Try again shortly."). The Pipecat client libraries load on the first press, so a chat-only integration ships none of them: core grows by 1.8 KB gzip, from 9.35 to 11.14, for the thin `t2v.voice` facade, and `/chat` is 372.4 KB gzip.
