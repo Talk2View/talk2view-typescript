@@ -81,10 +81,46 @@ export class VoiceStartError extends Error {
   constructor(
     public readonly type: string,
     message: string,
+    options?: { cause?: unknown },
   ) {
-    super(message);
+    super(message, options);
     this.name = 'VoiceStartError';
   }
+}
+
+/** What the voice service's refusal statuses mean when its JSON body is unreadable. */
+const OFFER_STATUS: Record<number, VoiceError> = {
+  401: { type: 'voice_ticket_invalid', message: 'The voice session expired before it connected. Try again.' },
+  502: { type: 'upstream_error', message: 'The voice service could not reach the assistant. Try again.' },
+  503: { type: 'voice_at_capacity', message: 'Voice is busy right now. Try again in a minute.' },
+};
+
+/**
+ * Turn a failed start into a `VoiceError`. Engine errors (`T2VError`) and our
+ * own `VoiceStartError` carry `.type`. The transport rejects a refused offer
+ * with a `TransportStartError` carrying `.status` and, as `.cause`, the
+ * service's unread `Response`, whose `{error: {type, message}}` body wins.
+ */
+async function describeStartError(err: unknown, connecting: boolean): Promise<VoiceError> {
+  const e = (err ?? {}) as { type?: unknown; status?: unknown; cause?: unknown };
+  const message = err instanceof Error && err.message ? err.message : 'Could not start voice';
+  if (typeof e.type === 'string') return { type: e.type, message };
+  if (typeof e.status === 'number') {
+    const cause = e.cause as { json?: unknown; bodyUsed?: boolean } | undefined;
+    if (cause && typeof cause.json === 'function' && !cause.bodyUsed) {
+      try {
+        const body = (await (cause.json as () => Promise<unknown>)()) as { error?: { type?: unknown; message?: unknown } };
+        if (typeof body?.error?.type === 'string') {
+          const fallback = OFFER_STATUS[e.status]?.message ?? 'Could not start voice';
+          return { type: body.error.type, message: typeof body.error.message === 'string' ? body.error.message : fallback };
+        }
+      } catch {
+        // not JSON: fall back to the status
+      }
+    }
+    return OFFER_STATUS[e.status] ?? { type: 'voice_error', message: 'Could not start voice' };
+  }
+  return { type: connecting ? 'transport_error' : 'voice_error', message };
 }
 
 export class T2VVoice {
@@ -94,6 +130,13 @@ export class T2VVoice {
   private audio: HTMLAudioElement | null = null;
   private pendingApproval: VoicePendingApproval | null = null;
   private readonly alwaysAllowed = new Set<string>();
+  /**
+   * Bumped by every ending. A `start()` or a client callback from an older
+   * epoch belongs to a call that was hung up, and must not touch this one.
+   */
+  private epoch = 0;
+  /** Settles the in-flight `start()`'s connect wait when the call is hung up mid-start. */
+  private abortStart: (() => void) | null = null;
 
   constructor(private readonly deps: T2VVoiceDeps) {}
 
@@ -118,17 +161,30 @@ export class T2VVoice {
     this.emitter.emit('error', { type, message } satisfies VoiceError);
   }
 
-  /** Press the button. Resolves once the microphone is live. */
+  /**
+   * Press the button. Resolves once the microphone is live, or quietly if the
+   * call is hung up (`stop()`) before it connects.
+   */
   async start(): Promise<void> {
     if (this._state === 'connecting' || this._state === 'listening') return;
+    const epoch = ++this.epoch;
+    const stale = (): boolean => epoch !== this.epoch;
     this.setState('connecting');
+    const aborted = new Promise<void>((resolve) => {
+      this.abortStart = resolve;
+    });
+    let connecting = false;
     try {
       if (!(await this.deps.ensureSession())) {
         throw new VoiceStartError('account_required', 'Sign in to use voice');
       }
+      if (stale()) return;
       const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
+      if (stale()) return;
       const libs = await (this.deps.loadLibs ?? loadPipecatLibs)();
+      if (stale()) return;
       const token = await this.deps.getValidAccessToken();
+      if (stale()) return;
       if (!token) throw new VoiceStartError('auth_expired', 'Sign in again to use voice');
 
       const transport = new libs.SmallWebRTCTransport({
@@ -138,37 +194,74 @@ export class T2VVoice {
           ...(s.credential ? { credential: s.credential } : {}),
         })),
       });
+      // A refused first offer (503 at capacity, 502) is retried by the transport
+      // for several seconds; the ticket cannot succeed on a retry, so allow none
+      // until connected, then restore the default for mid-call ICE recovery.
+      // `maxReconnectionAttempts` is a public field of the pinned 1.10.8
+      // transport that its typings do not declare.
+      const retry = transport as { maxReconnectionAttempts?: number };
+      const retries = retry.maxReconnectionAttempts;
+      if (typeof retries === 'number') retry.maxReconnectionAttempts = 0;
       const client = new libs.PipecatClient({
         transport,
         enableMic: true,
         enableCam: false,
         callbacks: {
-          onConnected: () => this.setState('listening'),
-          onDisconnected: () => void this.finish('disconnected'),
-          onError: (msg) => this.emitError('transport_error', msg?.data?.message ?? 'Voice connection error'),
-          onServerMessage: (data) => void this.handleServerMessage(data),
-          onUserTranscript: (d) => this.emitter.emit('transcript', { role: 'user', text: d.text, final: !!d.final }),
-          onBotTranscript: (d) => this.emitter.emit('transcript', { role: 'bot', text: d.text, final: true }),
+          onConnected: () => {
+            if (stale()) return;
+            if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
+            this.setState('listening');
+          },
+          onDisconnected: () => {
+            if (!stale()) void this.finish('disconnected');
+          },
+          onError: (msg) => {
+            if (!stale()) this.emitError('transport_error', msg?.data?.message ?? 'Voice connection error');
+          },
+          onServerMessage: (data) => {
+            if (stale()) return;
+            this.handleServerMessage(data).catch(() => {
+              if (!stale()) this.emitError('voice_error', 'Something went wrong in the voice call');
+            });
+          },
+          onUserTranscript: (d) => {
+            if (!stale()) this.emitter.emit('transcript', { role: 'user', text: d.text, final: !!d.final });
+          },
+          onBotTranscript: (d) => {
+            if (!stale()) this.emitter.emit('transcript', { role: 'bot', text: d.text, final: true });
+          },
           onTrackStarted: (track, participant) => {
-            if (participant?.local || track.kind !== 'audio') return;
+            if (stale() || participant?.local || track.kind !== 'audio') return;
             (this.deps.attachAudio ?? this.attachAudio)(track);
           },
         },
       });
       this.client = client;
-      await client.connect({
-        webrtcRequestParams: {
-          endpoint: mint.voice_url,
-          requestData: { ticket: mint.ticket, partner_key: this.deps.partnerKey, access_token: token },
-        },
-      });
+      connecting = true;
+      // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
+      await Promise.race([
+        client.connect({
+          webrtcRequestParams: {
+            endpoint: mint.voice_url,
+            requestData: { ticket: mint.ticket, partner_key: this.deps.partnerKey, access_token: token },
+          },
+        }),
+        aborted,
+      ]);
     } catch (err) {
+      // Hung up mid-start: stop() already tore down and reported the ending.
+      if (stale()) return;
+      this.abortStart = null;
+      this.epoch += 1; // late callbacks from this failed client are not this call's
       await this.teardown();
-      const type = (err as { type?: string }).type ?? 'voice_error';
-      const message = err instanceof Error ? err.message : 'Could not start voice';
-      this.emitError(type, message);
+      const error = await describeStartError(err, connecting);
+      this.emitError(error.type, error.message);
       this.setState('error');
-      throw err;
+      throw typeof (err as { type?: unknown })?.type === 'string'
+        ? err
+        : new VoiceStartError(error.type, error.message, { cause: err });
+    } finally {
+      if (!stale()) this.abortStart = null;
     }
   }
 
@@ -182,12 +275,21 @@ export class T2VVoice {
     // teardown() nulls the client before disconnecting, so the onDisconnected
     // our own hang-up triggers is not a second, spurious ending.
     if (reason === 'disconnected' && this.client === null) return;
+    // A transport that fails to connect fires onDisconnected before connect()
+    // rejects; start()'s catch reports that failure as an error, not an ending.
+    if (reason === 'disconnected' && this._state === 'connecting') return;
+    // Everything from the call being ended (a start still in flight, late
+    // callbacks) is now stale.
+    this.epoch += 1;
+    const abortStart = this.abortStart;
+    this.abortStart = null;
     if (reason === 'budget_exhausted') {
       this.emitError('insufficient_credit', 'You have used up your credits for now.');
     } else if (reason === 'auth_expired') {
       this.emitError('auth_expired', 'Your sign-in expired. Sign in again to keep talking.');
     }
     await this.teardown();
+    abortStart?.();
     this.setState('ended');
     this.emitter.emit('ended', reason);
   }
@@ -229,8 +331,16 @@ export class T2VVoice {
         await this.relayToolCall(msg as unknown as { tool_call_id: string; tool_name: string; arguments?: Record<string, unknown> });
         return;
       case 't2v-token-request': {
-        const token = await this.deps.getValidAccessToken({ forceRefresh: true });
-        this.client?.sendClientMessage('t2v-token', { access_token: token ?? '' });
+        const client = this.client;
+        let token: string | null;
+        try {
+          token = await this.deps.getValidAccessToken({ forceRefresh: true });
+        } catch {
+          // The call cannot continue without a fresh token: end it as expired.
+          if (this.client === client) await this.finish('auth_expired');
+          return;
+        }
+        if (this.client === client) client?.sendClientMessage('t2v-token', { access_token: token ?? '' });
         return;
       }
       case 't2v-agent-state':
@@ -248,8 +358,30 @@ export class T2VVoice {
     const toolCallId = msg.tool_call_id;
     const toolName = msg.tool_name;
     const args = msg.arguments ?? {};
+    const client = this.client;
     this.emitter.emit('toolCall', { toolCallId, toolName, arguments: args });
 
+    let outcome: { result: string; isError: boolean };
+    try {
+      outcome = await this.runToolCall(toolCallId, toolName, args);
+    } catch {
+      // A throwing permission callback or tool: the agent still gets an answer.
+      outcome = { result: JSON.stringify({ error: 'The application could not run this tool' }), isError: true };
+    }
+    // Only to the call that asked: a result for an ended call goes nowhere.
+    if (this.client !== client) return;
+    client?.sendClientMessage('t2v-tool-result', {
+      tool_call_id: toolCallId,
+      result: outcome.result,
+      is_error: outcome.isError,
+    });
+  }
+
+  private async runToolCall(
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<{ result: string; isError: boolean }> {
     let outcome: { result: string; isError: boolean };
     const perm = await this.deps.tools.checkPermission(toolName, args);
     if (perm.action === 'deny') {
@@ -266,11 +398,7 @@ export class T2VVoice {
     } else {
       outcome = await this.deps.tools.executeToolCall(toolName, perm.action === 'allow' ? (perm.updatedInput ?? args) : args);
     }
-    this.client?.sendClientMessage('t2v-tool-result', {
-      tool_call_id: toolCallId,
-      result: outcome.result,
-      is_error: outcome.isError,
-    });
+    return outcome;
   }
 
   private resolveApproval(decision: HumanDecision): void {

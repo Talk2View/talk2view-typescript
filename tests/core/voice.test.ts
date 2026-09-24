@@ -7,6 +7,8 @@ import type { PermissionCheckResult, VoiceState } from '../../src/types.js';
 type Callbacks = Record<string, (...args: any[]) => void>;
 
 class FakeTransport {
+  /** Mirrors the 1.10.8 transport's public retry field (default 3). */
+  maxReconnectionAttempts = 3;
   constructor(public opts: { iceServers: RTCIceServer[] }) {}
 }
 
@@ -16,6 +18,9 @@ class FakePipecatClient {
   connectParams: any;
   disconnected = 0;
   static failConnectWith: Error | null = null;
+  /** When set, connect() waits on it (a slow ICE/offer exchange). */
+  static connectGate: Promise<void> | null = null;
+  retriesDuringConnect: number | undefined;
   constructor(public opts: { transport: unknown; enableMic: boolean; enableCam: boolean; callbacks: Callbacks }) {
     FakePipecatClient.instances.push(this);
   }
@@ -24,7 +29,13 @@ class FakePipecatClient {
   }
   async connect(params: unknown): Promise<void> {
     this.connectParams = params;
-    if (FakePipecatClient.failConnectWith) throw FakePipecatClient.failConnectWith;
+    this.retriesDuringConnect = (this.opts.transport as FakeTransport).maxReconnectionAttempts;
+    if (FakePipecatClient.connectGate) await FakePipecatClient.connectGate;
+    if (FakePipecatClient.failConnectWith) {
+      // Like the real transport: stop(error) fires onDisconnected, then connect() rejects.
+      this.callbacks.onDisconnected?.();
+      throw FakePipecatClient.failConnectWith;
+    }
     this.callbacks.onConnected?.();
   }
   async disconnect(): Promise<void> {
@@ -52,6 +63,7 @@ const MINT = {
 function world(overrides: Partial<T2VVoiceDeps> = {}) {
   FakePipecatClient.instances = [];
   FakePipecatClient.failConnectWith = null;
+  FakePipecatClient.connectGate = null;
   const libs: VoiceLibs = { PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any };
   const permission: { result: PermissionCheckResult } = { result: { action: 'allow' } };
   const executed: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -126,12 +138,28 @@ describe('T2VVoice.start', () => {
     await expect(b.voice.start()).rejects.toMatchObject({ type: 'auth_expired' });
   });
 
-  it('a failed connect cleans up and reports transport_error', async () => {
+  it('a failed connect cleans up and reports transport_error, never an ending', async () => {
     const w = world();
+    const log: unknown[] = [];
+    w.voice.on('stateChange', (s) => log.push(['state', s]));
+    w.voice.on('error', (e) => log.push(['error', e]));
+    w.voice.on('ended', (r) => log.push(['ended', r]));
     FakePipecatClient.failConnectWith = new Error('ICE failed');
-    await expect(w.voice.start()).rejects.toThrow('ICE failed');
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'transport_error', message: 'ICE failed' });
+    expect(log).toEqual([
+      ['state', 'connecting'],
+      ['error', { type: 'transport_error', message: 'ICE failed' }],
+      ['state', 'error'],
+    ]);
     expect(w.voice.state).toBe('error');
     expect(w.client().disconnected).toBe(1);
+  });
+
+  it('allows no offer retries until connected, then restores them', async () => {
+    const w = world();
+    await w.voice.start();
+    expect(w.client().retriesDuringConnect).toBe(0);
+    expect((w.client().opts.transport as FakeTransport).maxReconnectionAttempts).toBe(3);
   });
 
   it('attaches the bot audio track, never the local one', async () => {
@@ -192,5 +220,156 @@ describe('bundle boundary', () => {
     expect(source).not.toMatch(/^import .* from '@pipecat-ai/m);
     expect(source).toMatch(/import\('@pipecat-ai\/client-js'\)/);
     expect(source).toMatch(/import\('@pipecat-ai\/small-webrtc-transport'\)/);
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+describe('stop() during start()', () => {
+  it('during the mint: never connects, ends "stopped"', async () => {
+    const mint = deferred<typeof MINT>();
+    const w = world({ request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'] });
+    const ended: unknown[] = [];
+    w.voice.on('ended', (r) => ended.push(r));
+    const starting = w.voice.start();
+    await tick();
+    await w.voice.stop();
+    mint.resolve(MINT);
+    await starting;
+    expect(FakePipecatClient.instances).toHaveLength(0);
+    expect(w.voice.state).toBe('ended');
+    expect(w.states).toEqual(['connecting', 'ended']);
+    expect(ended).toEqual(['stopped']);
+  });
+
+  it('during the library load: never connects, ends "stopped"', async () => {
+    const libs = deferred<VoiceLibs>();
+    const w = world({ loadLibs: () => libs.promise });
+    const starting = w.voice.start();
+    await tick();
+    await w.voice.stop();
+    libs.resolve({ PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any });
+    await starting;
+    expect(FakePipecatClient.instances).toHaveLength(0);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('during connect: disconnects the client (mic released) and never listens', async () => {
+    const w = world();
+    const gate = deferred<void>();
+    FakePipecatClient.connectGate = gate.promise;
+    const ended: unknown[] = [];
+    w.voice.on('ended', (r) => ended.push(r));
+    const starting = w.voice.start();
+    await tick();
+    expect(FakePipecatClient.instances).toHaveLength(1);
+    await w.voice.stop();
+    await starting; // resolves although connect() is still pending
+    expect(w.client().disconnected).toBe(1);
+    expect(w.voice.state).toBe('ended');
+    gate.resolve(); // the transport finishes late: its onConnected is stale
+    await tick();
+    expect(w.voice.state).toBe('ended');
+    expect(w.states).toEqual(['connecting', 'ended']);
+    expect(ended).toEqual(['stopped']);
+  });
+
+  it('a late failure of the abandoned connect reports nothing', async () => {
+    const w = world();
+    const gate = deferred<void>();
+    FakePipecatClient.connectGate = gate.promise;
+    const errors: unknown[] = [];
+    w.voice.on('error', (e) => errors.push(e));
+    const starting = w.voice.start();
+    await tick();
+    await w.voice.stop();
+    await starting;
+    FakePipecatClient.failConnectWith = new Error('aborted');
+    gate.resolve();
+    await tick();
+    expect(errors).toEqual([]);
+    expect(w.voice.state).toBe('ended');
+  });
+});
+
+describe('voice-service refusals', () => {
+  function refusal(status: number, body?: unknown): Error {
+    const cause =
+      body === undefined
+        ? { bodyUsed: false, json: async () => { throw new SyntaxError('not json'); } }
+        : { bodyUsed: false, json: async () => body };
+    return Object.assign(new Error(`WebRTC offer rejected with status ${status}`), { status, cause });
+  }
+
+  async function startWith(err: Error) {
+    const w = world();
+    const errors: Array<{ type: string; message: string }> = [];
+    w.voice.on('error', (e) => errors.push(e));
+    FakePipecatClient.failConnectWith = err;
+    const rejection = await w.voice.start().catch((e: unknown) => e);
+    return { w, errors, rejection: rejection as { type?: string } };
+  }
+
+  it("uses the service's error body when it is readable", async () => {
+    const { errors, rejection } = await startWith(
+      refusal(503, { error: { type: 'voice_at_capacity', message: 'All lines are busy' } }),
+    );
+    expect(errors).toEqual([{ type: 'voice_at_capacity', message: 'All lines are busy' }]);
+    expect(rejection.type).toBe('voice_at_capacity');
+  });
+
+  it.each([
+    [503, 'voice_at_capacity'],
+    [401, 'voice_ticket_invalid'],
+    [502, 'upstream_error'],
+    [500, 'voice_error'],
+  ])('maps status %i to %s when the body is unreadable', async (status, type) => {
+    const { w, errors, rejection } = await startWith(refusal(status));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.type).toBe(type);
+    expect(rejection.type).toBe(type);
+    expect(w.voice.state).toBe('error');
+  });
+});
+
+describe('RTVI relay failures', () => {
+  it('a throwing permission check still answers the tool call, as an error', async () => {
+    const w = world();
+    (w.deps.tools.checkPermission as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('secret detail'));
+    await w.voice.start();
+    await w.client().server({ type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'paint', arguments: {} });
+    await tick();
+    expect(w.client().sent).toHaveLength(1);
+    const sent = w.client().sent[0]!;
+    expect(sent.type).toBe('t2v-tool-result');
+    const data = sent.data as { tool_call_id: string; result: string; is_error: boolean };
+    expect(data.tool_call_id).toBe('c1');
+    expect(data.is_error).toBe(true);
+    expect(data.result).not.toContain('secret detail');
+  });
+
+  it('a throwing token refresh ends the call as auth_expired', async () => {
+    const w = world();
+    await w.voice.start();
+    (w.deps.getValidAccessToken as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('network down'));
+    const errors: Array<{ type: string; message: string }> = [];
+    const ended: unknown[] = [];
+    w.voice.on('error', (e) => errors.push(e));
+    w.voice.on('ended', (r) => ended.push(r));
+    await w.client().server({ type: 't2v-token-request' });
+    await tick();
+    expect(errors.map((e) => e.type)).toEqual(['auth_expired']);
+    expect(errors[0]!.message).not.toContain('network down');
+    expect(ended).toEqual(['auth_expired']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.client().disconnected).toBe(1);
   });
 });
