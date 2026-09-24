@@ -61,15 +61,23 @@ await t2v.voice.stop(); // hangs up and releases the microphone
 (`working | idle`).
 
 If `start()` fails, it rejects with an error whose `.type` gives the reason:
-`voice_disabled`, `account_required`, `insufficient_credit`,
-`credit_check_unavailable`, `service_unconfigured`, `voice_at_capacity`,
-`voice_ticket_invalid`, `upstream_error`, `transport_error` or `voice_error`.
+`voice_disabled`, `account_required`, `auth_expired`, `no_api_key`,
+`insufficient_credit`, `credit_check_unavailable`, `service_unavailable`,
+`voice_at_capacity`, `voice_ticket_invalid`, `voice_offer_invalid`,
+`upstream_error`, `transport_error` or `voice_error`. The same types arrive on
+the `error` event, which also reports what ends a call without `start()`
+rejecting: `mic_unavailable` (the microphone was refused or is missing; the
+call ends with `'error'`), `auth_expired` (the sign-in expired; the call ends with
+`'auth_expired'`) and `insufficient_credit` (credit ran out; the call ends with
+`'budget_exhausted'`). A deliberate `t2v.auth.logout()` hangs up a call as
+`'stopped'`, with no error.
 
 ## Browser requirements
 
 - **HTTPS.** Browsers only give microphone access on a secure page (localhost
   counts as secure).
-- **Microphone permission.** The browser asks on the first press.
+- **Microphone permission.** The browser asks on the first press. If the
+  end-user refuses, the call ends with a `mic_unavailable` error.
 - **WebRTC.** The call is a WebRTC connection to Talk2View's voice service. A
   network that blocks WebRTC fails with `transport_error`.
 - **Content-Security-Policy.** Your bundler puts the Pipecat client libraries

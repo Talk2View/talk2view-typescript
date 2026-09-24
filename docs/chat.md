@@ -403,9 +403,9 @@ Stated plainly, because it is large.
 
 | | gzip |
 |---|---|
-| `@talk2view/sdk` (the core client) | 9.4 KB |
-| `@talk2view/sdk/ui` (the previous chat panel) | 39.9 KB |
-| **`@talk2view/sdk/chat`** | **361.8 KB** |
+| `@talk2view/sdk` (the core client) | 11.1 KB |
+| `@talk2view/sdk/ui` (the previous chat panel) | 40.3 KB |
+| **`@talk2view/sdk/chat`** | **372.4 KB** |
 | A whole page containing the chat and React | ~437 KB |
 
 The first three exclude React and React DOM, which your app already has. The

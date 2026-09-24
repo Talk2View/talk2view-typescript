@@ -570,7 +570,20 @@ export type VoiceEndReason =
   | 'error';
 
 export interface VoiceError {
-  /** `voice_disabled`, `account_required`, `insufficient_credit`, `service_unavailable`, `voice_at_capacity`, `auth_expired`, `transport_error`, `voice_error`. */
+  /**
+   * Why voice failed.
+   * - Minting the call (engine): `voice_disabled`, `account_required`,
+   *   `no_api_key`, `insufficient_credit`, `credit_check_unavailable`,
+   *   `service_unavailable`, `upstream_error`.
+   * - Connecting (voice service): `voice_at_capacity`, `voice_ticket_invalid`,
+   *   `voice_offer_invalid`, `service_unavailable`, `upstream_error`.
+   * - The SDK and the browser: `auth_expired` (the sign-in expired, before or
+   *   during a call), `mic_unavailable` (no microphone access, or none found),
+   *   `transport_error` (the WebRTC connection failed), `insufficient_credit`
+   *   (credit ran out mid-call), and `voice_error`, the catch-all.
+   *
+   * A type added later is not listed here: fall back to `message`.
+   */
   type: string;
   message: string;
 }
