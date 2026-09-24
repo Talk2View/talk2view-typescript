@@ -109,7 +109,7 @@ take directly.
 | `systemPrompt` | none | Your own instructions, sent with every message. Changing it does not restart the conversation. |
 | `welcome` | `{}` | `heading` and `suggestions` on the empty chat. Clicking a suggestion sends it. |
 | `allowAnonymous` | `true` | Logged-out visitors chat as guests. `false` shows sign-in first — **and see the note below**. |
-| `features` | all on | `{ dictation, attachments, settings, account, threadList, skills }`. |
+| `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled — see [voice.md](voice.md). |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
 | `footer` | none | A short line under the composer — your terms, a disclaimer. |

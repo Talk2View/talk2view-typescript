@@ -47,6 +47,12 @@ fonts, no CDN — and uses your page's font unless you pass `fontFamily`.
 **It is large: 361.8 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
 
+**Voice.** For partners with the realtime voice agent enabled, the launcher
+shows a microphone beside the mark: press to talk, press again to hang up. The
+agent uses the same tools, permissions and approval card as the chat. Standalone
+it is `<VoiceButton client={t2v} />`; without a UI it is `t2v.voice`. See
+**[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
+
 Everything else — the full prop table, theming tokens, the launcher in a hostile
 page, CSP, Next.js — is in
 **[`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md)**, which also
