@@ -766,3 +766,101 @@ describe('teardown before events (stop always releases the mic)', () => {
     ]);
   });
 });
+
+describe('hang-up races', () => {
+  const CALL = { type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'paint', arguments: {} };
+
+  /** Make the fake client's disconnect() wait on a gate (a slow hang-up). */
+  function slowDisconnect(w: ReturnType<typeof world>) {
+    const gate = deferred<void>();
+    const c = w.client();
+    const real = c.disconnect.bind(c);
+    c.disconnect = async () => {
+      await gate.promise;
+      await real();
+    };
+    return gate;
+  }
+
+  it.each(['require_approval', 'allow'] as const)(
+    'stop during a pending permission check (%s): no card, no tool run, nothing sent',
+    async (action) => {
+      const w = world();
+      const perm = deferred<PermissionCheckResult>();
+      (w.deps.tools.checkPermission as ReturnType<typeof vi.fn>).mockReturnValueOnce(perm.promise);
+      const approvals: unknown[] = [];
+      w.voice.on('approvalChange', (a) => approvals.push(a));
+      await w.voice.start();
+      await w.client().server(CALL);
+      await w.voice.stop();
+      perm.resolve({ action });
+      await tick();
+      expect(approvals).toEqual([]);
+      expect(w.executed).toEqual([]);
+      expect(w.client().sent).toEqual([]);
+      expect(w.voice.state).toBe('ended');
+    },
+  );
+
+  it('a late Allow after stop never runs the tool', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    await w.client().server(CALL);
+    await w.voice.stop();
+    pending.decide({ action: 'once' });
+    await tick();
+    expect(w.executed).toEqual([]);
+    expect(w.client().sent).toEqual([]);
+  });
+
+  it('an Allow clicked while the hang-up is still disconnecting never runs the tool', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    await w.client().server(CALL);
+    const gate = slowDisconnect(w);
+    const stopping = w.voice.stop();
+    pending.decide({ action: 'always' }); // the card is still up mid-disconnect
+    await tick();
+    gate.resolve();
+    await stopping;
+    await tick();
+    expect(w.executed).toEqual([]);
+    expect(w.client().sent).toEqual([]);
+  });
+
+  it('concurrent stop() calls give one disconnect and one ended', async () => {
+    const w = world();
+    const ended: unknown[] = [];
+    w.voice.on('ended', (r) => ended.push(r));
+    await w.voice.start();
+    const gate = slowDisconnect(w);
+    const both = Promise.all([w.voice.stop(), w.voice.stop()]);
+    await tick();
+    gate.resolve();
+    await both;
+    expect(ended).toEqual(['stopped']);
+    expect(w.client().disconnected).toBe(1);
+    expect(w.states).toEqual(['connecting', 'listening', 'ended']);
+  });
+
+  it('a server-side end during a stop joins it: one ended', async () => {
+    const w = world();
+    const ended: unknown[] = [];
+    w.voice.on('ended', (r) => ended.push(r));
+    await w.voice.start();
+    const gate = slowDisconnect(w);
+    const stopping = w.voice.stop();
+    w.client().callbacks.onServerMessage?.({ type: 't2v-call-ended', reason: 'idle' });
+    gate.resolve();
+    await stopping;
+    await tick();
+    expect(ended).toEqual(['stopped']);
+    expect(w.client().disconnected).toBe(1);
+  });
+});

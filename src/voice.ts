@@ -136,6 +136,8 @@ export class T2VVoiceController {
   private epoch = 0;
   /** Settles the in-flight `start()`'s connect wait when the call is hung up mid-start. */
   private abortStart: (() => void) | null = null;
+  /** The hang-up in progress; a concurrent `stop()` joins it. */
+  private ending: Promise<void> | null = null;
 
   constructor(private readonly deps: T2VVoiceDeps) {}
 
@@ -282,16 +284,27 @@ export class T2VVoiceController {
     await this.finish('stopped');
   }
 
-  private async finish(reason: VoiceEndReason): Promise<void> {
-    if (this._state === 'idle' || this._state === 'ended' || this._state === 'error') return;
+  private finish(reason: VoiceEndReason): Promise<void> {
+    // A second hang-up while the first is still tearing down joins it: one
+    // disconnect, one `ended`.
+    if (this.ending) return this.ending;
+    if (this._state === 'idle' || this._state === 'ended' || this._state === 'error') return Promise.resolve();
     // teardown() nulls the client before disconnecting, so the onDisconnected
     // our own hang-up triggers is not a second, spurious ending.
-    if (reason === 'disconnected' && this.client === null) return;
+    if (reason === 'disconnected' && this.client === null) return Promise.resolve();
     // A transport that fails to connect fires onDisconnected before connect()
     // rejects; start()'s catch reports that failure as an error, not an ending.
-    if (reason === 'disconnected' && this._state === 'connecting') return;
+    if (reason === 'disconnected' && this._state === 'connecting') return Promise.resolve();
+    const ending = this.endCall(reason).finally(() => {
+      if (this.ending === ending) this.ending = null;
+    });
+    this.ending = ending;
+    return ending;
+  }
+
+  private async endCall(reason: VoiceEndReason): Promise<void> {
     // Everything from the call being ended (a start still in flight, late
-    // callbacks) is now stale.
+    // callbacks, tool calls mid-relay) is now stale.
     this.epoch += 1;
     const abortStart = this.abortStart;
     this.abortStart = null;
@@ -399,12 +412,18 @@ export class T2VVoiceController {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<{ result: string; isError: boolean }> {
+    // Hung up while the partner's permission callback or the card was pending:
+    // no card, no tool run. Nothing is sent either (the channel is gone).
+    const epoch = this.epoch;
+    const CALL_ENDED = { result: JSON.stringify({ error: 'The call ended' }), isError: true };
     let outcome: { result: string; isError: boolean };
     const perm = await this.deps.tools.checkPermission(toolName, args);
+    if (epoch !== this.epoch) return CALL_ENDED;
     if (perm.action === 'deny') {
       outcome = { result: JSON.stringify({ error: perm.message ?? 'Denied by the application' }), isError: true };
     } else if (perm.action === 'require_approval' && !this.alwaysAllowed.has(toolName)) {
       const { decision, endedBecause } = await this.awaitApproval(toolCallId, toolName, args);
+      if (epoch !== this.epoch) return CALL_ENDED;
       if (endedBecause) {
         outcome = { result: JSON.stringify({ error: endedBecause }), isError: true };
       } else if (decision.action === 'deny') {
