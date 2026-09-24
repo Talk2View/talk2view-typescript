@@ -373,3 +373,294 @@ describe('RTVI relay failures', () => {
     expect(w.client().disconnected).toBe(1);
   });
 });
+
+describe('RTVI relay', () => {
+  const CALL = { type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'set_background_color', arguments: { color: 'blue' } };
+  type ToolResult = { tool_call_id: string; result: string; is_error: boolean };
+  const resultAt = (w: ReturnType<typeof world>, i: number) => w.client().sent[i]!.data as ToolResult;
+
+  it('allow: runs the registered handler and sends the string result', async () => {
+    const w = world();
+    const calls: unknown[] = [];
+    w.voice.on('toolCall', (c) => calls.push(c));
+    await w.voice.start();
+    await w.client().server(CALL);
+    expect(w.deps.tools.checkPermission).toHaveBeenCalledWith('set_background_color', { color: 'blue' });
+    expect(w.executed).toEqual([{ name: 'set_background_color', args: { color: 'blue' } }]);
+    expect(w.client().sent).toEqual([
+      { type: 't2v-tool-result', data: { tool_call_id: 'c1', result: '{"ok":true}', is_error: false } },
+    ]);
+    expect(calls).toEqual([{ toolCallId: 'c1', toolName: 'set_background_color', arguments: { color: 'blue' } }]);
+  });
+
+  it('allow with updatedInput runs the corrected arguments', async () => {
+    const w = world();
+    w.permission.result = { action: 'allow', updatedInput: { color: 'navy' } };
+    await w.voice.start();
+    await w.client().server(CALL);
+    expect(w.executed[0]!.args).toEqual({ color: 'navy' });
+  });
+
+  it('a tool call without arguments runs with {}', async () => {
+    const w = world();
+    await w.voice.start();
+    await w.client().server({ type: 't2v-tool-call', tool_call_id: 'c1', tool_name: 'reset' });
+    expect(w.executed).toEqual([{ name: 'reset', args: {} }]);
+  });
+
+  it('deny: sends an error result and never runs the handler', async () => {
+    const w = world();
+    w.permission.result = { action: 'deny', message: 'Not on this page' };
+    await w.voice.start();
+    await w.client().server(CALL);
+    expect(w.executed).toEqual([]);
+    expect(resultAt(w, 0)).toEqual({ tool_call_id: 'c1', result: '{"error":"Not on this page"}', is_error: true });
+  });
+
+  it('a tool error result is relayed as is_error', async () => {
+    const w = world();
+    (w.deps.tools.executeToolCall as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      result: '{"error":"Unknown tool: set_background_color"}',
+      isError: true,
+    });
+    await w.voice.start();
+    await w.client().server(CALL);
+    expect(resultAt(w, 0)).toEqual({
+      tool_call_id: 'c1',
+      result: '{"error":"Unknown tool: set_background_color"}',
+      is_error: true,
+    });
+  });
+
+  it('a throwing toolCall listener still answers the call, as an error', async () => {
+    const w = world();
+    w.voice.on('toolCall', () => {
+      throw new Error('partner bug');
+    });
+    await w.voice.start();
+    await w.client().server(CALL);
+    await tick();
+    expect(w.client().sent).toHaveLength(1);
+    expect(w.client().sent[0]!.type).toBe('t2v-tool-result');
+    expect(resultAt(w, 0)).toMatchObject({ tool_call_id: 'c1', is_error: true });
+    expect(resultAt(w, 0).result).not.toContain('partner bug');
+    expect(w.executed).toEqual([]);
+  });
+
+  it('require_approval: raises a pending approval; Allow once runs it', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    const approvals: unknown[] = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    const pending = approvals[0] as {
+      toolCallId: string;
+      toolName: string;
+      arguments: unknown;
+      description: string;
+      decide: (d: unknown) => void;
+    };
+    expect(pending.toolCallId).toBe('c1');
+    expect(pending.toolName).toBe('set_background_color');
+    expect(pending.arguments).toEqual({ color: 'blue' });
+    expect(pending.description).toBe('Changes the page background');
+    expect(w.client().sent).toEqual([]);
+    pending.decide({ action: 'once' });
+    await relay;
+    await tick();
+    expect(approvals[1]).toBeNull();
+    expect(w.executed).toHaveLength(1);
+    expect(resultAt(w, 0)).toMatchObject({ is_error: false });
+  });
+
+  it('require_approval: Allow once with edited input runs the edit', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    pending.decide({ action: 'once', updatedInput: { color: 'teal' } });
+    await relay;
+    await tick();
+    expect(w.executed).toEqual([{ name: 'set_background_color', args: { color: 'teal' } }]);
+  });
+
+  it('require_approval: Deny sends the feedback as the error', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    pending.decide({ action: 'deny', feedback: 'wrong colour' });
+    await relay;
+    await tick();
+    expect(w.executed).toEqual([]);
+    expect(resultAt(w, 0).is_error).toBe(true);
+    expect(JSON.parse(resultAt(w, 0).result)).toEqual({ error: 'The user declined: wrong colour' });
+  });
+
+  it('Always: the next call of the same tool skips the card', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => { if (a) pending = a; });
+    await w.voice.start();
+    const first = w.client().server(CALL);
+    await tick();
+    pending.decide({ action: 'always' });
+    await first;
+    await tick();
+    pending = null;
+    await w.client().server({ ...CALL, tool_call_id: 'c2' });
+    expect(pending).toBeNull();
+    expect(w.executed).toHaveLength(2);
+    expect(w.client().sent.map((m) => (m.data as ToolResult).tool_call_id)).toEqual(['c1', 'c2']);
+  });
+
+  it('test_approval_timeout_denies_once', async () => {
+    const w = world({ approvalTimeoutMs: 10 });
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    const approvals: unknown[] = [];
+    w.voice.on('approvalChange', (a) => {
+      approvals.push(a);
+      if (a) pending = a;
+    });
+    await w.voice.start();
+    await w.client().server(CALL);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(w.client().sent).toHaveLength(1);
+    expect(resultAt(w, 0).is_error).toBe(true);
+    expect(JSON.parse(resultAt(w, 0).result).error).toMatch(/No answer in time/);
+    expect(approvals.at(-1)).toBeNull();
+    pending.decide({ action: 'once' }); // late click: ignored
+    await tick();
+    expect(w.client().sent).toHaveLength(1);
+    expect(w.executed).toEqual([]);
+    expect(approvals.filter((a) => a === null)).toHaveLength(1);
+  });
+
+  it('auto-denies after 25 s by default, under the service’s 30 s tool timeout', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const w = world({ approvalTimeoutMs: undefined });
+      w.permission.result = { action: 'require_approval' };
+      await w.voice.start();
+      w.client().callbacks.onServerMessage?.(CALL);
+      await vi.advanceTimersByTimeAsync(24_999);
+      expect(w.client().sent).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(w.client().sent).toHaveLength(1);
+      expect(JSON.parse(resultAt(w, 0).result).error).toMatch(/No answer in time/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a listener that throws when the card closes does not strand the call', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    let pending: any;
+    w.voice.on('approvalChange', (a) => {
+      if (a) pending = a;
+      else throw new Error('partner bug');
+    });
+    await w.voice.start();
+    const relay = w.client().server(CALL);
+    await tick();
+    expect(() => pending.decide({ action: 'once' })).toThrow('partner bug');
+    await relay;
+    await tick();
+    expect(w.executed).toHaveLength(1);
+    expect(resultAt(w, 0)).toMatchObject({ tool_call_id: 'c1', is_error: false });
+  });
+
+  it('a second approval supersedes the first', async () => {
+    const w = world();
+    w.permission.result = { action: 'require_approval' };
+    const approvals: Array<{ toolCallId: string } | null> = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const a = w.client().server(CALL);
+    await tick();
+    const b = w.client().server({ ...CALL, tool_call_id: 'c2' });
+    await a;
+    await tick();
+    expect(resultAt(w, 0)).toMatchObject({ tool_call_id: 'c1', is_error: true });
+    expect(approvals.map((x) => x?.toolCallId ?? null)).toEqual(['c1', null, 'c2']);
+    await w.voice.stop(); // denies c2 with "The call ended"
+    await b;
+    await tick();
+    // The channel is gone: nothing is sent for c2 and nothing ran.
+    expect(w.client().sent).toHaveLength(1);
+    expect(w.executed).toEqual([]);
+    expect(approvals.at(-1)).toBeNull();
+  });
+
+  it('a result for an ended call is never sent', async () => {
+    const w = world();
+    const gate = deferred<{ result: string; isError: boolean }>();
+    (w.deps.tools.executeToolCall as ReturnType<typeof vi.fn>).mockReturnValueOnce(gate.promise);
+    await w.voice.start();
+    await w.client().server(CALL);
+    await w.voice.stop();
+    gate.resolve({ result: '{"ok":true}', isError: false });
+    await tick();
+    expect(w.client().sent).toEqual([]);
+  });
+
+  it('answers a token request with a force-refreshed token', async () => {
+    const w = world({ getValidAccessToken: vi.fn(async (o?: { forceRefresh?: boolean }) => (o?.forceRefresh ? 'jwt-2' : 'jwt-1')) });
+    await w.voice.start();
+    await w.client().server({ type: 't2v-token-request' });
+    expect(w.deps.getValidAccessToken).toHaveBeenLastCalledWith({ forceRefresh: true });
+    expect(w.client().sent).toEqual([{ type: 't2v-token', data: { access_token: 'jwt-2' } }]);
+  });
+
+  it('answers every token request in a turn, and never logs the token', async () => {
+    let n = 1;
+    const w = world({ getValidAccessToken: vi.fn(async () => `jwt-${++n}`) });
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
+    try {
+      await w.voice.start();
+      await w.client().server({ type: 't2v-token-request' });
+      await w.client().server({ type: 't2v-token-request' });
+      expect(w.client().sent).toEqual([
+        { type: 't2v-token', data: { access_token: 'jwt-3' } },
+        { type: 't2v-token', data: { access_token: 'jwt-4' } },
+      ]);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it('a dead session answers the token request with an empty token', async () => {
+    const w = world({ getValidAccessToken: vi.fn(async (o?: { forceRefresh?: boolean }) => (o?.forceRefresh ? null : 'jwt-1')) });
+    await w.voice.start();
+    await w.client().server({ type: 't2v-token-request' });
+    expect(w.client().sent).toEqual([{ type: 't2v-token', data: { access_token: '' } }]);
+  });
+
+  it('relays agent state and ignores unknown messages', async () => {
+    const w = world();
+    const states: unknown[] = [];
+    w.voice.on('agentState', (s) => states.push(s));
+    await w.voice.start();
+    await w.client().server({ type: 't2v-agent-state', state: 'working' });
+    await w.client().server({ type: 't2v-agent-state', state: 'idle' });
+    await w.client().server({ type: 'something-else' });
+    await w.client().server(null);
+    expect(states).toEqual(['working', 'idle']);
+    expect(w.client().sent).toEqual([]);
+    expect(w.voice.state).toBe('listening');
+  });
+});
