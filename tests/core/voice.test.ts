@@ -1138,3 +1138,82 @@ describe('final review fixes', () => {
     }
   });
 });
+
+describe('T2VVoice.start: faster start', () => {
+  function gate<T = void>() {
+    let open!: (v: T) => void;
+    const promise = new Promise<T>((r) => (open = r));
+    return { promise, open };
+  }
+
+  it('loads the call libraries while the session is still being checked', async () => {
+    const session = gate<boolean>();
+    const loadLibs = vi.fn(async () => ({ PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any }));
+    const w = world({ ensureSession: vi.fn(() => session.promise), loadLibs });
+    const started = w.voice.start();
+    await Promise.resolve();
+    expect(loadLibs).toHaveBeenCalledOnce(); // before the session answered
+    session.open(true);
+    await started;
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('fetches the access token alongside the mint, not after it', async () => {
+    const mint = gate<typeof MINT>();
+    const w = world({ request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'] });
+    const started = w.voice.start();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.deps.getValidAccessToken).toHaveBeenCalledOnce(); // mint still pending
+    mint.open(MINT);
+    await started;
+    expect(w.client().connectParams.webrtcRequestParams.requestData.access_token).toBe('jwt-1');
+  });
+
+  it('reports the mint failure, not a token failure racing it', async () => {
+    const err = Object.assign(new Error('Voice is not enabled'), { type: 'voice_disabled' });
+    const w = world({
+      request: vi.fn(async () => {
+        throw err;
+      }) as unknown as T2VVoiceDeps['request'],
+      getValidAccessToken: vi.fn(async () => {
+        throw new Error('refresh failed');
+      }),
+    });
+    await expect(w.voice.start()).rejects.toBe(err);
+  });
+
+  it('a preload is reused by start(), and a failed one is retried', async () => {
+    let calls = 0;
+    const loadLibs = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('chunk failed');
+      return { PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any };
+    });
+    const w = world({ loadLibs });
+    w.voice.preload(); // fails
+    await new Promise((r) => setTimeout(r, 0));
+    w.voice.preload(); // retried, succeeds
+    await new Promise((r) => setTimeout(r, 0));
+    await w.voice.start(); // reuses it
+    expect(loadLibs).toHaveBeenCalledTimes(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('logs where the start spent its time only when t2v:debug is on, without anything about the user', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await world().voice.start();
+      expect(debug).not.toHaveBeenCalled();
+      localStorage.setItem('t2v:debug', '1');
+      await world().voice.start();
+      expect(debug).toHaveBeenCalledOnce();
+      const [label, steps] = debug.mock.calls[0]!;
+      expect(label).toBe('[Talk2View] voice start, ms since click');
+      expect(Object.keys(steps as object)).toEqual(['session', 'libs', 'mint', 'token', 'connected']);
+      expect(JSON.stringify(steps)).not.toMatch(/jwt|pk_|ticket/);
+    } finally {
+      localStorage.removeItem('t2v:debug');
+      debug.mockRestore();
+    }
+  });
+});

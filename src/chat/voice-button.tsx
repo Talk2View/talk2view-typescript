@@ -188,6 +188,8 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
     });
   }, [voice]);
 
+  const preload = useCallback(() => voice.preload(), [voice]);
+
   const status =
     state === 'connecting'
       ? 'Connecting…'
@@ -255,6 +257,9 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
         type="button"
         className="t2v-voice-button"
         onClick={toggle}
+        // Fetch the voice code while the pointer is on its way to a click.
+        onPointerEnter={preload}
+        onFocus={preload}
         aria-label={label}
         title={on ? 'End the call' : label}
         aria-pressed={on}

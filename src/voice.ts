@@ -69,6 +69,33 @@ export const loadPipecatLibs: VoiceLibLoader = async () => {
   };
 };
 
+/**
+ * Where a call's start spends its time, in ms since the click. Logged only
+ * when `localStorage['t2v:debug'] === '1'`: step names and numbers, nothing
+ * about the user.
+ */
+function startTimings(): { mark(step: string): void; done(step: string): void } {
+  const clock = globalThis.performance;
+  const started = clock?.now() ?? 0;
+  const steps: Record<string, number> = {};
+  const mark = (step: string): void => {
+    if (clock) steps[step] = Math.round(clock.now() - started);
+  };
+  return {
+    mark,
+    done(step) {
+      mark(step);
+      let enabled = false;
+      try {
+        enabled = globalThis.localStorage?.getItem('t2v:debug') === '1';
+      } catch {
+        // storage blocked: stay quiet
+      }
+      if (enabled) console.debug('[Talk2View] voice start, ms since click', steps);
+    },
+  };
+}
+
 /** Every `VoiceEndReason`; a `t2v-call-ended` reason outside it is reported as `'error'`. */
 const END_REASONS: ReadonlySet<string> = new Set<VoiceEndReason>([
   'stopped',
@@ -148,6 +175,7 @@ export class T2VVoiceController {
   private _state: VoiceState = 'idle';
   private client: PipecatClientLike | null = null;
   private audio: HTMLAudioElement | null = null;
+  private libs: Promise<VoiceLibs> | null = null;
   private pendingApproval: VoicePendingApproval | null = null;
   /** Ends the open approval without a human answer; the reason goes to the agent. */
   private cancelApproval: ((reason: string) => void) | null = null;
@@ -203,6 +231,23 @@ export class T2VVoiceController {
   }
 
   /**
+   * @internal Start loading the call libraries before the first `start()`
+   * (the button calls this on hover). `start()` reuses the load.
+   */
+  preload(): void {
+    this.loadLibs().catch(() => undefined);
+  }
+
+  /** The call libraries, loaded once. A failed load is retried next time. */
+  private loadLibs(): Promise<VoiceLibs> {
+    const load = (this.libs ??= (this.deps.loadLibs ?? loadPipecatLibs)());
+    load.catch(() => {
+      if (this.libs === load) this.libs = null;
+    });
+    return load;
+  }
+
+  /**
    * Press the button. Resolves once the microphone is live, or quietly if the
    * call is hung up (`stop()`) before it connects.
    */
@@ -229,17 +274,29 @@ export class T2VVoiceController {
       if (!orphan || !connectCall) return;
       connectCall.then(() => orphan.disconnect(), () => undefined).catch(() => undefined);
     };
+    const timings = startTimings();
     try {
+      // The call libraries load while the session is checked: the same chunk
+      // whatever the answer. Awaited before the mint, so a chunk that fails
+      // to load still never burns a ticket.
+      const libsLoad = this.loadLibs();
+      libsLoad.catch(() => undefined); // awaited below; never an unhandled rejection
       if (!(await this.deps.ensureSession())) {
         throw new VoiceStartError('account_required', 'Sign in to use voice');
       }
+      timings.mark('session');
       if (stale()) return;
-      // Before the mint: a chunk that fails to load must not burn a ticket.
-      const libs = await (this.deps.loadLibs ?? loadPipecatLibs)();
+      const libs = await libsLoad;
+      timings.mark('libs');
       if (stale()) return;
+      // The access token is fetched alongside the mint, not after it.
+      const tokenFetch = this.deps.getValidAccessToken();
+      tokenFetch.catch(() => undefined); // awaited below
       const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
+      timings.mark('mint');
       if (stale()) return;
-      const token = await this.deps.getValidAccessToken();
+      const token = await tokenFetch;
+      timings.mark('token');
       if (stale()) return;
       if (!token) throw new VoiceStartError('auth_expired', 'Sign in again to use voice');
 
@@ -316,6 +373,7 @@ export class T2VVoiceController {
       // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
       await Promise.race([connectCall, aborted]);
       if (stale()) abandon();
+      else timings.done('connected');
     } catch (err) {
       // Hung up mid-start: stop() already tore down and reported the ending.
       if (stale()) {
