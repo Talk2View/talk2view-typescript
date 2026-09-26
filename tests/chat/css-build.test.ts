@@ -111,7 +111,16 @@ describe('dist/chat.css', () => {
   });
 
   it('runs the launcher beam with no state qualifier on it', () => {
-    expect(css()).toMatch(/\.t2v-chat \.aui-modal-button(:before|::before)\s*\{/);
+    // It may share a selector list with the voice tile, which wears the same beam.
+    expect(css()).toMatch(/\.t2v-chat \.aui-modal-button(:before|::before)\s*[,{]/);
+  });
+
+  it('puts the launcher beam on the voice tile too', () => {
+    expect(css()).toMatch(/\.t2v-chat \.t2v-voice-button(:before|::before)\s*[,{]/);
+  });
+
+  it('turns the voice beam Amber while the agent is working', () => {
+    expect(css()).toMatch(/\.t2v-chat \.t2v-voice-button\[data-busy\]\s*\{[^}]*--t2v-beam-mid:\s*#f0a74a/i);
   });
 
   it('drives the phone sheet from the launcher’s attribute, not a fixed breakpoint', () => {
