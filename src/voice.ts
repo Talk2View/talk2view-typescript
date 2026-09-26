@@ -40,9 +40,13 @@ export interface PipecatCallbacks {
 }
 
 export interface PipecatClientLike {
+  /** Opens the microphone (the browser's permission prompt, first time). */
+  initDevices(): Promise<void>;
   connect(params: unknown): Promise<unknown>;
   disconnect(): Promise<void>;
   sendClientMessage(type: string, data?: unknown): void;
+  /** The live tracks; `local.audio` is the microphone. */
+  tracks(): { local?: { audio?: MediaStreamTrack | null } };
 }
 
 export interface VoiceLibs {
@@ -52,7 +56,8 @@ export interface VoiceLibs {
     enableCam: boolean;
     callbacks: PipecatCallbacks;
   }) => PipecatClientLike;
-  SmallWebRTCTransport: new (opts: { iceServers: RTCIceServer[] }) => unknown;
+  /** `iceServers` can be set after construction, before `connect()`. */
+  SmallWebRTCTransport: new (opts: { iceServers: RTCIceServer[] }) => { iceServers: RTCIceServer[] };
 }
 
 export type VoiceLibLoader = () => Promise<VoiceLibs>;
@@ -128,6 +133,31 @@ export interface T2VVoiceDeps {
   attachAudio?: (track: MediaStreamTrack) => void;
   /** Auto-deny an approval nobody answers. Under the service's 30 s tool timeout. */
   approvalTimeoutMs?: number;
+  /** Whether the browser will prompt for the microphone. Default: the Permissions API. */
+  micPermission?: () => Promise<PermissionState | 'unknown'>;
+}
+
+/** The microphone's permission state, or 'unknown' where the browser cannot say. */
+async function queryMicPermission(): Promise<PermissionState | 'unknown'> {
+  try {
+    const status = await globalThis.navigator?.permissions?.query({ name: 'microphone' as PermissionName });
+    return status?.state ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Release the microphone of a client that may never have connected. Before a
+ * peer connection exists client-js's disconnect() returns early and leaves
+ * the mic track live, so the track itself is stopped. Safe to repeat.
+ */
+function releaseMic(client: PipecatClientLike): void {
+  try {
+    client.tracks()?.local?.audio?.stop();
+  } catch {
+    // no tracks yet, or already released
+  }
 }
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 25_000;
@@ -289,24 +319,9 @@ export class T2VVoiceController {
       const libs = await libsLoad;
       timings.mark('libs');
       if (stale()) return;
-      // The access token is fetched alongside the mint, not after it.
-      const tokenFetch = this.deps.getValidAccessToken();
-      tokenFetch.catch(() => undefined); // awaited below
-      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
-      timings.mark('mint');
-      if (stale()) return;
-      const token = await tokenFetch;
-      timings.mark('token');
-      if (stale()) return;
-      if (!token) throw new VoiceStartError('auth_expired', 'Sign in again to use voice');
-
-      const transport = new libs.SmallWebRTCTransport({
-        iceServers: mint.ice_servers.map((s) => ({
-          urls: s.urls,
-          ...(s.username ? { username: s.username } : {}),
-          ...(s.credential ? { credential: s.credential } : {}),
-        })),
-      });
+      // The client is built before the mint so the microphone can open while
+      // (or before) the ticket is minted; the ICE servers come with the mint.
+      const transport = new libs.SmallWebRTCTransport({ iceServers: [] });
       // A refused first offer (503 at capacity, 502) is retried by the transport
       // for several seconds; the ticket cannot succeed on a retry, so allow none
       // until connected, then restore the default for mid-call ICE recovery.
@@ -363,6 +378,48 @@ export class T2VVoiceController {
       });
       client = pipecat;
       this.client = pipecat;
+
+      // The microphone. A ticket lives 60 s, so while the browser will still
+      // ask, the mic opens first: a user reading the prompt must not let the
+      // ticket expire (they got "took too long to connect"). Already allowed,
+      // it opens alongside the mint and costs no time.
+      const micAllowed = (await (this.deps.micPermission ?? queryMicPermission)()) === 'granted';
+      if (stale()) return;
+      const devices = pipecat.initDevices();
+      devices.catch(() => undefined); // awaited below
+      // A hang-up must not wait on the prompt: start() returns at once, and
+      // the mic the prompt opens later is released as soon as it opens (the
+      // teardown that ran first found none to release).
+      const micOpened = async (): Promise<boolean> => {
+        await Promise.race([devices, aborted]);
+        if (!stale()) return true;
+        devices.then(() => releaseMic(pipecat), () => undefined);
+        return false;
+      };
+      if (!micAllowed) {
+        if (!(await micOpened())) return;
+        timings.mark('mic');
+      }
+      // The access token is fetched alongside the mint, not after it.
+      const tokenFetch = this.deps.getValidAccessToken();
+      tokenFetch.catch(() => undefined); // awaited below
+      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
+      timings.mark('mint');
+      if (stale()) return;
+      const token = await tokenFetch;
+      timings.mark('token');
+      if (stale()) return;
+      if (!token) throw new VoiceStartError('auth_expired', 'Sign in again to use voice');
+      if (micAllowed) {
+        if (!(await micOpened())) return;
+        timings.mark('mic');
+      }
+      transport.iceServers = mint.ice_servers.map((s) => ({
+        urls: s.urls,
+        ...(s.username ? { username: s.username } : {}),
+        ...(s.credential ? { credential: s.credential } : {}),
+      }));
+
       connecting = true;
       connectCall = pipecat.connect({
         webrtcRequestParams: {
@@ -378,6 +435,7 @@ export class T2VVoiceController {
       // Hung up mid-start: stop() already tore down and reported the ending.
       if (stale()) {
         abandon();
+        if (client) releaseMic(client);
         return;
       }
       this.abortStart = null;
@@ -460,6 +518,8 @@ export class T2VVoiceController {
       } catch {
         // already gone
       }
+      // A client that never connected keeps its mic after disconnect().
+      releaseMic(client);
     }
     // Last: closing the card emits `approvalChange(null)`. Nothing is sent for
     // it, since the client is gone.

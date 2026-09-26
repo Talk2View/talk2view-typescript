@@ -22,6 +22,7 @@ type Callbacks = Record<string, (...args: any[]) => void>;
 
 class FakeTransport {
   maxReconnectionAttempts = 3;
+  iceServers: unknown[] = [];
   constructor(public opts: unknown) {}
 }
 
@@ -30,6 +31,10 @@ class FakePipecatClient {
   disconnected = 0;
   constructor(public opts: { callbacks: Callbacks }) {
     FakePipecatClient.instances.push(this);
+  }
+  async initDevices(): Promise<void> {}
+  tracks(): { local: Record<string, never> } {
+    return { local: {} };
   }
   async connect(): Promise<void> {
     this.opts.callbacks.onConnected?.();
