@@ -15,7 +15,7 @@
  * is a `stop()`, and the controller is what releases the microphone.
  */
 import { useCallback, useEffect, useRef, useState, type FC, type ReactNode } from 'react';
-import { LoaderCircleIcon, MicIcon, XIcon } from 'lucide-react';
+import { LoaderCircleIcon, XIcon } from 'lucide-react';
 import type { Talk2View } from '../index.js';
 import type {
   PartnerConfig,
@@ -206,7 +206,8 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
       // The brand's voice mark, as the composer's dictation face uses it.
       <BrandWaveform mode={working ? 'busy' : 'live'} className="h-[20px] w-[22px]" />
     ) : (
-      <MicIcon className="size-6" aria-hidden="true" />
+      // The dictation mark at rest, the same face the composer's dictate button wears.
+      <BrandWaveform mode="rest" className="h-[20px] w-[22px]" />
     );
 
   return (
