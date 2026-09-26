@@ -9,7 +9,11 @@ type Callbacks = Record<string, (...args: any[]) => void>;
 class FakeTransport {
   /** Mirrors the 1.10.8 transport's public retry field (default 3). */
   maxReconnectionAttempts = 3;
-  constructor(public opts: { iceServers: RTCIceServer[] }) {}
+  /** Settable before connect(), like the real transport's setter. */
+  iceServers: RTCIceServer[];
+  constructor(public opts: { iceServers: RTCIceServer[] }) {
+    this.iceServers = opts.iceServers;
+  }
 }
 
 class FakePipecatClient {
@@ -22,6 +26,9 @@ class FakePipecatClient {
   /** True from a completed connect() until an effective disconnect(): the mic is streaming. */
   live = false;
   private devicesReady = false;
+  /** The microphone track is live: from initDevices() until it is stopped or the call disconnects. */
+  micOpen = false;
+  micStops = 0;
   private aborted = false;
   static failConnectWith: Error | null = null;
   /**
@@ -42,11 +49,23 @@ class FakePipecatClient {
   get callbacks(): Callbacks {
     return this.opts.callbacks;
   }
+  async initDevices(): Promise<void> {
+    if (FakePipecatClient.deviceGate) await FakePipecatClient.deviceGate;
+    this.devicesReady = true;
+    this.micOpen = true;
+  }
+  tracks(): { local: { audio: MediaStreamTrack | null } } {
+    const stop = () => {
+      this.micOpen = false;
+      this.micStops += 1;
+    };
+    return { local: { audio: this.micOpen ? ({ stop } as unknown as MediaStreamTrack) : null } };
+  }
   async connect(params: unknown): Promise<void> {
     this.connectParams = params;
     this.retriesDuringConnect = (this.opts.transport as FakeTransport).maxReconnectionAttempts;
-    if (FakePipecatClient.deviceGate) await FakePipecatClient.deviceGate;
-    this.devicesReady = true;
+    // Like client-js: connect() opens the devices only if nobody has yet.
+    if (!this.devicesReady) await this.initDevices();
     if (FakePipecatClient.connectGate) await FakePipecatClient.connectGate;
     if (FakePipecatClient.failConnectWith) {
       // Like the real transport: stop(error) fires onDisconnected, then connect() rejects.
@@ -60,14 +79,17 @@ class FakePipecatClient {
     if (FakePipecatClient.botReadyGate) await FakePipecatClient.botReadyGate;
   }
   async disconnect(): Promise<void> {
-    if (!this.devicesReady) {
-      // No transport session yet: the real stop() returns early, nothing is cancelled.
+    if (this.connectParams === undefined || !this.devicesReady) {
+      // No transport session yet (never connected, or still inside connect()'s
+      // device step): the real stop() returns early. Nothing is cancelled and
+      // the microphone is NOT released; the controller must stop the track.
       this.ignoredDisconnects += 1;
       return;
     }
     this.aborted = true;
     this.disconnected += 1;
     this.live = false;
+    this.micOpen = false; // a real disconnect releases the devices
     this.callbacks.onDisconnected?.();
   }
   sendClientMessage(type: string, data?: unknown): void {
@@ -128,7 +150,7 @@ describe('T2VVoice.start', () => {
     expect(w.deps.ensureSession).toHaveBeenCalledOnce();
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
     const c = w.client();
-    expect((c.opts.transport as FakeTransport).opts.iceServers).toEqual([
+    expect((c.opts.transport as FakeTransport).iceServers).toEqual([
       { urls: ['stun:stun.test:3478'] },
       { urls: ['turn:t.test'], username: 'u', credential: 'c' },
     ]);
@@ -158,7 +180,8 @@ describe('T2VVoice.start', () => {
     await expect(w.voice.start()).rejects.toBe(err);
     expect(errors).toEqual([{ type: 'voice_disabled', message: 'Voice is not enabled' }]);
     expect(w.voice.state).toBe('error');
-    expect(FakePipecatClient.instances).toHaveLength(0);
+    // Built before the mint (the mic opens first) but never connected, and its mic is released.
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined && !c.micOpen)).toBe(true);
   });
 
   it('refuses without a session or a token', async () => {
@@ -274,7 +297,8 @@ describe('stop() during start()', () => {
     await w.voice.stop();
     mint.resolve(MINT);
     await starting;
-    expect(FakePipecatClient.instances).toHaveLength(0);
+    // Built before the mint (the mic opens first) but never connected, and its mic is released.
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined && !c.micOpen)).toBe(true);
     expect(w.voice.state).toBe('ended');
     expect(w.states).toEqual(['connecting', 'ended']);
     expect(ended).toEqual(['stopped']);
@@ -314,7 +338,7 @@ describe('stop() during start()', () => {
     expect(ended).toEqual(['stopped']);
   });
 
-  it('during the microphone prompt: the hang-up lands once the late connect completes', async () => {
+  it('during the microphone prompt: no ticket is spent, and the mic the late answer opens is released', async () => {
     const w = world();
     const prompt = deferred<void>();
     FakePipecatClient.deviceGate = prompt.promise; // the browser is asking for the mic
@@ -327,18 +351,21 @@ describe('stop() during start()', () => {
     // Before initDevices() finishes there is nothing to cancel: that disconnect was a no-op.
     expect(w.client().ignoredDisconnects).toBe(1);
     expect(w.voice.state).toBe('ended');
-    prompt.resolve(); // the user clicks Allow: connect() carries on and the call comes up
+    prompt.resolve(); // the user clicks Allow after hanging up
     await tick();
     await tick();
-    // ...and is hung up as soon as it does. The mic is not left streaming.
-    expect(w.client().live).toBe(false);
-    expect(w.client().disconnected).toBeGreaterThanOrEqual(1);
+    // The mic that opens is released at once, and nothing else happens: the
+    // prompt comes before the mint, so no ticket is spent and nothing connects.
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().micStops).toBe(1);
+    expect(w.client().connectParams).toBeUndefined();
+    expect(w.deps.request).not.toHaveBeenCalled();
     expect(w.voice.state).toBe('ended');
     expect(w.states).toEqual(['connecting', 'ended']);
     expect(ended).toEqual(['stopped']);
   });
 
-  it('the hang-up after the prompt rides on connect() settling, even with no onConnected', async () => {
+  it('a prompt answered after the hang-up never connects, even with no onConnected', async () => {
     const w = world();
     const prompt = deferred<void>();
     FakePipecatClient.deviceGate = prompt.promise;
@@ -346,16 +373,16 @@ describe('stop() during start()', () => {
     await tick();
     await w.voice.stop();
     await starting;
-    // Take the early close out of play: only the chained disconnect is left.
     w.client().opts.callbacks.onConnected = () => {};
     prompt.resolve();
     await tick();
     await tick();
     expect(w.client().live).toBe(false);
-    expect(w.client().disconnected).toBe(1);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
   });
 
-  it('a call that comes up after the hang-up is closed at onConnected, before bot-ready', async () => {
+  it('a prompt answered after the hang-up opens no call, even when bot-ready would never come', async () => {
     const w = world();
     const prompt = deferred<void>();
     const botReady = deferred<void>();
@@ -367,9 +394,10 @@ describe('stop() during start()', () => {
     await starting;
     prompt.resolve();
     await tick();
-    // connect() is still pending on bot-ready, but the mic is already released.
+    // Nothing connects at all (no bot-ready wait), and the mic is released.
     expect(w.client().live).toBe(false);
-    expect(w.client().disconnected).toBe(1);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
   });
 
   it('a stop during the microphone prompt then a new call: only the new call is left connected', async () => {
@@ -1034,7 +1062,8 @@ describe('final review fixes', () => {
     await w.voice.expire();
     mint.resolve(MINT);
     await starting;
-    expect(FakePipecatClient.instances).toHaveLength(0);
+    // Built before the mint (the mic opens first) but never connected, and its mic is released.
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined && !c.micOpen)).toBe(true);
     expect(errors.map((e) => e.type)).toEqual(['auth_expired']);
     expect(ended).toEqual(['auth_expired']);
   });
@@ -1136,5 +1165,145 @@ describe('final review fixes', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('T2VVoice.start: faster start', () => {
+  function gate<T = void>() {
+    let open!: (v: T) => void;
+    const promise = new Promise<T>((r) => (open = r));
+    return { promise, open };
+  }
+
+  it('loads the call libraries while the session is still being checked', async () => {
+    const session = gate<boolean>();
+    const loadLibs = vi.fn(async () => ({ PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any }));
+    const w = world({ ensureSession: vi.fn(() => session.promise), loadLibs });
+    const started = w.voice.start();
+    await Promise.resolve();
+    expect(loadLibs).toHaveBeenCalledOnce(); // before the session answered
+    session.open(true);
+    await started;
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('fetches the access token alongside the mint, not after it', async () => {
+    const mint = gate<typeof MINT>();
+    const w = world({ request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'] });
+    const started = w.voice.start();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.deps.getValidAccessToken).toHaveBeenCalledOnce(); // mint still pending
+    mint.open(MINT);
+    await started;
+    expect(w.client().connectParams.webrtcRequestParams.requestData.access_token).toBe('jwt-1');
+  });
+
+  it('reports the mint failure, not a token failure racing it', async () => {
+    const err = Object.assign(new Error('Voice is not enabled'), { type: 'voice_disabled' });
+    const w = world({
+      request: vi.fn(async () => {
+        throw err;
+      }) as unknown as T2VVoiceDeps['request'],
+      getValidAccessToken: vi.fn(async () => {
+        throw new Error('refresh failed');
+      }),
+    });
+    await expect(w.voice.start()).rejects.toBe(err);
+  });
+
+  it('a preload is reused by start(), and a failed one is retried', async () => {
+    let calls = 0;
+    const loadLibs = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('chunk failed');
+      return { PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any };
+    });
+    const w = world({ loadLibs });
+    w.voice.preload(); // fails
+    await new Promise((r) => setTimeout(r, 0));
+    w.voice.preload(); // retried, succeeds
+    await new Promise((r) => setTimeout(r, 0));
+    await w.voice.start(); // reuses it
+    expect(loadLibs).toHaveBeenCalledTimes(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('logs where the start spent its time only when t2v:debug is on, without anything about the user', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await world().voice.start();
+      expect(debug).not.toHaveBeenCalled();
+      localStorage.setItem('t2v:debug', '1');
+      await world().voice.start();
+      expect(debug).toHaveBeenCalledOnce();
+      const [label, steps] = debug.mock.calls[0]!;
+      expect(label).toBe('[Talk2View] voice start, ms since click');
+      expect(Object.keys(steps as object)).toEqual(['session', 'libs', 'mic', 'mint', 'token', 'connected']);
+      expect(JSON.stringify(steps)).not.toMatch(/jwt|pk_|ticket/);
+    } finally {
+      localStorage.removeItem('t2v:debug');
+      debug.mockRestore();
+    }
+  });
+});
+
+describe('T2VVoice.start: the microphone and the ticket', () => {
+  it('opens the mic before minting while the browser will still ask (a 60 s ticket must not expire on the prompt)', async () => {
+    const prompt = deferred<void>();
+    FakePipecatClient.deviceGate = null;
+    const w = world({ micPermission: async () => 'prompt' });
+    FakePipecatClient.deviceGate = prompt.promise;
+    const starting = w.voice.start();
+    await tick();
+    expect(w.deps.request).not.toHaveBeenCalled(); // still waiting on the prompt: no ticket yet
+    prompt.resolve();
+    await starting;
+    expect(w.deps.request).toHaveBeenCalledOnce();
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('opens an already-allowed mic alongside the mint', async () => {
+    const devices = deferred<void>();
+    const w = world({ micPermission: async () => 'granted' });
+    FakePipecatClient.deviceGate = devices.promise;
+    const starting = w.voice.start();
+    await tick();
+    await tick();
+    expect(w.deps.request).toHaveBeenCalledOnce(); // minting while the mic opens
+    devices.resolve();
+    await starting;
+    expect(w.voice.state).toBe('listening');
+    expect(w.client().connectParams.webrtcRequestParams.requestData.ticket).toBe(MINT.ticket);
+  });
+
+  it('a hang-up during the mint releases a mic that is already open', async () => {
+    const mint = deferred<typeof MINT>();
+    const w = world({
+      micPermission: async () => 'granted',
+      request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'],
+    });
+    const starting = w.voice.start();
+    await tick();
+    await tick();
+    expect(w.client().micOpen).toBe(true);
+    await w.voice.stop();
+    expect(w.client().micOpen).toBe(false); // released by the hang-up itself
+    mint.resolve(MINT);
+    await starting;
+    expect(w.client().connectParams).toBeUndefined();
+  });
+
+  it('a start that fails after the mic opened releases it', async () => {
+    const w = world({ getValidAccessToken: vi.fn(async () => null) });
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'auth_expired' });
+    expect(w.client().micStops).toBe(1);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
+  });
+
+  it('the ICE servers from the mint reach the transport before it connects', async () => {
+    const w = world({ micPermission: async () => 'granted' });
+    await w.voice.start();
+    expect((w.client().opts.transport as FakeTransport).iceServers).toHaveLength(2);
   });
 });

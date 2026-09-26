@@ -22,6 +22,7 @@ type Callbacks = Record<string, (...args: any[]) => void>;
 
 class FakeTransport {
   maxReconnectionAttempts = 3;
+  iceServers: unknown[] = [];
   constructor(public opts: unknown) {}
 }
 
@@ -30,6 +31,10 @@ class FakePipecatClient {
   disconnected = 0;
   constructor(public opts: { callbacks: Callbacks }) {
     FakePipecatClient.instances.push(this);
+  }
+  async initDevices(): Promise<void> {}
+  tracks(): { local: Record<string, never> } {
+    return { local: {} };
   }
   async connect(): Promise<void> {
     this.opts.callbacks.onConnected?.();
@@ -323,5 +328,37 @@ describe('Talk2View.voice', () => {
     h.cb!({ id: 'user-1', email: 'a@x.com' });
     expect(stop).toHaveBeenCalledTimes(1);
     expect(t2v.voice.state).toBe('idle');
+  });
+});
+
+describe('T2VVoice.preload', () => {
+  it('loads the controller and its call libraries once, ahead of start()', async () => {
+    const loadController = vi.fn<VoiceControllerLoader>(async () => T2VVoiceController);
+    const loadLibs = vi.fn(async () => ({ PipecatClient: FakePipecatClient as any, SmallWebRTCTransport: FakeTransport as any }));
+    const { voice } = facade({ loadController, loadLibs });
+    voice.preload();
+    voice.preload();
+    await tick();
+    expect(loadController).toHaveBeenCalledOnce();
+    expect(loadLibs).toHaveBeenCalledOnce();
+    expect(voice.state).toBe('idle'); // a preload is not a call
+    await voice.start();
+    expect(loadController).toHaveBeenCalledOnce();
+    expect(loadLibs).toHaveBeenCalledOnce();
+  });
+
+  it('a failed preload leaves start() free to retry the load', async () => {
+    let calls = 0;
+    const loadController = vi.fn<VoiceControllerLoader>(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('chunk failed');
+      return T2VVoiceController;
+    });
+    const { voice } = facade({ loadController });
+    voice.preload();
+    await tick();
+    await voice.start();
+    expect(loadController).toHaveBeenCalledTimes(2);
+    expect(voice.state).toBe('listening');
   });
 });

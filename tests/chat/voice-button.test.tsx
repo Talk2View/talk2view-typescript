@@ -96,6 +96,7 @@ function fakeClient() {
   };
   const voice = {
     state: 'idle' as VoiceState,
+    preload: vi.fn(),
     start: vi.fn(async () => {
       setState('connecting');
       setState('listening');
@@ -125,6 +126,15 @@ function fakeClient() {
 const button = () => screen.getByRole('button', { name: 'Talk to Talk2View' });
 
 describe('<VoiceButton>', () => {
+  it('fetches the voice code when the pointer reaches it or it takes focus', () => {
+    const { client, voice } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    fireEvent.pointerEnter(button());
+    fireEvent.focus(button());
+    expect(voice.preload).toHaveBeenCalledTimes(2);
+    expect(voice.start).not.toHaveBeenCalled();
+  });
+
   it('starts on a press, shows it is listening, and hangs up on the next press', async () => {
     const { client, voice } = fakeClient();
     render(<VoiceButton client={client} earcon={false} />);

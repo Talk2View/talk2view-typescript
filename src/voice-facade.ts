@@ -81,6 +81,21 @@ export class T2VVoice {
     return controller.start();
   }
 
+  /**
+   * Load the voice code ahead of the first {@link start}, e.g. when the
+   * pointer reaches a voice button, so pressing it does not wait for the
+   * download. Safe to call any time; a failed load is retried by `start()`.
+   */
+  preload(): void {
+    const load = this.load();
+    load.then(
+      (controller) => controller.preload(),
+      () => {
+        if (this.loading === load) this.loading = null;
+      },
+    );
+  }
+
   /** Hang up. Safe to call in any state, including while voice is still loading. */
   async stop(): Promise<void> {
     this.epoch += 1;
