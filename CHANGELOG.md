@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-09-27
+
+### Fixed
+
+- **Client tools work in production builds of the packaged chat.** `useTalk2ViewRuntimeForClient` added each tool's handler and then called `tools.register()` with the schemas, which rebuilds the handler map from what it is given. The schemas carry no `execute`, so the handlers were wiped. In development, React StrictMode runs the effect a second time, which added them back. A production build runs it once, so every tool call answered `Unknown tool`. Voice runs tools straight from that map and could use none of them. The chat only recovered when a re-render re-ran the effect. The hook now registers first and adds the handlers after.
+- **The launcher mark and the voice button appear together.** The voice button waits on the partner config, so the mark used to appear first and voice popped in a beat later. While voice is enabled, the launcher now waits for the first config answer, or 3 s (`CONFIG_WAIT_MS`) at most, and draws both at once. `features.voice: false` skips the wait.
+
 ## [0.20.0] - 2026-09-24
 
 ### Added
