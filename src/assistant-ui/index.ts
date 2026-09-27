@@ -181,12 +181,18 @@ export function useTalk2ViewRuntimeForClient(
   const registered = useRef<{ t2v: Talk2View; key: string } | null>(null);
   useEffect(() => {
     if (schemas.length === 0) return;
+    if (registered.current?.t2v !== t2v || registered.current.key !== schemaKey) {
+      registered.current = { t2v, key: schemaKey };
+      t2v.tools.register(schemas).catch(() => {});
+    }
+    // Handlers AFTER register(): it rebuilds the handler map from what it is
+    // given, and these schemas carry no `execute`, so handlers added first were
+    // wiped. StrictMode's second effect run hid that in development; a
+    // production build runs once, and every tool answered "Unknown tool".
+    // Re-added on every run, so a new `execute` closure always takes effect.
     for (const tool of tools ?? []) {
       if ('execute' in tool && tool.execute) t2v.tools.handle(tool.name, tool.execute);
     }
-    if (registered.current?.t2v === t2v && registered.current.key === schemaKey) return;
-    registered.current = { t2v, key: schemaKey };
-    t2v.tools.register(schemas).catch(() => {});
   }, [t2v, tools, schemas, schemaKey]);
 
   // Uploaded files, by the id assistant-ui hands back in the composed message.
