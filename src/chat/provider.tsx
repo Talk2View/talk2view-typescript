@@ -104,10 +104,19 @@ export interface Talk2ViewChatBehaviour {
   destructiveWarning?: Talk2ViewChatProps['destructiveWarning'];
 }
 
+/** The longest the launcher waits for the partner config before showing without it. */
+export const CONFIG_WAIT_MS = 3000;
+
 export interface Talk2ViewChatContextValue {
   client: Talk2View;
   /** The partner's defaults, shown as "Default — …" in Settings. Null until loaded. */
   config: PartnerConfig | null;
+  /**
+   * The first config request has answered (either way), or
+   * {@link CONFIG_WAIT_MS} has passed. The launcher waits for it so the mark
+   * and the voice button arrive together rather than voice popping in late.
+   */
+  configSettled: boolean;
   features: Required<Talk2ViewChatFeatures>;
   welcome: Talk2ViewChatWelcome;
   /** Where portaled popups render. Null only while rendering on a server. */
@@ -231,8 +240,14 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   );
 
   const [partnerConfig, setPartnerConfig] = useState<PartnerConfig | null>(null);
+  const [configSettled, setConfigSettled] = useState(false);
   useEffect(() => {
     let live = true;
+    const settle = () => {
+      if (live) setConfigSettled(true);
+    };
+    // Never hold the launcher longer than this on a slow or unreachable engine.
+    const cap = setTimeout(settle, CONFIG_WAIT_MS);
     // Single-flighted and cached by the client, so Settings asking again is free.
     // A brand-new visitor has no session yet and this 401s; Settings retries
     // once the model list has started a guest session.
@@ -240,7 +255,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
       client
         .getConfig()
         .then((value) => live && value && setPartnerConfig(value))
-        .catch(() => {});
+        .catch(() => {})
+        .finally(settle);
     load();
     // Ask again when someone signs in — a guest session starting, or a real
     // sign-in — which is what brings in the config a guest's first 401 missed,
@@ -257,6 +273,7 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     });
     return () => {
       live = false;
+      clearTimeout(cap);
       off?.();
     };
   }, [client]);
@@ -331,6 +348,7 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     () => ({
       client,
       config: partnerConfig,
+      configSettled,
       features,
       welcome,
       portalHost,
@@ -340,7 +358,7 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
       dark,
       behaviour,
     }),
-    [client, partnerConfig, features, welcome, portalHost, limits, skills, dictation, dark],
+    [client, partnerConfig, configSettled, features, welcome, portalHost, limits, skills, dictation, dark],
   );
 
   return (
