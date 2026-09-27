@@ -55,6 +55,7 @@ import type { PartnerConfig, VoiceEventMap, VoiceState } from '../../src/types';
 import { T2VVoice } from '../../src/voice-facade';
 import { Talk2ViewChatLauncher } from '../../src/chat/launcher';
 import { VoiceButton, shouldShowVoice, voiceErrorMessage } from '../../src/chat/voice-button';
+import { CONFIG_WAIT_MS } from '../../src/chat/provider';
 
 /** Whether the launcher's phone-sheet media query matches. */
 let phone = false;
@@ -460,5 +461,55 @@ describe('beside the launcher', () => {
   it('is not there when the integrator turns it off', async () => {
     await mountLauncher({ voice_agent_enabled: true }, { voice: false });
     expect(voiceButton()).toBeNull();
+  });
+
+  const mark = () => document.querySelector('.aui-modal-button');
+
+  it('arrives with the mark, not a beat after it', async () => {
+    const client = new Talk2View({ partnerKey: 'pk_test_x' });
+    let answer!: (c: PartnerConfig) => void;
+    vi.spyOn(client, 'getConfig').mockReturnValue(new Promise((r) => (answer = r)));
+    render(<Talk2ViewChatLauncher client={client} />);
+    await act(async () => {});
+    // Config still out: neither is drawn, so voice cannot pop in after the mark.
+    expect(mark()).toBeNull();
+    expect(voiceButton()).toBeNull();
+    await act(async () => answer({ voice_agent_enabled: true } as PartnerConfig));
+    expect(mark()).not.toBeNull();
+    expect(voiceButton()).not.toBeNull();
+  });
+
+  it('shows the mark alone when the config request fails', async () => {
+    const client = new Talk2View({ partnerKey: 'pk_test_x' });
+    vi.spyOn(client, 'getConfig').mockRejectedValue(new Error('network'));
+    render(<Talk2ViewChatLauncher client={client} />);
+    await act(async () => {});
+    expect(mark()).not.toBeNull();
+    expect(voiceButton()).toBeNull();
+  });
+
+  it('never waits longer than CONFIG_WAIT_MS for a config that does not answer', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new Talk2View({ partnerKey: 'pk_test_x' });
+      vi.spyOn(client, 'getConfig').mockReturnValue(new Promise(() => {}));
+      render(<Talk2ViewChatLauncher client={client} />);
+      await act(async () => {});
+      expect(mark()).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(CONFIG_WAIT_MS);
+      });
+      expect(mark()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not wait on config at all when the integrator turns voice off', async () => {
+    const client = new Talk2View({ partnerKey: 'pk_test_x' });
+    vi.spyOn(client, 'getConfig').mockReturnValue(new Promise(() => {}));
+    render(<Talk2ViewChatLauncher client={client} features={{ voice: false }} />);
+    await act(async () => {});
+    expect(mark()).not.toBeNull();
   });
 });

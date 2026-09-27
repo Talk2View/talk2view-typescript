@@ -132,7 +132,7 @@ const LauncherFrame: FC<LauncherFrameProps> = ({
   const { size, reset, handleProps } = usePanelSize(popupRef);
   const options = useLauncherOptions();
   const colourway = useLauncherColourway(options.colourway, options.visitorColourway);
-  const { client, dark, config, features } = useChatContext();
+  const { client, dark, config, configSettled, features } = useChatContext();
 
   // Every way in goes through here: the panel opens on the thread, and the
   // label has done its job.
@@ -206,6 +206,11 @@ const LauncherFrame: FC<LauncherFrameProps> = ({
   );
 
   const labelled = !!label && !opened && !open && !sheet;
+
+  // The mark and the voice button arrive together: voice depends on the
+  // partner config, so drawing the mark before it answers made voice pop in a
+  // beat later. Only while voice is wanted, and capped (CONFIG_WAIT_MS).
+  if (features.voice && !configSettled) return null;
 
   return (
     <PopoverPrimitive.Root
