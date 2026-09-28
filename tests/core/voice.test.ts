@@ -144,6 +144,21 @@ function world(overrides: Partial<T2VVoiceDeps> = {}) {
 }
 
 describe('T2VVoice.start', () => {
+  it("sends the integrator's page instructions with the session, as the chat sends its systemPrompt", async () => {
+    const w = world();
+    await w.voice.start({ systemPrompt: 'Update the study list table.' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ system_prompt: 'Update the study list table.' }),
+    });
+  });
+
+  it('sends no body without a system prompt, or with a blank one', async () => {
+    const w = world();
+    await w.voice.start({ systemPrompt: '   ' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
+  });
+
   it('mints, lazy-loads, connects with the ticket and credentials, and listens', async () => {
     const w = world();
     await w.voice.start();

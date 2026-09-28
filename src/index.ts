@@ -1226,6 +1226,7 @@ export type {
   DisplayMessage,
   ToolStep,
   VoiceSessionResponse,
+  VoiceStartOptions,
   VoiceState,
   VoiceEndReason,
   VoiceError,

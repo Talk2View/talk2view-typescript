@@ -22,6 +22,7 @@ import type {
   VoiceEventMap,
   VoicePendingApproval,
   VoiceSessionResponse,
+  VoiceStartOptions,
   VoiceState,
 } from './types.js';
 
@@ -281,7 +282,7 @@ export class T2VVoiceController {
    * Press the button. Resolves once the microphone is live, or quietly if the
    * call is hung up (`stop()`) before it connects.
    */
-  async start(): Promise<void> {
+  async start(options: VoiceStartOptions = {}): Promise<void> {
     if (this._state === 'connecting' || this._state === 'listening') return;
     const epoch = ++this.epoch;
     const stale = (): boolean => epoch !== this.epoch;
@@ -403,7 +404,11 @@ export class T2VVoiceController {
       // The access token is fetched alongside the mint, not after it.
       const tokenFetch = this.deps.getValidAccessToken();
       tokenFetch.catch(() => undefined); // awaited below
-      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', { method: 'POST' });
+      const systemPrompt = options.systemPrompt?.trim();
+      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', {
+        method: 'POST',
+        ...(systemPrompt ? { body: JSON.stringify({ system_prompt: systemPrompt }) } : {}),
+      });
       timings.mark('mint');
       if (stale()) return;
       const token = await tokenFetch;

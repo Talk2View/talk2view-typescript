@@ -102,6 +102,8 @@ export interface Talk2ViewChatBehaviour {
   describeToolActivity?: Talk2ViewChatProps['describeToolActivity'];
   isToolDestructive?: Talk2ViewChatProps['isToolDestructive'];
   destructiveWarning?: Talk2ViewChatProps['destructiveWarning'];
+  /** The chat's systemPrompt, which the voice button starts its call with. */
+  systemPrompt?: string | undefined;
 }
 
 /** The longest the launcher waits for the partner config before showing without it. */
@@ -342,6 +344,7 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     describeToolActivity,
     isToolDestructive,
     destructiveWarning,
+    systemPrompt,
   };
 
   const value = useMemo<Talk2ViewChatContextValue>(
