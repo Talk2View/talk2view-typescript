@@ -146,6 +146,10 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   const [approval, setApproval] = useState<VoicePendingApproval | null>(null);
   const [working, setWorking] = useState(false);
   const [endedNote, setEndedNote] = useState<string | null>(null);
+  // Whether the end-user has spoken on this call. Until they do, the popover
+  // says "Say hi!": the bot does not greet, so a first-time user otherwise sits
+  // in silence not knowing the call is waiting on them.
+  const [heard, setHeard] = useState(false);
   // Read by the listeners, so changing the prop does not re-subscribe.
   const earconRef = useRef(earcon);
   earconRef.current = earcon;
@@ -161,11 +165,18 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           setError(null);
           setEndedNote(null);
         }
+        if (next === 'connecting') setHeard(false);
         if (next === 'listening' && earconRef.current) playListeningEarcon();
       }),
       voice.on('error', setError),
       voice.on('approvalChange', setApproval),
-      voice.on('agentState', (agent) => setWorking(agent === 'working')),
+      voice.on('agentState', (agent) => {
+        setWorking(agent === 'working');
+        if (agent === 'working') setHeard(true); // it only works on something they said
+      }),
+      voice.on('transcript', (t) => {
+        if (t.role === 'user' && t.text.trim()) setHeard(true);
+      }),
       voice.on('ended', (reason) => setEndedNote(ENDED_MESSAGES[reason] ?? null)),
     ];
     return () => offs.forEach((off) => off());
@@ -207,7 +218,9 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
       : state === 'listening'
         ? working
           ? 'Working…'
-          : 'Listening'
+          : heard
+            ? 'Listening'
+            : 'Say hi!'
         : state === 'ended' && !error
           ? endedNote
           : null;
@@ -254,7 +267,11 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
             </div>
           ) : null}
           {status && !error ? (
-            <div aria-hidden="true" className="t2v-voice-status">
+            <div
+              aria-hidden="true"
+              className="t2v-voice-status"
+              data-hint={status === 'Say hi!' ? '' : undefined}
+            >
               {status}
             </div>
           ) : null}

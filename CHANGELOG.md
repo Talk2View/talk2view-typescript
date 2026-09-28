@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-09-29
+
+### Changed
+
+- **A voice call says "Say hi!" until the end-user speaks.** The bot does not greet, so a first-time user sat in silence not knowing the call was waiting on them. Once connected, the voice button's popover shows "Say hi!" in the brand colour, with a gentle nudge that stays still under reduced motion. It changes to "Listening" as soon as they speak (their first transcript, or the agent starting work), and asks again on the next call.
+
 ## [0.21.0] - 2026-09-28
 
 ### Added
