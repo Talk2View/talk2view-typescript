@@ -190,8 +190,9 @@ export class Talk2View {
       const userId = user?.id ?? null;
       if (userId !== this._authUserId) {
         this._warmUp = null; // a different end-user has a different key
+        const previousId = this._authUserId;
         this._authUserId = userId;
-        this.endVoiceCallForIdentityChange(userId);
+        this.endVoiceCallForIdentityChange(previousId, userId);
         this.resetSessionForIdentityChange();
       }
     });
@@ -206,7 +207,7 @@ export class Talk2View {
     if (!this._voice) {
       this._voice = new T2VVoice({
         request: (endpoint, options) => this.client.request(endpoint, options),
-        ensureSession: () => this.ensureSession(),
+        ensureSession: () => this.ensureSessionWithTools(),
         getValidAccessToken: (opts) => this.auth.getValidAccessToken(opts),
         tools: this.tools,
         partnerKey: this.config.partnerKey,
@@ -292,6 +293,35 @@ export class Talk2View {
    */
   ensureSession(): Promise<boolean> {
     return this.autoStartAnonymous();
+  }
+
+  /** Tools registered for one identity, by {@link ensureSessionWithTools}. */
+  private _toolsFor: { userId: string; run: Promise<void> } | null = null;
+
+  /**
+   * {@link ensureSession}, then the tools registered for whoever that is. For a
+   * path that never runs {@link createSession} (voice), which is where chat
+   * re-registers them. Registration is per end-user on the server: a
+   * signed-out visitor's page-load register 401s, so without this the guest a
+   * call starts has none of the site's tools. Once per identity; a failure is
+   * not fatal and is retried on the next call.
+   */
+  private async ensureSessionWithTools(): Promise<boolean> {
+    if (!(await this.ensureSession())) return false;
+    const userId = this.auth.getUser?.()?.id ?? null;
+    if (userId === null) return true;
+    if (this._toolsFor?.userId !== userId) {
+      const run = this.tools.reRegister().then(
+        () => undefined,
+        (err: unknown) => {
+          if (this._toolsFor?.run === run) this._toolsFor = null;
+          console.warn('[Talk2View] Failed to register tools for voice:', err);
+        },
+      );
+      this._toolsFor = { userId, run };
+    }
+    await this._toolsFor.run;
+    return true;
   }
 
   private _warmUp: Promise<void> | null = null;
@@ -701,9 +731,14 @@ export class Talk2View {
    * switch to another account hangs it up (`stopped`); a session that died
    * under it (`null` without {@link T2VAuth.logout}) ends it as `auth_expired`,
    * with an `auth_expired` error, so the end-user is told to sign in again.
+   *
+   * Signed-out → signed-in is not a switch: a call started with no one signed
+   * in opens its own guest session, and that identity arriving is the call's
+   * owner. Hanging up there made voice unusable for every signed-out visitor.
    */
-  private endVoiceCallForIdentityChange(userId: string | null): void {
+  private endVoiceCallForIdentityChange(previousId: string | null, userId: string | null): void {
     if (!this._voice) return;
+    if (previousId === null) return;
     const expired = userId === null && !this.auth.signingOut;
     void (expired ? this._voice.expire() : this._voice.stop());
   }

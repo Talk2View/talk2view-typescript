@@ -322,12 +322,25 @@ describe('Talk2View.voice', () => {
   });
 
 
-  it('an identity change stops the active call through the facade', async () => {
+  it('a switch to another account stops the active call through the facade', async () => {
     const t2v = new Talk2View({ partnerKey: 'pk_test', baseUrl: 'http://localhost' });
-    const stop = vi.spyOn(t2v.voice, 'stop');
     h.cb!({ id: 'user-1', email: 'a@x.com' });
+    const stop = vi.spyOn(t2v.voice, 'stop');
+    h.cb!({ id: 'user-2', email: 'b@x.com' });
     expect(stop).toHaveBeenCalledTimes(1);
     expect(t2v.voice.state).toBe('idle');
+  });
+
+  it('a session starting from signed-out does not hang up the call that started it', async () => {
+    // A signed-out visitor presses voice: start() opens a guest session, and
+    // that guest arriving is the call's own owner, not a switch away from one.
+    // Ending the call here left guests unable to use voice at all.
+    const t2v = new Talk2View({ partnerKey: 'pk_test', baseUrl: 'http://localhost' });
+    const stop = vi.spyOn(t2v.voice, 'stop');
+    const expire = vi.spyOn(t2v.voice, 'expire');
+    h.cb!({ id: 'guest-1' });
+    expect(stop).not.toHaveBeenCalled();
+    expect(expire).not.toHaveBeenCalled();
   });
 });
 
