@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-09-28
+
+### Fixed
+
+- **Signed-out visitors can start a voice call.** Pressing voice while signed out starts a guest session, and the guest arriving counted as an identity change, which hung up the call that was starting. The button went back to idle with no error. Going from signed out to signed in no longer ends a call. A sign-out, a dead session or a switch to another account still does.
+- **A voice call has the partner's client tools for a signed-out visitor.** Tool registration is per end-user on the server. A signed-out visitor's page-load registration fails, and chat recovers only by registering again in `createSession()`, which voice never calls. Voice now registers the tools for the session's end-user before it starts the call, once per identity.
+
 ## [0.20.1] - 2026-09-27
 
 ### Fixed
