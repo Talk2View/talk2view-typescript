@@ -92,7 +92,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   voice_disabled: 'Voice isn’t turned on for this app.',
   account_required: 'Sign in to use voice.',
   auth_expired: 'Your sign-in expired. Sign in again to use voice.',
-  insufficient_credit: 'You’re out of credit for now.',
+  insufficient_credit: 'You’re out of credits. Upgrade your plan to keep going.',
   credit_check_unavailable: 'Couldn’t check your credit just now. Try again shortly.',
   service_unconfigured: 'Voice isn’t available right now.',
   service_unavailable: 'Voice isn’t available right now. Try again shortly.',
@@ -103,7 +103,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   mic_unavailable: 'Voice needs microphone access. Allow the microphone and try again.',
 };
 
-export function voiceErrorMessage(error: VoiceError): string {
+/** Out of credit as a guest: signing in or creating an account is the way on. */
+const GUEST_OUT_OF_CREDIT = 'You’ve used your free credits. Sign in or create an account to keep going.';
+
+export function voiceErrorMessage(error: VoiceError, who: { anonymous?: boolean } = {}): string {
+  if (error.type === 'insufficient_credit' && who.anonymous) return GUEST_OUT_OF_CREDIT;
   return ERROR_MESSAGES[error.type] ?? (error.message || 'Something went wrong with voice. Try again.');
 }
 
@@ -242,7 +246,9 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
         <div className="t2v-voice-popover">
           {error ? (
             <div role="alert" className="t2v-voice-error">
-              <span>{voiceErrorMessage(error)}</span>
+              <span>
+                {voiceErrorMessage(error, { anonymous: client.auth?.isAnonymous?.() ?? false })}
+              </span>
               <button
                 type="button"
                 className="t2v-voice-dismiss"
