@@ -457,6 +457,23 @@
   font-weight: 500;
   white-space: nowrap;
 }
+/* "Say hi!": the call is live and waiting on the end-user. The brand colour
+   and a gentle nudge draw the eye; with reduced motion it stays still. */
+.t2v-voice-status[data-hint] {
+  border-color: transparent;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  animation: t2v-voice-hint 1.6s ease-in-out infinite;
+}
+@keyframes t2v-voice-hint {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t2v-voice-status[data-hint] { animation: none; }
+}
 .t2v-voice-error {
   display: flex;
   align-items: flex-start;

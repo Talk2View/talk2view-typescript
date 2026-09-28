@@ -147,7 +147,7 @@ describe('<VoiceButton>', () => {
     expect(voice.start).toHaveBeenCalledOnce();
     expect(button().getAttribute('aria-pressed')).toBe('true');
     expect(button().getAttribute('data-state')).toBe('listening');
-    expect(screen.getByRole('status').textContent).toBe('Listening');
+    expect(screen.getByRole('status').textContent).toBe('Say hi!');
 
     await act(async () => {
       fireEvent.click(button());
@@ -191,6 +191,32 @@ describe('<VoiceButton>', () => {
       fireEvent.click(b); // what Enter and Space do on a native button
     });
     expect(voice.start).toHaveBeenCalledOnce();
+  });
+
+  it('asks the user to say hi until they speak, then shows it is listening', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    // Nothing tells a first-time user the call is waiting on them: say so.
+    expect(screen.getByRole('status').textContent).toBe('Say hi!');
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(true);
+    // The bot talking is not the user speaking.
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Hello', final: true }));
+    expect(screen.getByRole('status').textContent).toBe('Say hi!');
+    act(() => emitter.emit('transcript', { role: 'user', text: 'hi', final: false }));
+    expect(screen.getByRole('status').textContent).toBe('Listening');
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(false);
+  });
+
+  it('asks again on the next call', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'hi', final: true }));
+    act(() => setState('ended'));
+    act(() => setState('connecting'));
+    act(() => setState('listening'));
+    expect(screen.getByRole('status').textContent).toBe('Say hi!');
   });
 
   it('shows the agent working', () => {
