@@ -8,7 +8,7 @@
  */
 
 import { TypedEventEmitter } from './event-emitter.js';
-import type { VoiceEventMap, VoiceState } from './types.js';
+import type { VoiceEventMap, VoiceStartOptions, VoiceState } from './types.js';
 import type { T2VVoiceController, T2VVoiceDeps } from './voice.js';
 import { VoiceStartError } from './voice-error.js';
 
@@ -55,8 +55,8 @@ export class T2VVoice {
   }
 
   /** Press the button. Loads the voice controller on first use, then starts the call. */
-  async start(): Promise<void> {
-    if (this.controller && !this.awaitingLoad) return this.controller.start();
+  async start(options: VoiceStartOptions = {}): Promise<void> {
+    if (this.controller && !this.awaitingLoad) return this.controller.start(options);
     if (this.awaitingLoad) return;
     const epoch = ++this.epoch;
     this.awaitingLoad = true;
@@ -78,7 +78,7 @@ export class T2VVoice {
     // Hung up while the controller was loading: stop() already reported it.
     if (epoch !== this.epoch) return;
     this.awaitingLoad = false;
-    return controller.start();
+    return controller.start(options);
   }
 
   /**

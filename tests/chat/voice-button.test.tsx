@@ -458,6 +458,18 @@ describe('beside the launcher', () => {
     expect(getConfig).toHaveBeenCalledTimes(3);
   });
 
+  it("starts the call with the chat's systemPrompt, so voice turns get the page instructions", async () => {
+    const client = new Talk2View({ partnerKey: 'pk_test_x' });
+    vi.spyOn(client, 'getConfig').mockResolvedValue({ voice_agent_enabled: true } as PartnerConfig);
+    const start = vi.spyOn(client.voice, 'start').mockResolvedValue();
+    render(<Talk2ViewChatLauncher client={client} systemPrompt="Update the study list table." />);
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(voiceButton()!);
+    });
+    expect(start).toHaveBeenCalledWith({ systemPrompt: 'Update the study list table.' });
+  });
+
   it('is not there when the integrator turns it off', async () => {
     await mountLauncher({ voice_agent_enabled: true }, { voice: false });
     expect(voiceButton()).toBeNull();

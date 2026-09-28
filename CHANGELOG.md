@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-28
+
+### Added
+
+- **Voice turns carry the page's instructions.** `t2v.voice.start({ systemPrompt })` sends the integrator's instructions with the voice session, and the agent gets them with every voice turn, exactly as the chat sends its `systemPrompt`. Inside `<Talk2ViewChat>` and the launcher, the voice button passes the chat's own `systemPrompt`, so nothing changes for the integrator. A standalone `<VoiceButton systemPrompt>` takes it as a prop. Before this, a voice question ran without the page's instructions (on a study list, "update the table, never just describe"), so voice followed them less reliably than chat. Needs an engine and voice service with `app_prompt` (Platform #406); older ones ignore it.
+
 ## [0.20.2] - 2026-09-28
 
 ### Fixed

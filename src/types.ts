@@ -560,6 +560,17 @@ export interface VoiceSessionResponse {
 
 export type VoiceState = 'idle' | 'connecting' | 'listening' | 'ended' | 'error';
 
+/** Options for `t2v.voice.start()`. */
+export interface VoiceStartOptions {
+  /**
+   * The integrator's instructions for the page the call starts on: what the
+   * chat sends as its `systemPrompt` each turn. The agent gets it with every
+   * voice turn too, ranked below the platform and partner prompts. The chat's
+   * voice button passes the chat's own `systemPrompt`.
+   */
+  systemPrompt?: string;
+}
+
 export type VoiceEndReason =
   | 'stopped'
   | 'disconnected'

@@ -37,6 +37,11 @@ export interface VoiceButtonProps {
   label?: string;
   /** A short local sound when the microphone goes live (default true). */
   earcon?: boolean;
+  /**
+   * Instructions for the page the call starts on, as the chat's `systemPrompt`.
+   * Inside a chat the chat's own `systemPrompt` is used when this is not given.
+   */
+  systemPrompt?: string;
 }
 
 /** The launcher's gate: the integrator has not turned voice off, and the partner has it on. */
@@ -129,8 +134,13 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   className,
   label = 'Talk to Talk2View',
   earcon = true,
+  systemPrompt,
 }) => {
   const voice = client.voice;
+  // Read at press time: the page the call starts on decides its instructions.
+  const chat = useOptionalChatContext();
+  const promptRef = useRef(systemPrompt);
+  promptRef.current = systemPrompt;
   const [state, setState] = useState<VoiceState>(() => voice.state);
   const [error, setError] = useState<VoiceError | null>(null);
   const [approval, setApproval] = useState<VoicePendingApproval | null>(null);
@@ -183,10 +193,11 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
       void voice.stop();
       return;
     }
-    voice.start().catch(() => {
+    const prompt = promptRef.current ?? chat?.behaviour.current.systemPrompt;
+    voice.start(prompt ? { systemPrompt: prompt } : {}).catch(() => {
       // Reported through the 'error' event and shown below.
     });
-  }, [voice]);
+  }, [voice, chat]);
 
   const preload = useCallback(() => voice.preload(), [voice]);
 
