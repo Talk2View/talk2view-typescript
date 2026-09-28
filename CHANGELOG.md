@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-09-29
+
+### Changed
+
+- **Out of credit, the voice button says how to keep going.** A guest reads "You’ve used your free credits. Sign in or create an account to keep going.", and a signed-in user reads "You’re out of credits. Upgrade your plan to keep going.", matching what the voice agent now says aloud (Platform #408). `voiceErrorMessage(error, { anonymous })` takes who is calling.
+
 ## [0.21.1] - 2026-09-29
 
 ### Changed

@@ -392,6 +392,23 @@ describe('voiceErrorMessage', () => {
     expect(voiceErrorMessage({ type: 'something_new', message: '' })).toMatch(/went wrong/);
   });
 
+  it('tells a guest out of credit to sign in, and a signed-in user to upgrade', () => {
+    expect(voiceErrorMessage({ type: 'insufficient_credit', message: 'x' }, { anonymous: true })).toBe(
+      'You’ve used your free credits. Sign in or create an account to keep going.',
+    );
+    expect(voiceErrorMessage({ type: 'insufficient_credit', message: 'x' })).toBe(
+      'You’re out of credits. Upgrade your plan to keep going.',
+    );
+  });
+
+  it('shows the guest wording when a guest runs out mid-call', () => {
+    const { client, emitter } = fakeClient();
+    (client as unknown as { auth: { isAnonymous: () => boolean } }).auth = { isAnonymous: () => true };
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => emitter.emit('error', { type: 'insufficient_credit', message: 'x' }));
+    expect(screen.getByRole('alert').textContent).toContain('Sign in or create an account');
+  });
+
   it('tells the end-user to allow the microphone when it is unavailable', () => {
     expect(voiceErrorMessage({ type: 'mic_unavailable', message: 'raw' })).toBe(
       'Voice needs microphone access. Allow the microphone and try again.',
