@@ -457,7 +457,7 @@
   font-weight: 500;
   white-space: nowrap;
 }
-/* "Say hi!": the call is live and waiting on the end-user. The brand colour
+/* "Say hello!": the call is live and waiting on the end-user. The brand colour
    and a gentle nudge draw the eye; with reduced motion it stays still. */
 .t2v-voice-status[data-hint] {
   border-color: transparent;
