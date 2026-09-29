@@ -151,7 +151,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   const [working, setWorking] = useState(false);
   const [endedNote, setEndedNote] = useState<string | null>(null);
   // Whether the end-user has spoken on this call. Until they do, the popover
-  // says "Say hi!": the bot does not greet, so a first-time user otherwise sits
+  // says "Say hello!": the bot does not greet, so a first-time user otherwise sits
   // in silence not knowing the call is waiting on them.
   const [heard, setHeard] = useState(false);
   // Read by the listeners, so changing the prop does not re-subscribe.
@@ -224,7 +224,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           ? 'Working…'
           : heard
             ? 'Listening'
-            : 'Say hi!'
+            : 'Say hello!'
         : state === 'ended' && !error
           ? endedNote
           : null;
@@ -276,7 +276,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
             <div
               aria-hidden="true"
               className="t2v-voice-status"
-              data-hint={status === 'Say hi!' ? '' : undefined}
+              data-hint={status === 'Say hello!' ? '' : undefined}
             >
               {status}
             </div>

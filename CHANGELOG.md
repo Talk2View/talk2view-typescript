@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.21.3] - 2026-09-29
+
+### Changed
+
+- **The voice prompt reads "Say hello!"** instead of "Say hi!".
+
 ## [0.21.2] - 2026-09-29
 
 ### Changed
