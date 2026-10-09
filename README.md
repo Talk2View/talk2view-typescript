@@ -114,7 +114,7 @@ That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPa
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
-A logged-out visitor gets an anonymous demo session automatically, so there is nothing to wire up before the first reply. Pass `allowAnonymous={false}` to `<ChatPanel>` to ask people to sign in first.
+A logged-out visitor can chat as a guest, with no account, only where guest access is on for your partner key. It is off by default — ask Talk2View — and a key that requires a CAPTCHA refuses the SDK's guest sign-in, which sends none. Otherwise `<ChatPanel>` asks people to sign in. Pass `allowAnonymous={false}` to `<ChatPanel>` to always ask them to sign in first.
 
 ### Vanilla JavaScript
 
@@ -279,7 +279,11 @@ The full chat surface: header, message list, composer, sign-in, tool approvals. 
 />
 ```
 
-By default a logged-out visitor is signed into an anonymous demo session rather than being shown a login form. The sign-in form appears when `allowAnonymous` is `false`, when your partner account has anonymous access switched off or its daily cap is spent, or when the demo budget for that visitor runs out.
+With `allowAnonymous` on (the default), a logged-out visitor sees the chat, and the SDK tries to start a guest session the first time it needs one. The sign-in form appears instead:
+
+- when `allowAnonymous` is `false`;
+- when the engine refuses the guest session: guest access is off for your key (the default), its daily guest limit is spent, or it requires a CAPTCHA, which the SDK does not send;
+- when that visitor's guest allowance runs out.
 
 ### `<LoginForm>` (from `/ui`)
 
@@ -468,7 +472,7 @@ function Chat() {
 Four things do not map, on purpose:
 
 - **Editing tool arguments before approval.** The SDK supports it (`HumanDecision.updatedInput`, used by `<ApprovalCard>` in `/ui`), but the stock assistant-ui approval card has no edit-and-resubmit affordance to drive it from — it can only approve, deny, or attach a free-form reason.
-- **Sign-in UI.** `useTalk2ViewRuntime` only creates a client and a runtime; there is no `<LoginForm>` equivalent. A logged-out visitor gets an anonymous demo session automatically (same default as `<ChatPanel>`), and building your own sign-in UI, or gating the app before it mounts, is on the partner.
+- **Sign-in UI.** `useTalk2ViewRuntime` only creates a client and a runtime; there is no `<LoginForm>` equivalent. Where your key allows guests, a logged-out visitor gets a guest session (same default as `<ChatPanel>`); where it does not, the message is not sent and the client emits `anonymousUnavailable`. Building your own sign-in UI, or gating the app before it mounts, is on the partner.
 - **The agent's plan.** The planning checklist `<ChatPanel>` shows arrives as a `data` part named `plan` (`{ markdown }`). The stock Thread has no renderer for it, so it is silently not shown; register one to see it: `<MessagePrimitive.Parts components={{ data: { by_name: { plan: PlanView } } }} />`.
 - **Editing and deleting sent messages.** The runtime supplies no `onEdit`/`onDelete`, so the stock Thread's pencil on user messages stays disabled. Remove it from your copy of the Thread if you'd rather not show it.
 
@@ -613,8 +617,9 @@ input.addEventListener('input', () => t2v.warmUp(), { once: true });
 
 It is safe to call repeatedly (one request per signed-in end-user), never
 throws, and is a no-op against an engine that predates it. Don't call it when
-the chat merely opens: for a logged-out visitor it starts an anonymous session,
-which counts toward your daily anonymous cap.
+the chat merely opens: for a logged-out visitor it starts a guest session
+wherever your key allows guests, and each one counts toward your daily guest
+limit.
 
 `<ChatWidget>`, `<ChatPanel>` and the assistant-ui runtime already do this.
 
@@ -885,7 +890,7 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 | `baseUrl` | `string` | No | `'https://engine.talk2view.com'` | Talk2View engine URL |
 | `model` | `string` | No | Server default | LLM model to use |
 | `requestTimeout` | `number` | No | `30000` | HTTP request timeout in ms. Does not apply to SSE streams after connection. |
-| `anonymousAutoStart` | `boolean` | No | `true` | Start an anonymous demo session on the first `chat()` when nobody is signed in. Set `false` to require sign-in. |
+| `anonymousAutoStart` | `boolean` | No | `true` | When nobody is signed in, try to start a guest session the first time a call needs one (sending, uploading, transcribing, listing models, `warmUp()`, voice). It succeeds only where your key allows guests; a refusal emits `anonymousUnavailable`. Set `false` to require sign-in. |
 | `debug` | `boolean` | No | `false` | Log streaming events, tool calls, history and state changes to the console. |
 
 ---

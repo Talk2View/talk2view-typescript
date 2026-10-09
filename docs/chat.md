@@ -108,7 +108,7 @@ take directly.
 | `tools` | none | Your client tools. They run in your app. |
 | `systemPrompt` | none | Your own instructions, sent with every message. Changing it does not restart the conversation. |
 | `welcome` | `{}` | `heading` and `suggestions` on the empty chat. Clicking a suggestion sends it. |
-| `allowAnonymous` | `true` | Logged-out visitors chat as guests. `false` shows sign-in first — **and see the note below**. |
+| `allowAnonymous` | `true` | Logged-out visitors chat as guests where your key allows it. `false` shows sign-in first — **see the [notes below](#guest-sessions-need-guest-access-on-your-key)**. |
 | `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled — see [voice.md](voice.md). |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
@@ -135,10 +135,19 @@ Launcher only:
 These are the things that surprise people. None of them is a bug; all of them
 have cost someone an afternoon.
 
+### Guest sessions need guest access on your key
+
+`allowAnonymous` lets the chat try; the engine decides. It starts a guest
+session only for a partner key with guest access switched on, which is off by
+default — ask Talk2View. A key that requires a CAPTCHA refuses guests too,
+because the chat sends none. When the engine refuses, or when a guest's
+allowance or your daily guest limit runs out, the chat opens Account and asks
+the visitor to sign in.
+
 ### `allowAnonymous: false` also stops guest sessions
 
 It is not only a screen. The gate is computed from whether anyone is signed in,
-and the client starts a guest session on demand — listing the models for
+and the client tries to start a guest session on demand — listing the models for
 Settings would be enough — which would sign the visitor in and open the gate
 from behind. So `allowAnonymous: false` also turns off `anonymousAutoStart`.
 
