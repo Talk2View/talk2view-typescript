@@ -3,7 +3,7 @@
  *
  * This demonstrates:
  * 1. Setting up the Talk2View provider with your partner key
- * 2. Using the pre-built LoginModal for authentication
+ * 2. Using <ChatPanel>'s built-in sign-in form for authentication
  * 3. Registering client-side tools the agent can call
  * 4. Using the ChatPanel for the full chat experience
  * 5. Human-in-the-loop permission model (static + callback-based)
