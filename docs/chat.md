@@ -160,8 +160,8 @@ font on `body`, or pass one:
 <Talk2ViewChat partnerKey="…" fontFamily='"Space Grotesk", system-ui, sans-serif' />
 ```
 
-Nothing is fetched for it. The chat never loads a font, a stylesheet or a script
-from a third-party host, so whatever you name has to be available to the page.
+Nothing is fetched for it. The chat never loads a font or a stylesheet, so
+whatever you name has to be available to the page.
 
 ### `isToolDestructive` is your claim about your own tool
 
@@ -353,8 +353,17 @@ retires the label beside the mark.
 
 ## Content Security Policy, and hosts with no CSS loader
 
-The chat fetches nothing at runtime: no fonts, no CDN, no stylesheet, no script.
-A `connect-src` that allows your Talk2View engine is all it needs.
+Without voice, the chat fetches nothing at runtime but your Talk2View engine: no
+fonts, no CDN, no stylesheet, no script. A `connect-src` that allows the engine
+is all it needs, plus `blob:` in a strict `img-src` for the previews of files
+the end-user attaches.
+
+Voice needs more. A call downloads Daily's call engine from
+`https://c.daily.co` and runs it through `Function()`, so it needs
+`https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`, or no
+call starts — see [voice.md](voice.md#browser-requirements). If you would rather
+allow neither, `features={{ voice: false }}` keeps the microphone off the
+launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
 cannot — an Office add-in's webpack with no CSS rule, a strict `style-src` that
