@@ -241,7 +241,7 @@ Each partner gets one key, `pk_live_…`, scoped to your application. Talk2View 
 
 Best practices:
 - Inject the key via an environment variable at build time (e.g. `VITE_T2V_PARTNER_KEY`)
-- There is no self-serve key creation or rotation. To rotate your key, [contact Talk2View](https://talk2view.com/resources/contact). Rotation issues a new key and retires the old one at the same moment, with no overlap, so plan the switch with us
+- There is no self-serve key creation or rotation. To rotate your key, [contact Talk2View](https://talk2view.com/resources/contact). Rotation issues a new key and retires the old one within about a minute, with no planned overlap, so plan the switch with us
 
 ### Two-Tier Authentication
 
