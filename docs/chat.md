@@ -206,7 +206,10 @@ session, started on the page carries on into the account they then sign in to �
 never one from another account, and never past a sign-out.
 
 With the thread list off, nothing is saved: the conversation lives in memory,
-is lost on reload, and goes on the same sign-outs and account changes.
+is lost on reload, and goes on the same sign-outs and account changes. When it
+goes because an account's session ended on its own — the sign-in expired, or
+the account signed out in another tab — the chat says "Session expired. Please
+log in again."
 
 ### A page with no font gets a serif chat
 
