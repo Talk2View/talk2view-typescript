@@ -245,11 +245,14 @@ export function useTalk2ViewRuntimeForClient(
 
   // A turn that fails before its first text chunk leaves no assistant message
   // behind (the SDK drops the empty one), and assistant-ui can only show an
-  // error on an assistant message — so give it one to show it on.
+  // error on an assistant message — so give it one to show it on. An error
+  // with nothing on screen at all gets one too: an account whose session died
+  // takes its conversation with it, and the error is all that says why.
   const threadMessages = useMemo<DisplayMessage[]>(() => {
     const last = messages[messages.length - 1];
-    if (error && last && last.role !== 'assistant') {
-      return [...messages, { id: `${last.id}:error`, role: 'assistant', content: '', timestamp: new Date() }];
+    if (error && last?.role !== 'assistant') {
+      const id = last ? `${last.id}:error` : 't2v-error';
+      return [...messages, { id, role: 'assistant', content: '', timestamp: new Date() }];
     }
     return messages;
   }, [messages, error]);

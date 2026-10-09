@@ -34,7 +34,7 @@
 import { T2VAuth } from './auth.js';
 import { T2VClient } from './client.js';
 import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
-import { T2VError } from './errors.js';
+import { SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
 import { TypedEventEmitter } from './event-emitter.js';
 import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
@@ -205,10 +205,21 @@ export class Talk2View {
         // never goes on to whoever is next, and signing out ends it.
         const forget =
           previousId !== null && (this.auth.signingOut === true || !this._authAnonymous);
+        // An account's session that died on its own — a refresh token revoked
+        // or expired, a sign-out in another tab — empties the chat without the
+        // end-user doing anything. The request that found out cannot say so:
+        // its conversation has gone, so its error goes with it. Say it here,
+        // when there was something on screen to lose.
+        const expired =
+          forget &&
+          userId === null &&
+          this.auth.signingOut !== true &&
+          (this._messages.length > 0 || this._isLoading);
         this._authUserId = userId;
         this.endVoiceCallForIdentityChange(previousId, userId);
         this.resetSessionForIdentityChange();
         if (forget) this.forgetConversation();
+        if (expired) this.setError(SESSION_EXPIRED_MESSAGE);
       }
       this._authAnonymous = userId !== null && this.auth.isAnonymous?.() === true;
     });

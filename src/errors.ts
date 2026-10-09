@@ -49,6 +49,14 @@ export class NetworkError extends T2VError {
 }
 
 /**
+ * What the end-user reads when their sign-in has died under them: the refresh
+ * token was revoked or has expired. One string, so the chat says the same thing
+ * whether the request that found out reports it or the identity change that
+ * emptied the conversation does (see the auth handler in `index.ts`).
+ */
+export const SESSION_EXPIRED_MESSAGE = 'Session expired. Please log in again.';
+
+/**
  * The engine's error type for each class we publish. A failed request is thrown
  * as the matching subclass so `err instanceof AuthenticationError` works, which
  * is what the README has always promised; everything else stays a T2VError.

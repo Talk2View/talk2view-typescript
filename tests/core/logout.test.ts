@@ -124,3 +124,59 @@ describe('signing out, through the real auth layer', () => {
     localStorage.clear();
   });
 });
+
+describe('a session that dies in the middle of a turn, through the real client', () => {
+  const json = (body: unknown, status = 200) =>
+    ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
+  const refused = () =>
+    json({ detail: { error: { type: 'authentication_error', message: 'Invalid token' } } }, 401);
+
+  /**
+   * Signed in, then the message's request is refused and so is the refresh: the
+   * refresh token was revoked or has expired. Nobody called logout().
+   */
+  async function aTurnWhoseSessionDies(): Promise<{ t2v: Talk2View; errors: (string | null)[] }> {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path === '/v1/auth/login') {
+          return json({
+            access_token: 'a',
+            refresh_token: 'r',
+            token_type: 'bearer',
+            expires_in: 3600,
+            user: { id: 'u1', email: 'a@example.com' },
+          });
+        }
+        if (path === '/v1/sessions') return json({ session_id: 's1', thread_id: 't1', model: 'm' });
+        if (path === '/v1/sessions/s1/messages') return refused();
+        if (path === '/v1/auth/refresh') return refused();
+        throw new Error(`unexpected request to ${path}`);
+      }),
+    );
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123', baseUrl: 'https://engine.test' });
+    await t2v.auth.login('a@example.com', 'password');
+    const errors: (string | null)[] = [];
+    t2v.on('errorChange', (error) => errors.push(error));
+    await t2v.sendMessage('A private question');
+    return { t2v, errors };
+  }
+
+  afterEach(() => localStorage.clear());
+
+  it('takes the conversation off the screen and says why', async () => {
+    const { t2v, errors } = await aTurnWhoseSessionDies();
+
+    // Dropped, as for any account whose session ends: the next person on this
+    // page must not see it, nor replay it under their own account…
+    expect(t2v.messages).toEqual([]);
+    expect(t2v.exportConversation()).toEqual({ messages: [], history: [], threadId: null });
+    expect(t2v.isLoading).toBe(false);
+    expect(t2v.auth.getUser()).toBeNull();
+    // …but not in silence. The end-user's message vanished; this is the reason.
+    expect(t2v.error).toBe('Session expired. Please log in again.');
+    expect(errors.at(-1)).toBe('Session expired. Please log in again.');
+    t2v.destroy();
+  });
+});

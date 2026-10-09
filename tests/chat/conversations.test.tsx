@@ -569,4 +569,29 @@ describe('with the thread list turned off', () => {
     await screen.findByText('Reply 2');
     expect(sent.at(-1)).toEqual([]);
   });
+
+  it('says why the conversation went when the account’s session ends on its own', async () => {
+    authState.set({ id: 'account-1', email: 'a@b.c' });
+    const { t2v, sent } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} features={{ threadList: false }} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Private to the first account');
+    await screen.findByText('Reply 1');
+
+    // A revoked refresh token, or a sign-out in another tab: nobody pressed Sign out.
+    await act(async () => {
+      authState.set(null);
+    });
+
+    // The conversation goes, and the empty chat says why rather than nothing.
+    expect(await screen.findByText('Session expired. Please log in again.')).toBeTruthy();
+    expect(screen.queryByText('Reply 1')).toBeNull();
+    expect(screen.queryByText('Private to the first account')).toBeNull();
+
+    // The next message starts clean: no error, and nothing of the last one replayed.
+    await send('Hello');
+    await screen.findByText('Reply 2');
+    expect(screen.queryByText('Session expired. Please log in again.')).toBeNull();
+    expect(sent.at(-1)).toEqual([]);
+  });
 });

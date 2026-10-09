@@ -169,7 +169,7 @@ describe('signing out', () => {
 });
 
 describe('an account that stops being the one signed in', () => {
-  it('takes its conversation off the screen when its session ends on its own', async () => {
+  it('takes its conversation off the screen when its session ends on its own, and says why', async () => {
     authState.user = A;
     const { t2v } = scriptedClient();
     await t2v.sendMessage('Something private to A');
@@ -179,15 +179,62 @@ describe('an account that stops being the one signed in', () => {
 
     expect(t2v.messages).toEqual([]);
     expect(t2v.exportConversation().history).toEqual([]);
+    // The end-user did nothing and their conversation went: tell them.
+    expect(t2v.error).toBe('Session expired. Please log in again.');
   });
 
-  it('takes it off the screen on a switch straight to another account', async () => {
+  it('says so in the middle of a reply too, which stops writing into the empty chat', async () => {
+    authState.user = A;
+    const t2v = new Talk2View({ partnerKey: 'pk_test_x' });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'text', content: 'The first half' };
+        await gate;
+        yield { type: 'text', content: ' and the rest.' };
+        yield { type: 'done', threadId: 'th_1' };
+      })()) as never);
+
+    const turn = t2v.sendMessage('Something private to A');
+    await vi.waitFor(() => expect(t2v.messages[1]?.content).toBe('The first half'));
+
+    authState.set(null);
+    release();
+    await turn;
+
+    expect(t2v.messages).toEqual([]);
+    expect(t2v.isLoading).toBe(false);
+    expect(t2v.error).toBe('Session expired. Please log in again.');
+  });
+
+  it('says nothing when there was nothing on screen to lose', () => {
+    authState.user = A;
+    const { t2v } = scriptedClient();
+
+    authState.set(null);
+
+    expect(t2v.error).toBeNull();
+  });
+
+  it('says nothing on a deliberate sign-out: the end-user knows', async () => {
+    authState.user = A;
+    const { t2v } = scriptedClient();
+    await t2v.sendMessage('Something private to A');
+
+    authState.set(null, { signingOut: true });
+
+    expect(t2v.error).toBeNull();
+  });
+
+  it('takes it off the screen on a switch straight to another account, with no error for them', async () => {
     authState.user = A;
     const { t2v, replayed } = scriptedClient();
     await t2v.sendMessage('Something private to A');
 
     authState.set(B);
     expect(t2v.messages).toEqual([]);
+    expect(t2v.error).toBeNull();
 
     await t2v.sendMessage('Hello');
     expect(replayed.at(-1)).toEqual([]);

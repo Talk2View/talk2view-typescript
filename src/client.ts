@@ -6,6 +6,7 @@ import {
   AuthenticationError,
   NetworkError,
   PartnerKeyError,
+  SESSION_EXPIRED_MESSAGE,
   T2VError,
   errorForType,
 } from './errors.js';
@@ -219,7 +220,7 @@ export class T2VClient {
       if (result === 'invalid') {
         // The refresh token is genuinely dead — this is a real logout.
         clearAuth();
-        throw new AuthenticationError('Session expired. Please log in again.');
+        throw new AuthenticationError(SESSION_EXPIRED_MESSAGE);
       }
       // transient: the session is still valid, we just couldn't refresh right
       // now. Surface a retryable error WITHOUT clearing auth.
