@@ -170,7 +170,8 @@ for await (const event of t2v.chat('What time is it?')) {
 
 This package follows semantic versioning, with one qualification that matters
 while it is below 1.0: a **minor** version may change behaviour, and a
-**patch** never changes the public surface. Breaking changes to exports or to
+**patch** never removes or changes anything in the public surface, though it
+may add to it — a new optional prop, say. Breaking changes to exports or to
 prop shapes are called out in [CHANGELOG.md](CHANGELOG.md) under the release
 that makes them.
 
