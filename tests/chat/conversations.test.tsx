@@ -91,6 +91,7 @@ vi.mock('../../src/skills', () => ({
 
 import { Talk2View } from '../../src/index';
 import { Talk2ViewChat } from '../../src/chat/chat';
+import { identityKey, readConversations } from '../../src/chat/lib/conversation-store';
 import type { ChatEvent, ChatMessage } from '../../src/types';
 
 beforeAll(() => {
@@ -502,6 +503,37 @@ describe('who the conversations belong to', () => {
       authState.set({ id: 'account-1', email: 'a@b.c' });
     });
     expect(listed(await openList())).toEqual(['Mine, and nobody else’s']);
+  });
+
+  it('keeps a converted guest’s conversation in their account when that session ends on its own', async () => {
+    authState.set({ id: 'guest-1', email: '' }, true);
+    const { t2v } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Started as a guest');
+    await screen.findByText('Reply 1');
+
+    // They confirm the account the guest session became and sign in to it:
+    // the same user id, and an account from now on.
+    await act(async () => {
+      authState.set({ id: 'guest-1', email: 'a@b.c' });
+    });
+    expect(screen.getByText('Reply 1')).toBeTruthy();
+
+    // Later that session ends without anyone pressing Sign out.
+    await act(async () => {
+      authState.set(null);
+    });
+    await waitFor(() => expect(screen.queryByText('Reply 1')).toBeNull());
+
+    // Nothing of it is left for whoever uses this browser without signing in…
+    const signedOut = readConversations('pk_test_x', identityKey(null)).map((c) => c.title);
+    expect(signedOut).not.toContain('Started as a guest');
+    // …and it is still the account's.
+    await act(async () => {
+      authState.set({ id: 'guest-1', email: 'a@b.c' });
+    });
+    expect(listed(await openList())).toEqual(['Started as a guest']);
   });
 
   it('does not hand a signed-out guest’s conversation to the account that signs in next', async () => {

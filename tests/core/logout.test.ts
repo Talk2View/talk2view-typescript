@@ -148,6 +148,62 @@ describe('signing out, through the real auth layer', () => {
     t2v.destroy();
     localStorage.clear();
   });
+
+  it('leaves none behind when a guest became an account in another tab and signed out there', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path === '/v1/auth/anonymous') {
+          return json({
+            access_token: 'a',
+            refresh_token: 'r',
+            token_type: 'bearer',
+            expires_in: 3600,
+            user: { id: 'g1', email: '' },
+            is_anonymous: true,
+          });
+        }
+        throw new Error(`unexpected request to ${path}`);
+      }),
+    );
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123', baseUrl: 'https://engine.test' });
+    await t2v.auth.startAnonymous();
+    vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'text', content: 'A private answer' };
+        yield { type: 'done', threadId: 'th_1' };
+      })()) as never);
+    await t2v.sendMessage('A private question');
+    expect(t2v.messages).toHaveLength(2);
+
+    // The other tab signs in to the account this guest became: the same user
+    // id, written as a sign-in writes it, the guest flag first and the user last.
+    const before = localStorage.getItem(USER_STORAGE_KEY);
+    const account = JSON.stringify({ id: 'g1', email: 'a@example.com' });
+    localStorage.setItem('talk2view_is_anonymous', 'false');
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'b');
+    localStorage.setItem(USER_STORAGE_KEY, account);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'talk2view_is_anonymous', oldValue: 'true', newValue: 'false' }),
+    );
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: ACCESS_TOKEN_STORAGE_KEY, oldValue: 'a', newValue: 'b' }),
+    );
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: USER_STORAGE_KEY, oldValue: before, newValue: account }),
+    );
+    // The same person, so the conversation is still theirs…
+    expect(t2v.messages).toHaveLength(2);
+
+    // …until they sign out there. That is an account leaving, not a guest, so
+    // its conversation goes here too rather than waiting for the next person.
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    window.dispatchEvent(new StorageEvent('storage', { key: ACCESS_TOKEN_STORAGE_KEY, newValue: null }));
+    expect(t2v.messages).toEqual([]);
+    t2v.destroy();
+    localStorage.clear();
+  });
 });
 
 describe('a session that dies in the middle of a turn, through the real client', () => {

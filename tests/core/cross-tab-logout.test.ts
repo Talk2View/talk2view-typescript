@@ -46,12 +46,15 @@ describe('T2VAuth — a sign-in in another tab', () => {
     auth.destroy();
   });
 
-  it('ignores the same end-user written again', () => {
+  // Most often a guest who has signed in to the account they converted to,
+  // which keeps the user id. This tab must stop treating them as a guest.
+  it('announces the same end-user signing in again', () => {
     const { auth, listener } = listening();
 
     userWritten(user('a'), user('a', 'new-address@example.com'));
 
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({ id: 'a', email: 'new-address@example.com' });
     auth.destroy();
   });
 

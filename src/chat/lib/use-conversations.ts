@@ -24,7 +24,9 @@
  *   session appears, because it was theirs all along. Signing out moves
  *   nothing, a guest's included.
  * - **A guest becoming an account** — nothing moves. Converting keeps the same
- *   user id, so the conversations are already in the right bucket.
+ *   user id, so the conversations are already in the right bucket. From the
+ *   moment they sign in to it they are an account, whose conversation stays
+ *   with the account when the session ends.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExternalStoreThreadData, ExternalStoreThreadListAdapter } from '@assistant-ui/react';
@@ -78,9 +80,10 @@ interface Store {
   fresh: Set<string>;
   /**
    * Whether the identity above is a guest or nobody at all, recorded when it
-   * was adopted. `auth.isAnonymous()` cannot answer this later: by the time a
-   * sign-in reaches us it already describes the account, not the guest who was
-   * there a moment before.
+   * was adopted, and again when the same end-user is announced (a guest who
+   * has signed in to the account they made). `auth.isAnonymous()` cannot
+   * answer this later: by the time a sign-in reaches us it already describes
+   * the account, not the guest who was there a moment before.
    */
   guest: boolean;
 }
@@ -204,7 +207,14 @@ export function useConversations(
     return client.auth.onAuthStateChange((user) => {
       const s = store.current!;
       const next = identityKey(user?.id);
-      if (next === s.identity) return;
+      if (next === s.identity) {
+        // The same end-user, announced again. A guest who signs in to the
+        // account they converted to keeps their user id, and is an account
+        // from then on: their conversation stays with the account, and never
+        // follows them out of it.
+        s.guest = isGuest(client, next);
+        return;
+      }
 
       // The conversation on screen follows the end-user across exactly one
       // step: out of a guest session, or out of no session at all, into the

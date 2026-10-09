@@ -87,9 +87,13 @@ export class T2VAuth {
    *   someone else. Every request this tab makes reads its token from storage,
    *   so it is already acting as them; announcing it is what makes the rest of
    *   this tab agree — above all, it takes the last account's conversation off
-   *   the screen instead of replaying it under the new account. A token refresh
-   *   never writes the user key, and the same end-user signing in again is not
-   *   a change.
+   *   the screen instead of replaying it under the new account.
+   * - When it signs the same end-user in again, that is most often a guest
+   *   signing in to the account they converted to, which keeps the user id.
+   *   Announcing it tells this tab it holds an account now, not a guest, so
+   *   the conversation is treated as an account's from then on.
+   *
+   * A token refresh never writes the user key.
    */
   private readonly onStorage = (event: StorageEvent): void => {
     if (event.key === ACCESS_TOKEN_STORAGE_KEY && event.newValue === null) {
@@ -98,7 +102,7 @@ export class T2VAuth {
     }
     if (event.key === USER_STORAGE_KEY && event.newValue !== null) {
       const next = parseUser(event.newValue);
-      if (next && next.id !== parseUser(event.oldValue)?.id) this.notifyListeners(next);
+      if (next) this.notifyListeners(next);
     }
   };
 
