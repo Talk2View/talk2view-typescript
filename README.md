@@ -124,11 +124,7 @@ const t2v = new Talk2View({ partnerKey: 'pk_live_...' });
 // 1. Authenticate
 await t2v.auth.login('user@example.com', 'password');
 
-// 2. Register tools with handlers
-t2v.tools.handle('get_time', async () => {
-  return new Date().toISOString();
-});
-
+// 2. Register tools, then attach their handlers
 await t2v.tools.register([
   {
     name: 'get_time',
@@ -136,6 +132,10 @@ await t2v.tools.register([
     parameters: { type: 'object', properties: {} },
   },
 ]);
+
+t2v.tools.handle('get_time', async () => {
+  return new Date().toISOString();
+});
 
 // 3. Chat — tool calls are handled automatically
 let reply = '';
@@ -498,12 +498,7 @@ await t2v.tools.register([
   },
 ]);
 
-// Option B: separate handler registration
-t2v.tools.handle('zoom_in', async () => {
-  myApp.zoomIn();
-  return JSON.stringify({ success: true });
-});
-
+// Option B: register the schemas, then attach the handlers
 await t2v.tools.register([
   {
     name: 'zoom_in',
@@ -511,6 +506,11 @@ await t2v.tools.register([
     parameters: { type: 'object', properties: {} },
   },
 ]);
+
+t2v.tools.handle('zoom_in', async () => {
+  myApp.zoomIn();
+  return JSON.stringify({ success: true });
+});
 
 // Check state
 t2v.tools.getRegistered()     // ClientToolSchema[]
