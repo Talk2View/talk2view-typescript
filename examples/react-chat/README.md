@@ -40,7 +40,9 @@ the partner key in `src/App.tsx`.
   when `visitorColourway` is on.
 - **A tool.** Ask it to "highlight the nodule". The agent asks first — the
   approval card is part of the packaged chat — and the handler in `src/App.tsx`
-  runs in this app and paints the passage in the report behind the chat.
+  runs in this app and paints the passage in the report behind the chat. The
+  report is made up, and the page says so: *Fictional data. Never use real
+  patient data.*
 - **The page's font.** `src/styles.css` sets one on `body`, and the chat
   inherits it. A page that sets no font at all gets a serif chat.
 

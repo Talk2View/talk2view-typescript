@@ -14,6 +14,21 @@ You get one key, `pk_live_…`, a public identifier that is safe to ship in a
 browser bundle; see [Partner Keys](#partner-keys) and the docs at
 [docs.talk2view.com](https://docs.talk2view.com).
 
+## Intended use and data handling
+
+Talk2View is for education, research and general information. It is not a
+medical device: it is not regulated or approved as one, and it must not be used
+to diagnose or treat any condition or to make clinical decisions. Its answers
+come from AI models and can be wrong.
+
+Do not send protected health information (PHI), or any other data that can
+identify a patient, through the SDK. What end-users type, attach or say, and
+what your tools return, is passed to third-party AI providers, and Talk2View
+has no safeguard that detects, redacts or blocks such data.
+
+The [Terms of Use](https://talk2view.com/legal/terms-of-use) and the
+[Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in full.
+
 ## Chat UI
 
 Three lines to a working chat. `@talk2view/sdk/chat` is the branded Talk2View
@@ -554,6 +569,8 @@ t2v.tools.hasHandler('zoom_in') // boolean
 Register user-defined skills — knowledge documents the AI agent can discover and load for specialised expertise. Skills are stored client-side and sent to the server per-session.
 
 ```typescript
+// Fictional data. Never use real patient data.
+
 // Add skills locally
 t2v.skills.add({
   name: 'radiology-workflow',
@@ -694,6 +711,7 @@ A tool needs a **schema** (so the AI knows when and how to call it) and an **exe
 ```typescript
 import type { ClientTool } from '@talk2view/sdk';
 
+// Fictional data. Never use real patient data.
 const myTool: ClientTool = {
   name: 'set_window_level',
   description: 'Set the brightness and contrast of the medical image viewer',
@@ -908,6 +926,7 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 System prompts set the AI's behavior and context for your application. Pass one to `<Talk2View>` (the UI components) or to `useT2VChat` (the hooks):
 
 ```tsx
+// Fictional data. Never use real patient data.
 <Talk2View
   partnerKey="pk_live_..."
   systemPrompt="You are a medical imaging assistant. Use the provided tools to control the DICOM viewer."

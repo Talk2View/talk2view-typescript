@@ -29,6 +29,16 @@ or obtain one for somebody else is a vulnerability, and we want to hear about
 it. That includes the popup sign-in flow, cross-tab behaviour, and anything
 rendered from a model's reply.
 
+## Patient data
+
+Talk2View is not a medical device and is not for diagnosis or treatment. Do not
+send protected health information (PHI) or other patient-identifiable data
+through the SDK: what end-users send, and what a partner's tools return, goes to
+third-party AI providers, and Talk2View has no safeguard that detects, redacts
+or blocks it. The [Terms of Use](https://talk2view.com/legal/terms-of-use) and
+the [Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in
+full.
+
 ## Supported versions
 
 The latest published minor receives security fixes. Older minors do not.

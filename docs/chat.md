@@ -13,6 +13,14 @@ import '@talk2view/sdk/chat.css';
 A runnable version of everything below, in a Vite app with no Tailwind, is in
 [`examples/react-chat`](../examples/react-chat).
 
+Talk2View is not a medical device and is not for diagnosis or treatment. Do not
+let the chat carry protected health information (PHI) or any other data that
+can identify a patient: what end-users type, attach or say, and what your tools
+return, goes to third-party AI providers, and Talk2View has no safeguard that
+detects, redacts or blocks it. The
+[Terms of Use](https://talk2view.com/legal/terms-of-use) and the
+[Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in full.
+
 ---
 
 ## Contents
