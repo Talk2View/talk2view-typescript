@@ -185,6 +185,26 @@ anything.
 typed surface needs them, not because they are meant to be constructed
 directly. Use `Talk2View`.
 
+## Supported environments
+
+- **Node** `^22.14.0 || ^24.0.0 || >=26.0.0`, for builds, tests and server
+  rendering. That is the range the package's runtime dependencies declare;
+  outside it npm warns `EBADENGINE` on install.
+- **ES modules only.** There is no CommonJS build. Node's `require()` of ES
+  modules, on by default in the versions above, loads it too.
+- **React** 18 or 19, for `/react`, `/ui`, `/assistant-ui` and `/chat`. The
+  core client does not use React. The test suite runs on React 19.
+- **Browsers.** The packaged chat uses `dvh` units and the `inert` attribute,
+  so it needs at least Chrome or Edge 108, Safari 15.5 or Firefox 112. Part of
+  its styling also needs CSS nesting and `:has()`: Chrome and Edge 112, Safari
+  16.5, Firefox 121. The package's own JavaScript is ES2022, not transpiled
+  further. Those versions come from the package's own code and stylesheet; its
+  dependencies were not measured, and the browser test suites run in current
+  Chromium only.
+- **Popup sign-in** (Google and Apple) works in a browser only: it opens a
+  window, so it throws in Node and during server rendering. It also needs an
+  `https://` website and never runs on `localhost`.
+
 ## What loads at runtime
 
 What each entry point fetches once it is running, for your Content Security
