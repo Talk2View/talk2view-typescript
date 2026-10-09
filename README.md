@@ -758,7 +758,7 @@ To mitigate this:
 - **Always serve your application over HTTPS**
 - **Sanitize user-generated content** to prevent XSS injection
 
-**CSRF protection:** The SDK sends a custom `X-T2V-Partner-Key` header on every request. Browsers block cross-origin requests with custom headers unless the server explicitly allows the origin via CORS. This makes CSRF attacks infeasible — a forged request from a malicious site would be blocked by the browser's preflight check.
+**CORS and CSRF:** The engine accepts cross-origin requests from any website (`Access-Control-Allow-Origin: *`), so CORS protects neither your key nor your users. Your key needs no protecting: it is a public identifier. What protects user data is the end-user's sign-in token, which the SDK sends in the `Authorization` header, never in a cookie, so a page on another site cannot make the browser send it.
 
 ---
 
