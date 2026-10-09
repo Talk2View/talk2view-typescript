@@ -163,11 +163,13 @@ have cost someone an afternoon.
 ### Guest sessions need guest access on your key
 
 `allowAnonymous` lets the chat try; the engine decides. It starts a guest
-session only for a partner key with guest access switched on, which is off by
-default — ask Talk2View. A key that requires a CAPTCHA refuses guests too,
-because the chat sends none. When the engine refuses, or when a guest's
-allowance or your daily guest limit runs out, the chat opens Account and asks
-the visitor to sign in.
+session only for a partner key with guest access switched on. That is off by
+default: switch it on under **Settings → Anonymous access** in the dashboard.
+Guest sign-in also needs a CAPTCHA check by default, and the chat sends none,
+so ask Talk2View to set your key up for guests as well. Talk2View sets the
+daily limit on new guests. When the engine refuses, or when a guest's allowance
+or your daily guest limit runs out, the chat opens Account and asks the visitor
+to sign in.
 
 ### `allowAnonymous: false` also stops guest sessions
 

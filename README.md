@@ -129,7 +129,7 @@ That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPa
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
-A logged-out visitor can chat as a guest, with no account, only where guest access is on for your partner key. It is off by default — ask Talk2View — and a key that requires a CAPTCHA refuses the SDK's guest sign-in, which sends none. Otherwise `<ChatPanel>` asks people to sign in. Pass `allowAnonymous={false}` to `<ChatPanel>` to always ask them to sign in first.
+A logged-out visitor can chat as a guest, with no account, only where guest access is on for your partner key. It is off by default: switch it on under **Settings → Anonymous access** in the dashboard. Guest sign-in also needs a CAPTCHA check by default, which the SDK does not send, so ask Talk2View to set your key up for guests as well; Talk2View also sets your daily limit on new guests. Otherwise `<ChatPanel>` asks people to sign in. Pass `allowAnonymous={false}` to `<ChatPanel>` to always ask them to sign in first.
 
 ### Vanilla JavaScript
 
