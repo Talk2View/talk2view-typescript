@@ -99,7 +99,10 @@ export function ChatPanel({
           resetPasswordUrl={resetPasswordUrl}
           resetPasswordTarget={resetPasswordTarget}
           heading={demoLimitReached ? 'You’ve reached the demo limit' : undefined}
-          subheading={demoLimitReached ? 'Create an account to keep chatting — your conversation is saved.' : undefined}
+          // /ui saves nothing: the conversation lives in this page's memory.
+          // Once the visitor is signed in to an account, <Talk2View> puts it
+          // back on screen and resends the turn the limit stopped.
+          subheading={demoLimitReached ? 'Create an account to keep chatting — this conversation carries on.' : undefined}
           defaultMode={demoLimitReached ? 'signup' : 'login'}
         />
       ) : view === 'settings' ? (

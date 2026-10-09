@@ -45,7 +45,7 @@ export function AccountView({
   reason: AccountReason;
   onSignedIn: () => void;
 }) {
-  const { client, behaviour } = useChatContext();
+  const { client, behaviour, features } = useChatContext();
   const account = useAccount(client);
 
   // A rejected partner key stops the app for everyone, so this is neither a
@@ -64,7 +64,7 @@ export function AccountView({
   return (
     <div className="t2v-chat-account aui-modal-account bg-popover absolute inset-0 flex flex-col gap-5 overflow-y-auto p-4 text-sm">
       {account.status === 'signed-in' ? (
-        <SignedIn client={client} user={account.user!} />
+        <SignedIn client={client} user={account.user!} keepsConversations={features.threadList} />
       ) : (
         <SignInForm
           client={client}
@@ -81,7 +81,16 @@ export function AccountView({
   );
 }
 
-function SignedIn({ client, user }: { client: Talk2View; user: User }) {
+function SignedIn({
+  client,
+  user,
+  keepsConversations,
+}: {
+  client: Talk2View;
+  user: User;
+  /** The thread list is on, so earlier conversations are kept — in this browser. */
+  keepsConversations: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   return (
     <>
@@ -89,8 +98,15 @@ function SignedIn({ client, user }: { client: Talk2View; user: User }) {
         <p className="text-muted-foreground text-xs">Signed in as</p>
         <p className="truncate text-base font-medium">{user.email}</p>
       </div>
+      {/* The account is Talk2View's and goes everywhere; the conversations do
+          not. They are kept in this browser's storage, under this account, and
+          the engine has no way to list or fetch them, so they never follow
+          anyone to another browser or device. With the thread list off they are
+          not kept at all. */}
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Your conversations are saved to this account, and it works in every Talk2View app.
+        {keepsConversations
+          ? 'This account works in every Talk2View app. Your conversations are kept in this browser, not in the account.'
+          : 'This account works in every Talk2View app.'}
       </p>
       <button
         type="button"

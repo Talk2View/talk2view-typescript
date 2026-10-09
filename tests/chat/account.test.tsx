@@ -199,6 +199,25 @@ describe('the Account view', () => {
     await waitFor(() => expect(form().getByRole('heading', { name: 'Sign in' })).toBeTruthy());
   });
 
+  it('says the account goes to every app but the conversations stay in this browser', async () => {
+    authState.user = { id: 'u1', email: 'someone@example.com' };
+    const listed = render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    expect(
+      await form().findByText(
+        'This account works in every Talk2View app. Your conversations are kept in this browser, not in the account.',
+      ),
+    ).toBeTruthy();
+    expect(accountView()!.textContent).not.toMatch(/saved to this account/i);
+    listed.unmount();
+
+    // With the thread list off nothing is kept, so there is nothing to say about it.
+    render(<Talk2ViewChat partnerKey="pk_test_x" features={{ threadList: false }} />);
+    await openAccount();
+    expect(await form().findByText('This account works in every Talk2View app.')).toBeTruthy();
+    expect(accountView()!.textContent).not.toMatch(/conversations/i);
+  });
+
   it('asks a new account to check its email', async () => {
     authState.signup.mockResolvedValue({ confirmationRequired: true });
     render(<Talk2ViewChat partnerKey="pk_test_x" />);
