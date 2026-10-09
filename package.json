@@ -139,7 +139,7 @@
     "agent",
     "tools"
   ],
-  "homepage": "https://talk2view.com",
+  "homepage": "https://docs.talk2view.com",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -149,7 +149,7 @@
     "*.css"
   ],
   "bugs": {
-    "url": "https://talk2view.com/contact"
+    "url": "https://github.com/Talk2View/talk2view-typescript/issues"
   },
   "engines": {
     "node": ">=20.19"

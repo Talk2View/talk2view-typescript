@@ -294,7 +294,7 @@ The sign-in form on its own, if you want to place it yourself. It renders uncond
   heading="Sign in"
   subheading="to keep chatting"
   defaultMode="login"            // or 'signup'
-  signupUrl="https://talk2view.com/auth?signup"
+  signupUrl="https://talk2view.com/sign-up"
   resetPasswordUrl="https://..."
   termsUrl="https://..."
   privacyUrl="https://..."
