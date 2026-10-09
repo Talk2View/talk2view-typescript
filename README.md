@@ -824,7 +824,7 @@ Logging out leaves the rest of what the SDK keeps in `localStorage`:
 
 - `talk2view_preferences` — Settings choices: model, dictation (speech-to-text) model and language, font size.
 - `t2v_chat_conversations_v1:<partner key>` — the packaged chat's earlier conversations, one bucket per end-user. See [where conversations are kept](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md#conversations-are-kept-in-this-browser).
-- `t2v_user_skills` and `t2v_disabled_skills` — skills saved in the chat's Skills view or with `t2v.skills.save()`.
+- `t2v_user_skills` and `t2v_disabled_skills` — skills saved in the chat's Skills view or with `t2v.skills.save()`. They are not divided by end-user: in the packaged chat, whoever signs in next on that browser sees them and sends them with their chats.
 - `t2v-launcher-size`, `t2v-launcher-opened` and `t2v-launcher-colourway` — the launcher's size, whether it has been opened, and the colourway a visitor picked.
 
 ### Security Considerations

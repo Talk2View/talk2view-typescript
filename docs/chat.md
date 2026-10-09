@@ -81,10 +81,12 @@ browser, not in the account — see
 protocol, a house style, the way their team names things — that the agent can
 load when it helps. They are kept in the browser, not in the account, and sent
 with the chats made from it, where they merge with the partner's and the
-built-in skills and win over both. A skill can be switched off without deleting
-it, and a `.md` file can be imported, taking its `name` and `description` from
-frontmatter when it has any. Turn the view off with
-`features={{ skills: false }}`; the underlying `client.skills` API stays
+built-in skills and win over both. They belong to the browser rather than to
+anyone in it: signing out leaves them, and on a shared browser whoever signs in
+next sees them in Skills and sends them with their own chats. A skill can be
+switched off without deleting it, and a `.md` file can be imported, taking its
+`name` and `description` from frontmatter when it has any. Turn the view off
+with `features={{ skills: false }}`; the underlying `client.skills` API stays
 available either way.
 
 ### `<Talk2ViewChatLauncher>`
