@@ -55,14 +55,19 @@ half-typed message.
 
 The views are Account, Skills, Settings and Chats.
 
+**Chats** lists the end-user's earlier conversations. They are kept in the
+browser, not in the account — see
+[Conversations are kept in this browser](#conversations-are-kept-in-this-browser).
+
 **Skills** is the end-user's own knowledge: markdown they write once — a
 protocol, a house style, the way their team names things — that the agent can
-load when it helps. They are kept on that device and sent with that person's
-chats, where they merge with the partner's and the built-in skills and win over
-both. A skill can be switched off without deleting it, and a `.md` file can be
-imported, taking its `name` and `description` from frontmatter when it has any.
-Turn the view off with `features={{ skills: false }}`; the underlying
-`client.skills` API stays available either way.
+load when it helps. They are kept in the browser, not in the account, and sent
+with the chats made from it, where they merge with the partner's and the
+built-in skills and win over both. A skill can be switched off without deleting
+it, and a `.md` file can be imported, taking its `name` and `description` from
+frontmatter when it has any. Turn the view off with
+`features={{ skills: false }}`; the underlying `client.skills` API stays
+available either way.
 
 ### `<Talk2ViewChatLauncher>`
 
@@ -157,6 +162,27 @@ to), pass both explicitly:
 ```tsx
 <Talk2ViewChat partnerKey="…" allowAnonymous={false} anonymousAutoStart />
 ```
+
+### Conversations are kept in this browser
+
+With the thread list on (`features.threadList`, the default), the conversations
+in Chats are saved in the browser's `localStorage`: one entry per partner key
+(`t2v_chat_conversations_v1:<partner key>`), divided by end-user, so each
+account and each guest sees only their own. The engine has no API to list or
+fetch a past conversation, so they do not follow anyone to another browser,
+another device or another app. For each partner key the browser keeps up to 50
+conversations per end-user, fewer if they are long, for the eight end-users —
+guests included — who used it most recently.
+
+The conversation on screen goes when its account signs out, when that session
+ends, or when another account signs in. Signing out does not delete the saved
+ones: they stay in the browser and are listed again when the same account signs
+back in there. Only a conversation that a guest, or a visitor before any
+session, started on the page carries on into the account they then sign in to —
+never one from another account, and never past a sign-out.
+
+With the thread list off, nothing is saved: the conversation lives in memory,
+is lost on reload, and goes on the same sign-outs and account changes.
 
 ### A page with no font gets a serif chat
 

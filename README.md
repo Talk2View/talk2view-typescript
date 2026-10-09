@@ -28,8 +28,8 @@ import '@talk2view/sdk/chat.css';
 ```
 
 That is the full pane: sign-in, streaming replies, attachments, dictation,
-Settings, earlier conversations and tool approvals. Give it a parent with a
-height — it fills its box.
+Settings, earlier conversations (kept in the end-user's browser) and tool
+approvals. Give it a parent with a height — it fills its box.
 
 For a floating chat instead — a mark in the corner of the page, a popover on a
 desktop, a full-screen sheet on a phone:
@@ -292,7 +292,7 @@ The sign-in form on its own, if you want to place it yourself. It renders uncond
 ```tsx
 <LoginForm
   heading="Sign in"
-  subheading="to keep your chat history"
+  subheading="to keep chatting"
   defaultMode="login"            // or 'signup'
   signupUrl="https://talk2view.com/auth?signup"
   resetPasswordUrl="https://..."
@@ -777,8 +777,16 @@ Stored keys:
 - `talk2view_refresh_token`
 - `talk2view_user`
 - `talk2view_user_api_key`
+- `talk2view_is_anonymous`
 
-On logout, all keys are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
+On logout, all of these are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
+
+Logging out leaves the rest of what the SDK keeps in `localStorage`:
+
+- `talk2view_preferences` — Settings choices: model, voice model and language, font size.
+- `t2v_chat_conversations_v1:<partner key>` — the packaged chat's earlier conversations, one bucket per end-user. See [where conversations are kept](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md#conversations-are-kept-in-this-browser).
+- `t2v_user_skills` and `t2v_disabled_skills` — skills saved in the chat's Skills view or with `t2v.skills.save()`.
+- `t2v-launcher-size`, `t2v-launcher-opened` and `t2v-launcher-colourway` — the launcher's size, whether it has been opened, and the colourway a visitor picked.
 
 ### Security Considerations
 
