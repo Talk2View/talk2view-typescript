@@ -53,8 +53,9 @@ type RefreshResult = 'refreshed' | 'invalid' | 'transient';
 function assertPartnerKey(partnerKey: unknown): asserts partnerKey is string {
   if (typeof partnerKey !== 'string' || partnerKey.trim() === '') {
     throw new PartnerKeyError(
-      'No partner key. Pass `partnerKey` when creating the client — ' +
-        'get one at https://dashboard.talk2view.com.',
+      'No partner key. Pass `partnerKey` when creating the client. Talk2View is in ' +
+        'private beta — request a partner key at ' +
+        'https://talk2view.com/resources/contact?subject=partner-key (see https://docs.talk2view.com).',
       'partner_key_error',
       0,
     );
