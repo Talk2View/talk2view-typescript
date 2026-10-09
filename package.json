@@ -86,7 +86,7 @@
     "@pipecat-ai/small-webrtc-transport": "1.10.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.16",
     "lucide-react": "^1.8.0",
     "marked": "^15.0.0",
     "remark-gfm": "^4.0.1",
