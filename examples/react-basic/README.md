@@ -16,7 +16,7 @@ npm run dev
 
 ## What this demonstrates
 
-- `T2VProvider` wraps the app with SDK context
+- `<Talk2View>` (from `@talk2view/sdk/ui`) wraps the app with SDK context
 - `ChatPanel` provides the full chat UI (login, messages, input)
 - Client tools are defined with schemas and `execute` functions
 - Tool calls from the AI agent run locally in your app

@@ -1057,8 +1057,8 @@ The source is at
 [github.com/Talk2View/talk2view-typescript](https://github.com/Talk2View/talk2view-typescript).
 Bugs and feature requests go in
 [Issues](https://github.com/Talk2View/talk2view-typescript/issues); pull
-requests are welcome, and [CONTRIBUTING.md](CONTRIBUTING.md) says how the repo
-is laid out and what a reviewer looks for.
+requests are welcome, and [CONTRIBUTING.md](CONTRIBUTING.md) says how to get
+set up and what a reviewer looks for.
 
 Security problems do **not** go in an issue — see
 [SECURITY.md](SECURITY.md).
