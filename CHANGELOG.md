@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.21.4] - 2026-10-09
+
+### Fixed
+
+- **Tool handlers attached with `t2v.tools.handle()` before `t2v.tools.register()` run.** Since 0.19.0, `register()` rebuilt its handler map from the definitions it was given, so a handler attached first was dropped whenever those definitions had no `execute`. That is the order the README's vanilla quick start, its "Option B" and `examples/vanilla-js` showed: copied as written, the tool call went unanswered and the reply came back empty, with no error. A tool that is still listed now keeps its handler. A definition's own `execute` still replaces it, and a tool left out of a later `register()` still loses its handler and permission. The README and the example now register first and attach handlers after, which works on every release.
+- **Signing out takes the conversation off the screen.** The client kept the conversation in memory across sign-ins, so the next person to sign in on the same page saw it, and their next message replayed it to the engine under their account. This affected `/ui`, `/react`, `/assistant-ui`, and `/chat` with `features.threadList: false`. The conversation now carries on only from a guest session, or from no session, into the account the end-user signs in to, so the visitor who typed before signing in and the guest who reached the limit keep theirs. It is dropped on any sign-out and whenever a signed-in account is replaced: its session ends, it signs out in another tab, or another account signs in. Dropping it clears the transcript, the history replayed to the engine, any pending approval and the "always allow" grants. In the packaged chat, an account's saved conversations stay with that account, and a guest's conversation no longer moves into the next account after a sign-out.
+- **A missing partner key points to the right place.** The error said to get a key at dashboard.talk2view.com, where partners cannot create one. It now says Talk2View is in private beta and links to the partner-key request form, https://talk2view.com/resources/contact?subject=partner-key, and to https://docs.talk2view.com.
+
+### Changed
+
+- **`engines.node` is `^22.14.0 || ^24.0.0 || >=26.0.0`.** That is the range the runtime dependencies declare: `@daily-co/daily-js` 0.90.0 (voice) needs 22.14 or newer, and `nanoid` 6, under `@assistant-ui/react`, declares `^22 || ^24 || >=26`. It was `>=20.19`, where npm already warned `EBADENGINE` about those dependencies.
+- **`dompurify` is `^3.4.16`**, which clears the two advisories `npm audit` reported against earlier versions. Both concern DOMPurify's `IN_PLACE` mode, which the SDK does not use.
+- **The documentation says what is true.** Partner keys are requested while Talk2View is in private beta; each partner has one public `pk_live_` key, and rotation goes through Talk2View. Guest sessions start only where guest access is on for the key. CORS does not protect the key or end-users, because the engine allows any origin; the end-user's sign-in token protects their data. A new "What loads at runtime" section lists what each entry point fetches, including the Daily call engine that voice loads from `c.daily.co` and the CSP that needs. `docs/chat.md` says where the packaged chat keeps conversations and what signing out leaves behind. New sections state the intended use (Talk2View is not a medical device; keep PHI out of the SDK) and the supported environments. `ARCHITECTURE.md`, which described components that do not exist, is gone, and `bugs` and `homepage` now point at the issue tracker and the docs.
+
+### Added
+
+- **The packaged chat shows the Terms of Use and Privacy Policy on sign-in and sign-up.** "By continuing, you agree to Talk2View’s Terms of Use and Privacy Policy." sits under the heading, above Apple, Google and email, and its links open in a new tab. New `termsUrl` and `privacyUrl` props on `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>` choose where the links go; they default to https://talk2view.com/legal/terms-of-use and https://talk2view.com/legal/privacy-policy.
+
 ## [0.21.3] - 2026-09-29
 
 ### Changed
