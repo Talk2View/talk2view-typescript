@@ -7,23 +7,27 @@
  *
  * const t2v = new Talk2View({ partnerKey: 'pk_live_abc123' });
  *
- * // No login needed — chat() auto-starts an anonymous demo session.
- * // After the demo limit, listen for the prompt to sign up:
+ * // Nobody signed in? Where your partner key allows guests, chat() starts a
+ * // guest (anonymous) session by itself. Where it does not, nothing is sent
+ * // and the client says so — show your sign-in instead:
+ * t2v.on('anonymousUnavailable', () => showSignIn());
+ * // After the guest limit, listen for the prompt to sign up:
  * t2v.on('demoLimitReached', () => showSignupPrompt());
- * // Convert the demo into a real account (history is preserved). The
+ * // Convert the guest into a real account (history is preserved). The
  * // anonymous session stays live until the emailed confirmation link is
  * // clicked — check `confirmationRequired` to prompt the user to check email:
  * const { confirmationRequired } = await t2v.auth.signup('user@example.com', 'password');
  *
- * t2v.tools.handle('create_shape', async (args) => {
- *   return JSON.stringify(await myApp.createShape(args));
- * });
- *
+ * // Register the tools, then attach their handlers.
  * await t2v.tools.register([{
  *   name: 'create_shape',
  *   description: 'Create a 3D shape',
  *   parameters: { type: 'object', properties: { ... }, required: [...] },
  * }]);
+ *
+ * t2v.tools.handle('create_shape', async (args) => {
+ *   return JSON.stringify(await myApp.createShape(args));
+ * });
  *
  * for await (const event of t2v.chat('Make a red cylinder')) {
  *   if (event.type === 'text') console.log(event.content);

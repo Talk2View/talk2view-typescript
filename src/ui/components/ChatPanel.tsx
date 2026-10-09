@@ -16,7 +16,11 @@ const FONT_SCALE: Record<string, number> = { small: 0.75, medium: 0.875, large: 
 export interface ChatPanelProps {
   welcome?: { heading?: string; suggestions?: string[] };
   signupUrl?: string;
-  /** Allow logged-out visitors to use the chat via an anonymous demo session. */
+  /**
+   * Let logged-out visitors chat as guests (default true). That needs a partner
+   * key that allows guests: where the engine refuses, the sign-in form shows
+   * instead. false always asks visitors to sign in first.
+   */
   allowAnonymous?: boolean;
   /** URL of a password-reset page. When set, the login form shows a
    *  "Forgot password?" link to it. */

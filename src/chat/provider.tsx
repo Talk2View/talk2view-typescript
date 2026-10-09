@@ -68,8 +68,10 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
   systemPrompt?: string;
   welcome?: Talk2ViewChatWelcome;
   /**
-   * Logged-out visitors chat as guests (default true). false → sign-in first:
-   * the Account view replaces the thread, and no guest session is started.
+   * Logged-out visitors chat as guests where the partner key allows guests
+   * (default true); where the engine refuses, the Account view asks them to
+   * sign in. false → sign-in first: the Account view replaces the thread, and
+   * no guest session is started.
    */
   allowAnonymous?: boolean;
   features?: Talk2ViewChatFeatures;

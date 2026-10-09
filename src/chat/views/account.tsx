@@ -5,8 +5,9 @@
  * sign out. It is the same engine auth the SDK's other surfaces use
  * (`client.auth`), so an account made in one Talk2View app works in all of them.
  *
- * A visitor starts as a guest. Creating an account from a guest session converts
- * it in place — same end-user, so the conversation so far is kept.
+ * A visitor starts as a guest where the partner key allows guests. Creating an
+ * account from a guest session converts it in place — same end-user, so the
+ * conversation so far is kept.
  *
  * Ported from the website's assistant modal. Two things are different here: the
  * client comes from the chat's own context rather than the site's, and the
