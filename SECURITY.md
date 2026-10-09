@@ -4,12 +4,11 @@
 
 Please do not open a public issue for a security problem.
 
-Report it through
-[talk2view.com/resources/contact](https://talk2view.com/resources/contact), or
-privately on GitHub through **Security → Report a vulnerability** on this
-repository. Tell us what you found, how to reproduce it, and what an attacker
-could do with it. We will confirm receipt, tell you what we intend to do, and
-credit you when it is fixed unless you would rather we did not.
+Report it privately through the contact form at
+[talk2view.com/resources/contact](https://talk2view.com/resources/contact).
+Tell us what you found, how to reproduce it, and what an attacker could do with
+it. We will confirm receipt, tell you what we intend to do, and credit you when
+it is fixed unless you would rather we did not.
 
 ## What this package is, and what it is not
 
