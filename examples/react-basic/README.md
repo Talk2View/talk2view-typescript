@@ -4,7 +4,8 @@ Minimal example showing how to integrate Talk2View into a React application.
 
 ## Setup
 
-1. Get your partner key from the Talk2View dashboard
+1. Get a partner key. Talk2View is in private beta:
+   [request one](https://talk2view.com/resources/contact?subject=partner-key)
 2. Update `src/App.tsx` with your `partnerKey`
 3. Run:
 

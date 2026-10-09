@@ -20,8 +20,9 @@ data behind them.
 
 ## Environment variables
 
-- `VITE_T2V_PARTNER_KEY` — your partner key from the Talk2View dashboard.
-  Defaults to `pk_test_example` if unset.
+- `VITE_T2V_PARTNER_KEY` — your partner key. Talk2View is in private beta:
+  [request one](https://talk2view.com/resources/contact?subject=partner-key).
+  Unset, the example uses a placeholder key that the engine will not accept.
 - `VITE_T2V_BASE_URL` — override the engine URL (e.g. to point at a staging
   engine). Omit it to use the SDK's default.
 

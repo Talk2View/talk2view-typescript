@@ -8,10 +8,11 @@ Add AI-powered natural language control to any application. Talk2View's SDK hand
 npm install @talk2view/sdk
 ```
 
-You need a partner key. Create one at
-**[dashboard.talk2view.com](https://dashboard.talk2view.com)** — a `pk_test_…`
-for development and a `pk_live_…` for production. Keys are public identifiers,
-safe to ship in a browser bundle; see [Partner Keys](#partner-keys).
+You need a partner key. Talk2View is in private beta:
+**[request a partner key](https://talk2view.com/resources/contact?subject=partner-key)**.
+You get one key, `pk_live_…`, a public identifier that is safe to ship in a
+browser bundle; see [Partner Keys](#partner-keys) and the docs at
+[docs.talk2view.com](https://docs.talk2view.com).
 
 ## Chat UI
 
@@ -169,19 +170,15 @@ directly. Use `Talk2View`.
 
 ### Partner Keys
 
-Every request requires a partner API key (`X-T2V-Partner-Key` header). Keys are scoped to your application:
+Every request requires a partner API key (`X-T2V-Partner-Key` header). The SDK attaches this header automatically.
 
-- `pk_test_...` — test keys for development
-- `pk_live_...` — production keys
+Each partner gets one key, `pk_live_…`, scoped to your application. Talk2View is in private beta: [request a partner key](https://talk2view.com/resources/contact?subject=partner-key).
 
-The SDK attaches this header automatically.
-
-**Partner keys are public identifiers**, not secrets. They identify your application but do not grant access to user data — every data-accessing request also requires a user JWT. It is safe to include partner keys in client-side bundles.
+**Partner keys are public identifiers**, not secrets. They identify your application but do not grant access to user data — every data-accessing request also requires a user JWT. It is safe to include partner keys in client-side bundles, and there is no secret key to keep on a server.
 
 Best practices:
-- Inject keys via environment variables at build time (e.g. `VITE_T2V_PARTNER_KEY`)
-- Use separate `pk_test_` and `pk_live_` keys for development and production
-- To rotate a key, generate a new one at [dashboard.talk2view.com](https://dashboard.talk2view.com), update your app, then deactivate the old key
+- Inject the key via an environment variable at build time (e.g. `VITE_T2V_PARTNER_KEY`)
+- There is no self-serve key creation or rotation. To rotate your key, [contact Talk2View](https://talk2view.com/resources/contact). Rotation issues a new key and retires the old one at the same moment, with no overlap, so plan the switch with us
 
 ### Two-Tier Authentication
 
