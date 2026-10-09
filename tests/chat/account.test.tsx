@@ -232,6 +232,10 @@ describe('the Account view', () => {
     expect(authState.signup).toHaveBeenCalledWith('new@example.com', 'longenough');
     expect(await screen.findByRole('heading', { name: /check your email/i })).toBeTruthy();
     expect(screen.getByText('new@example.com')).toBeTruthy();
+    // Conversations are kept in this browser, not in the account, so nothing
+    // "moves to" the account when it is confirmed.
+    expect(screen.getByText(/this conversation carries on after you confirm/i)).toBeTruthy();
+    expect(screen.queryByText(/moves to your account/i)).toBeNull();
   });
 
   it('offers only the sign-in websites the engine allows, and none while it is still asking', async () => {

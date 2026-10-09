@@ -218,8 +218,7 @@ function SignInForm({
         <h2 className="text-base font-medium">Check your email</h2>
         <p className="text-muted-foreground leading-relaxed">
           We sent a confirmation link to <span className="text-foreground">{confirmSentTo}</span>.
-          You can keep chatting in the meantime — this conversation moves to your account once you
-          confirm.
+          You can keep chatting in the meantime, and this conversation carries on after you confirm.
         </p>
         <button type="button" className={secondaryClass} onClick={onSignedIn}>
           Back to the chat
