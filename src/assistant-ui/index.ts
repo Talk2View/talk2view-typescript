@@ -185,10 +185,12 @@ export function useTalk2ViewRuntimeForClient(
       registered.current = { t2v, key: schemaKey };
       t2v.tools.register(schemas).catch(() => {});
     }
-    // Handlers AFTER register(): it rebuilds the handler map from what it is
-    // given, and these schemas carry no `execute`, so handlers added first were
-    // wiped. StrictMode's second effect run hid that in development; a
-    // production build runs once, and every tool answered "Unknown tool".
+    // Handlers AFTER register(). These schemas carry no `execute`, and
+    // register() used to rebuild the handler map from what it was given, so
+    // handlers added first were wiped. StrictMode's second effect run hid that
+    // in development; a production build runs once, and every tool answered
+    // "Unknown tool". register() keeps a listed tool's handler now, and this
+    // order is right either way.
     // Re-added on every run, so a new `execute` closure always takes effect.
     for (const tool of tools ?? []) {
       if ('execute' in tool && tool.execute) t2v.tools.handle(tool.name, tool.execute);

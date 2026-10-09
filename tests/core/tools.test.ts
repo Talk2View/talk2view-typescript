@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Talk2View } from '../../src/index';
 import { T2VTools } from '../../src/tools';
 import type { T2VClient } from '../../src/client';
-import type { ClientTool } from '../../src/types';
+import type { ClientTool, ClientToolSchema } from '../../src/types';
 
 function makeFakeClient(tools: ClientTool[]) {
   return {
@@ -386,5 +387,177 @@ describe('T2VTools permission checking', () => {
     const body = JSON.parse((fakeClient.request as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
     // The schema sent to server should not include permission
     expect(body.tools[0]).not.toHaveProperty('permission');
+  });
+});
+
+describe('handlers and register()', () => {
+  const schema = (name: string, extra: Partial<ClientToolSchema> = {}): ClientToolSchema => ({
+    name,
+    description: `The ${name} tool`,
+    parameters: { type: 'object', properties: {} },
+    ...extra,
+  });
+
+  it('keeps a handler attached with handle() before register(), as the README does it', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    const handler = vi.fn().mockResolvedValue('10:00');
+
+    tools.handle('get_time', handler);
+    await tools.register([schema('get_time')]);
+
+    expect(tools.hasHandler('get_time')).toBe(true);
+    await expect(tools.executeToolCall('get_time', {})).resolves.toEqual({ result: '10:00', isError: false });
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('applies the permission the definition gives to a handler attached before it', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    tools.handle('delete_all', async () => 'done');
+    await tools.register([schema('delete_all', { permission: true })]);
+
+    expect(tools.hasHandler('delete_all')).toBe(true);
+    await expect(tools.checkPermission('delete_all', {})).resolves.toEqual({ action: 'require_approval' });
+  });
+
+  it('still works the other way round: register() first, then handle()', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    await tools.register([schema('get_time')]);
+    tools.handle('get_time', async () => '11:00');
+
+    expect(tools.hasHandler('get_time')).toBe(true);
+    await expect(tools.executeToolCall('get_time', {})).resolves.toEqual({ result: '11:00', isError: false });
+  });
+
+  it('lets a definition’s own execute replace a handler attached earlier', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    const older = vi.fn().mockResolvedValue('older');
+    tools.handle('get_time', older);
+    await tools.register([{ ...schema('get_time'), execute: async () => 'newer' }]);
+
+    await expect(tools.executeToolCall('get_time', {})).resolves.toEqual({ result: 'newer', isError: false });
+    expect(older).not.toHaveBeenCalled();
+  });
+
+  it('drops the handler and the permission of a tool the next register() leaves out', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    tools.handle('get_time', async () => '10:00');
+    await tools.register([
+      schema('get_time'),
+      { ...schema('wipe', { permission: true }), execute: async () => 'wiped' },
+    ]);
+    expect(tools.hasHandler('wipe')).toBe(true);
+
+    await tools.register([schema('get_time')]);
+
+    // A withdrawn tool must not stay runnable: with no schema left, nothing
+    // would validate its arguments either.
+    expect(tools.hasHandler('wipe')).toBe(false);
+    await expect(tools.executeToolCall('wipe', {})).resolves.toMatchObject({ isError: true });
+    await expect(tools.checkPermission('wipe', {})).resolves.toEqual({ action: 'allow' });
+    expect(tools.hasHandler('get_time')).toBe(true);
+  });
+
+  it('keeps every handler when the same schemas are registered again', async () => {
+    const tools = new T2VTools(makeFakeClient([]));
+    tools.handle('get_time', async () => '10:00');
+    tools.handle('get_date', async () => '9 October');
+    const schemas = [schema('get_time'), schema('get_date')];
+
+    await tools.register(schemas);
+    await tools.register(schemas);
+
+    await expect(tools.executeToolCall('get_time', {})).resolves.toEqual({ result: '10:00', isError: false });
+    await expect(tools.executeToolCall('get_date', {})).resolves.toEqual({ result: '9 October', isError: false });
+    expect(tools.getRegistered().map((s) => s.name)).toEqual(['get_time', 'get_date']);
+  });
+});
+
+describe('the README quick start, end to end', () => {
+  /** A JSON answer, shaped like the parts of a Response the client reads. */
+  const json = (body: unknown) =>
+    ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+
+  /** An SSE answer: one `data:` line per chunk. */
+  function sse(...chunks: object[]): Response {
+    const text = chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
+    return new Response(text, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
+
+  const chunk = (extra: object) => ({
+    id: 'c',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'm',
+    thread_id: 'th_1',
+    ...extra,
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it('runs a tool attached with handle() before register(), and posts its result to /resume', async () => {
+    const sent: Array<{ path: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const path = new URL(url).pathname;
+        sent.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        switch (path) {
+          case '/v1/auth/login':
+            return json({
+              access_token: 'a',
+              refresh_token: 'r',
+              token_type: 'bearer',
+              expires_in: 3600,
+              user: { id: 'u1', email: 'user@example.com' },
+            });
+          case '/v1/tools/register':
+            return json({ registered: ['get_time'], count: 1 });
+          case '/v1/sessions':
+            return json({ session_id: 's1', thread_id: 'th_1', model: 'm' });
+          case '/v1/sessions/s1/messages':
+            return sse(
+              chunk({
+                choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+                interrupt: { type: 'tool_call', tool_name: 'get_time', tool_call_id: 'call_1', arguments: {} },
+              }),
+            );
+          case '/v1/sessions/s1/resume':
+            return sse(
+              chunk({ choices: [{ index: 0, delta: { content: 'It is 10:00.' }, finish_reason: null }] }),
+              chunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }),
+            );
+          default:
+            throw new Error(`unexpected request to ${path}`);
+        }
+      }),
+    );
+
+    // The README's vanilla quick start, step for step.
+    const t2v = new Talk2View({ partnerKey: 'pk_live_x', baseUrl: 'https://engine.test' });
+    await t2v.auth.login('user@example.com', 'password');
+    t2v.tools.handle('get_time', async () => '2026-10-09T10:00:00.000Z');
+    await t2v.tools.register([
+      {
+        name: 'get_time',
+        description: 'Get the current time',
+        parameters: { type: 'object', properties: {} },
+      },
+    ]);
+
+    let reply = '';
+    for await (const event of t2v.chat('What time is it?')) {
+      if (event.type === 'text') reply += event.content;
+    }
+
+    const resume = sent.find((r) => r.path === '/v1/sessions/s1/resume');
+    expect(resume?.body).toEqual({
+      tool_call_id: 'call_1',
+      result: '2026-10-09T10:00:00.000Z',
+      is_error: false,
+    });
+    expect(reply).toBe('It is 10:00.');
   });
 });

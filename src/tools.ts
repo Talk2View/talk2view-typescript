@@ -125,7 +125,8 @@ export class T2VTools {
    * Register tool schemas with the backend and store handlers.
    *
    * Accepts either ClientToolSchema[] (with separate .handle() calls)
-   * or ClientTool[] (with inline execute functions).
+   * or ClientTool[] (with inline execute functions). A handler attached with
+   * .handle() works whichever way round the two calls come.
    */
   async register(tools: (ClientToolSchema | ClientTool)[]): Promise<RegisterToolsResponse> {
     const schemasToRegister: ClientToolSchema[] = [];
@@ -142,24 +143,34 @@ export class T2VTools {
       };
       schemasToRegister.push(schema);
 
-      // If tool has an inline execute function, register as handler
+      // A definition's own execute is its handler. One without keeps the
+      // handler already held for that name — from .handle(), or from an earlier
+      // register() — because attaching handlers with .handle() BEFORE
+      // registering the schemas is how the README shows it. Dropping them left
+      // hasHandler() false, so the call was handed back unanswered: nothing was
+      // posted to /resume and the reply came back empty.
       if ('execute' in tool && typeof tool.execute === 'function') {
         nextHandlers.set(tool.name, tool.execute);
+      } else if (!nextHandlers.has(tool.name)) {
+        const held = this.handlers.get(tool.name);
+        if (held) nextHandlers.set(tool.name, held);
       }
 
-      // Track permission config
+      // Track permission config. Only a definition sets one (.handle() takes
+      // none), so it always comes from what is being registered now.
       if (tool.permission !== undefined && tool.permission !== false) {
         nextPermissions.set(tool.name, tool.permission);
       }
     }
 
-    // Rebuilt, not merged. `schemas` is replaced wholesale, so a tool dropped
-    // from a later register() disappears from what the engine may call — but
-    // its handler and its permission used to survive in these maps, leaving it
-    // executable through `hasHandler`, and with no schema left, validateArgs
-    // waves any arguments through. The engine validates too, so this was
-    // defence in depth rather than a live hole; it is still a withdrawn tool
-    // that could run.
+    // Rebuilt from the tools listed, not merged. `schemas` is replaced
+    // wholesale, so a tool dropped from a later register() disappears from what
+    // the engine may call — and its handler and its permission go with it. They
+    // used to survive in these maps, leaving it executable through `hasHandler`,
+    // and with no schema left, validateArgs waves any arguments through. The
+    // engine validates too, so this was defence in depth rather than a live
+    // hole; it is still a withdrawn tool that could run. A tool that is still
+    // listed keeps its handler (above).
     this.handlers = nextHandlers;
     this.permissions = nextPermissions;
     this.schemas = schemasToRegister;
