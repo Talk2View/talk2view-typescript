@@ -21,7 +21,8 @@
  *   sees their own conversations and an empty chat, never the last person's.
  *   The one exception is a visitor who started typing before anything
  *   authenticated: their conversation moves across with them when the guest
- *   session appears, because it was theirs all along.
+ *   session appears, because it was theirs all along. Signing out moves
+ *   nothing, a guest's included.
  * - **A guest becoming an account** — nothing moves. Converting keeps the same
  *   user id, so the conversations are already in the right bucket.
  */
@@ -163,6 +164,11 @@ export function useConversations(
     if (!enabled) return;
     const sync = () => {
       const s = store.current!;
+      // Somebody else is signing in, or nobody is any more, and the client hears
+      // it first: it empties the conversation of an account that has gone
+      // before the identity handler below runs. Copied in here, that empty
+      // client would overwrite what the last person is about to keep.
+      if (identityKey(client.auth.getUser?.()?.id) !== s.identity) return;
       const current = s.conversations.find((c) => c.id === s.currentId);
       if (!current) return;
       const snapshot = client.exportConversation();
@@ -208,10 +214,12 @@ export function useConversations(
       //
       // It has to be a conversation they started here, in this page's life: one
       // read back out of a guest bucket may be the last visitor's, and it must
-      // not walk into somebody else's account. And it never crosses from one
-      // account to another, where the two are simply different people.
+      // not walk into somebody else's account. It never crosses from one
+      // account to another, where the two are simply different people. And
+      // signing out ends a conversation rather than handing it to whoever is
+      // next — the client has already let go of it.
       const carried =
-        s.guest && s.fresh.has(s.currentId)
+        s.guest && s.fresh.has(s.currentId) && client.auth.signingOut !== true
           ? s.conversations.find((c) => c.id === s.currentId)
           : undefined;
 

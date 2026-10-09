@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { T2VAuth } from '../../src/auth';
 import { T2VClient } from '../../src/client';
+import { Talk2View } from '../../src/index';
 import * as storage from '../../src/storage';
+import { ACCESS_TOKEN_STORAGE_KEY } from '../../src/storage';
+import type { ChatEvent } from '../../src/types';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -67,5 +70,57 @@ describe('T2VAuth.signingOut', () => {
     seen.length = 0;
     window.dispatchEvent(new Event('talk2view_auth_cleared'));
     expect(seen).toEqual([false]);
+  });
+});
+
+describe('signing out, through the real auth layer', () => {
+  const json = (body: unknown) =>
+    ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+
+  async function signedInWithAConversation(): Promise<Talk2View> {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path === '/v1/auth/login') {
+          return json({
+            access_token: 'a',
+            refresh_token: 'r',
+            token_type: 'bearer',
+            expires_in: 3600,
+            user: { id: 'u1', email: 'a@example.com' },
+          });
+        }
+        if (path === '/v1/auth/logout') return new Response(null, { status: 204 });
+        throw new Error(`unexpected request to ${path}`);
+      }),
+    );
+    const t2v = new Talk2View({ partnerKey: 'pk_test_123', baseUrl: 'https://engine.test' });
+    await t2v.auth.login('a@example.com', 'password');
+    vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'text', content: 'A private answer' };
+        yield { type: 'done', threadId: 'th_1' };
+      })()) as never);
+    await t2v.sendMessage('A private question');
+    expect(t2v.messages).toHaveLength(2);
+    return t2v;
+  }
+
+  it('leaves no conversation behind for the next person', async () => {
+    const t2v = await signedInWithAConversation();
+    await t2v.auth.logout();
+    expect(t2v.messages).toEqual([]);
+    expect(t2v.exportConversation()).toEqual({ messages: [], history: [], threadId: null });
+    t2v.destroy();
+  });
+
+  it('leaves none behind when the sign-out happened in another tab', async () => {
+    const t2v = await signedInWithAConversation();
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    window.dispatchEvent(new StorageEvent('storage', { key: ACCESS_TOKEN_STORAGE_KEY, newValue: null }));
+    expect(t2v.messages).toEqual([]);
+    t2v.destroy();
+    localStorage.clear();
   });
 });

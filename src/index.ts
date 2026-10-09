@@ -116,6 +116,12 @@ export class Talk2View {
   private currentSession: T2VSession | null = null;
   /** The signed-in user id the current session belongs to, to detect identity changes. */
   private _authUserId: string | null = null;
+  /**
+   * Whether that id was a guest's when it arrived. Recorded then, because by
+   * the time the next identity reaches us `auth.isAnonymous()` describes the
+   * new one, not the one leaving.
+   */
+  private _authAnonymous = false;
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
@@ -177,6 +183,7 @@ export class Talk2View {
     // time, so an initial auth event that merely re-announces the same user does
     // not spuriously reset a healthy session (dropping its thread mid-task).
     this._authUserId = this.auth.getUser?.()?.id ?? null;
+    this._authAnonymous = this._authUserId !== null && this.auth.isAnonymous?.() === true;
 
     // Auth state changes (login, logout, anonymous start, user switch) drop the
     // auth-scoped config cache so a stale partner config never leaks across users.
@@ -191,10 +198,19 @@ export class Talk2View {
       if (userId !== this._authUserId) {
         this._warmUp = null; // a different end-user has a different key
         const previousId = this._authUserId;
+        // Whose conversation is on screen, decided before anything below moves.
+        // It follows the end-user out of a guest session or out of no session
+        // into the account they sign in to — the visitor who typed first, the
+        // guest who hit the limit — and nowhere else. An account's conversation
+        // never goes on to whoever is next, and signing out ends it.
+        const forget =
+          previousId !== null && (this.auth.signingOut === true || !this._authAnonymous);
         this._authUserId = userId;
         this.endVoiceCallForIdentityChange(previousId, userId);
         this.resetSessionForIdentityChange();
+        if (forget) this.forgetConversation();
       }
+      this._authAnonymous = userId !== null && this.auth.isAnonymous?.() === true;
     });
   }
 
@@ -748,8 +764,8 @@ export class Talk2View {
    * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
    * this does NOT delete the old session on the server: it belongs to the previous
    * identity (we no longer hold its token), and the retention sweep reclaims it.
-   * Messages/history are kept so the UI isn't wiped and an interrupted task can be
-   * resumed in the new session.
+   * Messages/history are left alone here, so a guest's interrupted task can be
+   * resumed in the new session; {@link forgetConversation} is the other half.
    */
   private resetSessionForIdentityChange(): void {
     const hadSession = this.currentSession !== null;
@@ -760,6 +776,30 @@ export class Talk2View {
         listener();
       }
     }
+  }
+
+  /**
+   * Take the conversation on screen away when the end-user it belongs to has
+   * gone: signed out, or an account replaced by someone else. Kept, it was the
+   * next person's to read, and to carry on — the transcript is replayed with
+   * every message, so it would have gone to the engine under their account.
+   *
+   * Everything that belongs to the conversation goes, as in
+   * {@link restoreConversation}, including a reply still arriving, which must
+   * not finish writing into the empty chat. The engine session is the identity
+   * change's to drop (above), and is not deleted: it is not ours any more.
+   */
+  private forgetConversation(): void {
+    this.endCurrentTurn();
+    this.setMessages([]);
+    this._conversationHistory = [];
+    this.setLoading(false);
+    this.setError(null);
+    this.setPendingApproval(null);
+    this.setAgentStatus(null);
+    this._lastUserMessage = null;
+    this._lastUserAttachments = null;
+    this.setAlwaysAllowed(new Set());
   }
 
   /**
