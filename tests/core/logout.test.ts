@@ -3,7 +3,7 @@ import { T2VAuth } from '../../src/auth';
 import { T2VClient } from '../../src/client';
 import { Talk2View } from '../../src/index';
 import * as storage from '../../src/storage';
-import { ACCESS_TOKEN_STORAGE_KEY } from '../../src/storage';
+import { ACCESS_TOKEN_STORAGE_KEY, USER_STORAGE_KEY } from '../../src/storage';
 import type { ChatEvent } from '../../src/types';
 
 afterEach(() => {
@@ -120,6 +120,31 @@ describe('signing out, through the real auth layer', () => {
     localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     window.dispatchEvent(new StorageEvent('storage', { key: ACCESS_TOKEN_STORAGE_KEY, newValue: null }));
     expect(t2v.messages).toEqual([]);
+    t2v.destroy();
+    localStorage.clear();
+  });
+
+  it('leaves none behind when another tab signs a different account in over it', async () => {
+    const t2v = await signedInWithAConversation();
+    const before = localStorage.getItem(USER_STORAGE_KEY);
+
+    // The other tab signs in as somebody else without signing out first: every
+    // key is overwritten, none removed, so the access token never goes null.
+    const other = JSON.stringify({ id: 'u2', email: 'b@example.com' });
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'b');
+    localStorage.setItem(USER_STORAGE_KEY, other);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: ACCESS_TOKEN_STORAGE_KEY, oldValue: 'a', newValue: 'b' }),
+    );
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: USER_STORAGE_KEY, oldValue: before, newValue: other }),
+    );
+
+    // This tab now sends with the second account's token, so the first
+    // account's conversation must not be on screen to be carried on.
+    expect(t2v.messages).toEqual([]);
+    expect(t2v.exportConversation()).toEqual({ messages: [], history: [], threadId: null });
+    expect(t2v.error).toBeNull();
     t2v.destroy();
     localStorage.clear();
   });

@@ -11,6 +11,13 @@ const PREFIX = 'talk2view_';
  */
 export const ACCESS_TOKEN_STORAGE_KEY = `${PREFIX}access_token`;
 
+/**
+ * Fully-qualified localStorage key for the signed-in end-user. Written only when
+ * somebody signs in (a token refresh leaves it alone), so a change to it in
+ * another tab is how this one hears that someone else is signed in now.
+ */
+export const USER_STORAGE_KEY = `${PREFIX}user`;
+
 const memoryStorage: Record<string, string> = {};
 
 function isLocalStorageAvailable(): boolean {
