@@ -63,6 +63,13 @@ half-typed message.
 
 The views are Account, Skills, Settings and Chats.
 
+**Account** signs the end-user in to their Talk2View account, or creates one,
+with email and password, or with Apple or Google where those are available.
+Both forms carry a consent line under the heading, above every way in: "By
+continuing, you agree to Talk2View’s Terms of Use and Privacy Policy." The two
+links open in a new tab. `termsUrl` and `privacyUrl` change where they point;
+the wording stays the same. Someone already signed in does not see it.
+
 **Chats** lists the end-user's earlier conversations. They are kept in the
 browser, not in the account — see
 [Conversations are kept in this browser](#conversations-are-kept-in-this-browser).
@@ -125,6 +132,8 @@ take directly.
 | `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled — see [voice.md](voice.md). |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
+| `termsUrl` | `'https://talk2view.com/legal/terms-of-use'` | Where the consent line's "Terms of Use" link goes. An empty string means the default. |
+| `privacyUrl` | `'https://talk2view.com/legal/privacy-policy'` | Where the consent line's "Privacy Policy" link goes. An empty string means the default. |
 | `footer` | none | A short line under the composer — your terms, a disclaimer. |
 | `describeToolActivity` | none | `(name, args) => string \| null`. What a running tool is doing, in your words. |
 | `isToolDestructive` | none | `(name, args) => boolean`. Warn before this call. |
