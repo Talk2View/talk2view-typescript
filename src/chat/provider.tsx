@@ -81,12 +81,16 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
   resetPasswordUrl?: string;
   /**
    * The Terms of Use linked from the consent line on sign-in and sign-up.
-   * Default: https://talk2view.com/legal/terms-of-use.
+   * Default: https://talk2view.com/legal/terms-of-use. The accounts are
+   * Talk2View accounts and the line names "Talk2View’s Terms of Use", so point
+   * it only at another copy of Talk2View's own terms, such as a translation —
+   * never at your own, which belong in `footer`.
    */
   termsUrl?: string;
   /**
    * The Privacy Policy linked from the consent line on sign-in and sign-up.
-   * Default: https://talk2view.com/legal/privacy-policy.
+   * Default: https://talk2view.com/legal/privacy-policy. Like `termsUrl`, it
+   * must lead to Talk2View's own policy, which the line names.
    */
   privacyUrl?: string;
   /** A short line under the composer, e.g. terms. */

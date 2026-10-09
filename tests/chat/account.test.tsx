@@ -324,7 +324,7 @@ describe('the consent line', () => {
     );
   });
 
-  it('takes the integrator’s own addresses', async () => {
+  it('links wherever the integrator points it, such as a translated copy', async () => {
     render(
       <Talk2ViewChat
         partnerKey="pk_test_x"

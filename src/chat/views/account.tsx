@@ -13,9 +13,10 @@
  * client comes from the chat's own context rather than the site's, and the
  * "Forgot it?" link points at whatever page the integrator named, or is left out.
  *
- * Signing in and creating an account both carry a consent line linking the
- * Terms of Use and the Privacy Policy — Talk2View's own unless the integrator
- * names others (`termsUrl`, `privacyUrl`).
+ * Signing in and creating an account both carry a consent line linking
+ * Talk2View's Terms of Use and Privacy Policy. `termsUrl` and `privacyUrl` can
+ * point the links at another copy of those documents; the line names Talk2View
+ * either way, because the accounts are Talk2View's.
  */
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import type { PopupProvider, Talk2View } from '../../index.js';
@@ -35,7 +36,7 @@ const appleClass =
 const secondaryClass =
   'border-input bg-background text-foreground hover:bg-foreground/[0.04] focus-visible:ring-ring flex h-10 w-full items-center justify-center gap-2.5 border text-sm font-medium outline-none focus-visible:ring-2 disabled:opacity-60';
 
-/** Talk2View's own, linked from the consent line unless the integrator names others. */
+/** Talk2View's own, linked from the consent line unless the integrator names another copy. */
 const TERMS_URL = 'https://talk2view.com/legal/terms-of-use';
 const PRIVACY_URL = 'https://talk2view.com/legal/privacy-policy';
 
