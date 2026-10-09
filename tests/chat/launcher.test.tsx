@@ -486,6 +486,27 @@ describe('the panel itself', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Account' })).toBeTruthy();
   });
+
+  it('passes the integrator’s terms and privacy addresses through to sign-in', async () => {
+    await mount(
+      <Talk2ViewChatLauncher
+        partnerKey="pk_test_x"
+        termsUrl="https://example.com/terms"
+        privacyUrl="https://example.com/privacy"
+      />,
+    );
+    await openPanel();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+    });
+    const account = await waitFor(() => {
+      const view = document.querySelector<HTMLElement>('.t2v-chat-account');
+      if (!view) throw new Error('the Account view did not open');
+      return view;
+    });
+    expect(account.querySelector('a[href="https://example.com/terms"]')?.textContent).toBe('Terms of Use');
+    expect(account.querySelector('a[href="https://example.com/privacy"]')?.textContent).toBe('Privacy Policy');
+  });
 });
 
 /* The launcher's own rules are checked against the BUILT stylesheet, in

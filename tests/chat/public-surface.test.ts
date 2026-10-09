@@ -48,6 +48,8 @@ const CHAT_PROPS = [
   'features',
   'fontFamily',
   'resetPasswordUrl',
+  'termsUrl',
+  'privacyUrl',
   'footer',
   'describeToolActivity',
   'isToolDestructive',

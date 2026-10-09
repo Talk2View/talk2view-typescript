@@ -77,6 +77,16 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
   fontFamily?: string;
   /** Where "Forgot it?" sends people. Default: none (the link is left out). */
   resetPasswordUrl?: string;
+  /**
+   * The Terms of Use linked from the consent line on sign-in and sign-up.
+   * Default: https://talk2view.com/legal/terms-of-use.
+   */
+  termsUrl?: string;
+  /**
+   * The Privacy Policy linked from the consent line on sign-in and sign-up.
+   * Default: https://talk2view.com/legal/privacy-policy.
+   */
+  privacyUrl?: string;
   /** A short line under the composer, e.g. terms. */
   footer?: ReactNode;
   /**
@@ -99,6 +109,8 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
 export interface Talk2ViewChatBehaviour {
   allowAnonymous: boolean;
   resetPasswordUrl?: string | undefined;
+  termsUrl?: string | undefined;
+  privacyUrl?: string | undefined;
   describeToolActivity?: Talk2ViewChatProps['describeToolActivity'];
   isToolDestructive?: Talk2ViewChatProps['isToolDestructive'];
   destructiveWarning?: Talk2ViewChatProps['destructiveWarning'];
@@ -195,6 +207,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     features: givenFeatures,
     allowAnonymous = true,
     resetPasswordUrl,
+    termsUrl,
+    privacyUrl,
     describeToolActivity,
     isToolDestructive,
     destructiveWarning,
@@ -341,6 +355,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   behaviour.current = {
     allowAnonymous,
     resetPasswordUrl,
+    termsUrl,
+    privacyUrl,
     describeToolActivity,
     isToolDestructive,
     destructiveWarning,

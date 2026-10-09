@@ -11,6 +11,10 @@
  * Ported from the website's assistant modal. Two things are different here: the
  * client comes from the chat's own context rather than the site's, and the
  * "Forgot it?" link points at whatever page the integrator named, or is left out.
+ *
+ * Signing in and creating an account both carry a consent line linking the
+ * Terms of Use and the Privacy Policy — Talk2View's own unless the integrator
+ * names others (`termsUrl`, `privacyUrl`).
  */
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import type { PopupProvider, Talk2View } from '../../index.js';
@@ -29,6 +33,10 @@ const appleClass =
   'focus-visible:ring-primary flex h-10 w-full items-center justify-center gap-2.5 bg-black text-sm font-medium text-white outline-none hover:bg-black/85 focus-visible:ring-2 disabled:opacity-60';
 const secondaryClass =
   'border-input bg-background text-foreground hover:bg-foreground/[0.04] focus-visible:ring-ring flex h-10 w-full items-center justify-center gap-2.5 border text-sm font-medium outline-none focus-visible:ring-2 disabled:opacity-60';
+
+/** Talk2View's own, linked from the consent line unless the integrator names others. */
+const TERMS_URL = 'https://talk2view.com/legal/terms-of-use';
+const PRIVACY_URL = 'https://talk2view.com/legal/privacy-policy';
 
 export function AccountView({
   reason,
@@ -63,6 +71,9 @@ export function AccountView({
           guest={account.status === 'guest'}
           reason={reason}
           resetPasswordUrl={behaviour.current.resetPasswordUrl}
+          // An empty string is a mistake, not a request to link nowhere.
+          termsUrl={behaviour.current.termsUrl || TERMS_URL}
+          privacyUrl={behaviour.current.privacyUrl || PRIVACY_URL}
           onSignedIn={onSignedIn}
         />
       )}
@@ -101,12 +112,16 @@ function SignInForm({
   guest,
   reason,
   resetPasswordUrl,
+  termsUrl,
+  privacyUrl,
   onSignedIn,
 }: {
   client: Talk2View;
   guest: boolean;
   reason: AccountReason;
   resetPasswordUrl: string | undefined;
+  termsUrl: string;
+  privacyUrl: string;
   onSignedIn: () => void;
 }) {
   // Someone who ran out of guest allowance needs an account, not a password.
@@ -214,6 +229,32 @@ function SignInForm({
               : 'You’re chatting as a guest. Signing in starts a fresh chat under your account.'}
         </p>
       </div>
+
+      {/* Above every way in, on sign-in and sign-up alike: Continue with Apple
+          and Continue with Google can create an account too, and a line under
+          the form can sit below the fold of a small panel. Like "Forgot it?",
+          the pages open beside the chat rather than navigating the host away. */}
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        By continuing, you agree to Talk2View’s{' '}
+        <a
+          href={termsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-foreground underline"
+        >
+          Terms of Use
+        </a>{' '}
+        and{' '}
+        <a
+          href={privacyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-foreground underline"
+        >
+          Privacy Policy
+        </a>
+        .
+      </p>
 
       {apple || google ? (
         <>
