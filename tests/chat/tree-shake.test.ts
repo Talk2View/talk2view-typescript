@@ -30,15 +30,15 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Measured on 2026-09-24 with code splitting, up-front chunks only, after the
-// voice agent landed behind a lazy facade (controller + Pipecat are lazy
-// chunks) and the final-review fixes (facade `expire()` + safe emit).
-// Previously 9.35 / 39.93 / 361.77 KB gzip (2026-09-18, b0c74b0 + Task 7, no
-// splitting).
+// Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only.
+// These are the numbers the README and docs/chat.md quote; change them together.
+// Previously 11.14 / 40.25 / 372.38 KB gzip (2026-09-24, after the voice agent
+// landed behind a lazy facade), and before that 9.35 / 39.93 / 361.77
+// (2026-09-18, no splitting).
 const MEASURED = {
-  core: { raw: 35.6, gzip: 11.14 },
-  ui: { raw: 123.2, gzip: 40.25 },
-  chat: { raw: 1194.8, gzip: 372.38 },
+  core: { raw: 37.1, gzip: 11.51 },
+  ui: { raw: 124.4, gzip: 40.94 },
+  chat: { raw: 1197.8, gzip: 373.32 },
 };
 
 /**

@@ -5,12 +5,18 @@
  * sign out. It is the same engine auth the SDK's other surfaces use
  * (`client.auth`), so an account made in one Talk2View app works in all of them.
  *
- * A visitor starts as a guest. Creating an account from a guest session converts
- * it in place — same end-user, so the conversation so far is kept.
+ * A visitor starts as a guest where the partner key allows guests. Creating an
+ * account from a guest session converts it in place — same end-user, so the
+ * conversation so far is kept.
  *
  * Ported from the website's assistant modal. Two things are different here: the
  * client comes from the chat's own context rather than the site's, and the
  * "Forgot it?" link points at whatever page the integrator named, or is left out.
+ *
+ * Signing in and creating an account both carry a consent line linking
+ * Talk2View's Terms of Use and Privacy Policy. `termsUrl` and `privacyUrl` can
+ * point the links at another copy of those documents; the line names Talk2View
+ * either way, because the accounts are Talk2View's.
  */
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import type { PopupProvider, Talk2View } from '../../index.js';
@@ -30,6 +36,10 @@ const appleClass =
 const secondaryClass =
   'border-input bg-background text-foreground hover:bg-foreground/[0.04] focus-visible:ring-ring flex h-10 w-full items-center justify-center gap-2.5 border text-sm font-medium outline-none focus-visible:ring-2 disabled:opacity-60';
 
+/** Talk2View's own, linked from the consent line unless the integrator names another copy. */
+const TERMS_URL = 'https://talk2view.com/legal/terms-of-use';
+const PRIVACY_URL = 'https://talk2view.com/legal/privacy-policy';
+
 export function AccountView({
   reason,
   onSignedIn,
@@ -37,7 +47,7 @@ export function AccountView({
   reason: AccountReason;
   onSignedIn: () => void;
 }) {
-  const { client, behaviour } = useChatContext();
+  const { client, behaviour, features } = useChatContext();
   const account = useAccount(client);
 
   // A rejected partner key stops the app for everyone, so this is neither a
@@ -56,13 +66,16 @@ export function AccountView({
   return (
     <div className="t2v-chat-account aui-modal-account bg-popover absolute inset-0 flex flex-col gap-5 overflow-y-auto p-4 text-sm">
       {account.status === 'signed-in' ? (
-        <SignedIn client={client} user={account.user!} />
+        <SignedIn client={client} user={account.user!} keepsConversations={features.threadList} />
       ) : (
         <SignInForm
           client={client}
           guest={account.status === 'guest'}
           reason={reason}
           resetPasswordUrl={behaviour.current.resetPasswordUrl}
+          // An empty string is a mistake, not a request to link nowhere.
+          termsUrl={behaviour.current.termsUrl || TERMS_URL}
+          privacyUrl={behaviour.current.privacyUrl || PRIVACY_URL}
           onSignedIn={onSignedIn}
         />
       )}
@@ -70,7 +83,16 @@ export function AccountView({
   );
 }
 
-function SignedIn({ client, user }: { client: Talk2View; user: User }) {
+function SignedIn({
+  client,
+  user,
+  keepsConversations,
+}: {
+  client: Talk2View;
+  user: User;
+  /** The thread list is on, so earlier conversations are kept — in this browser. */
+  keepsConversations: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   return (
     <>
@@ -78,8 +100,15 @@ function SignedIn({ client, user }: { client: Talk2View; user: User }) {
         <p className="text-muted-foreground text-xs">Signed in as</p>
         <p className="truncate text-base font-medium">{user.email}</p>
       </div>
+      {/* The account is Talk2View's and goes everywhere; the conversations do
+          not. They are kept in this browser's storage, under this account, and
+          the engine has no way to list or fetch them, so they never follow
+          anyone to another browser or device. With the thread list off they are
+          not kept at all. */}
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Your conversations are saved to this account, and it works in every Talk2View app.
+        {keepsConversations
+          ? 'This account works in every Talk2View app. Your conversations are kept in this browser, not in the account.'
+          : 'This account works in every Talk2View app.'}
       </p>
       <button
         type="button"
@@ -101,12 +130,16 @@ function SignInForm({
   guest,
   reason,
   resetPasswordUrl,
+  termsUrl,
+  privacyUrl,
   onSignedIn,
 }: {
   client: Talk2View;
   guest: boolean;
   reason: AccountReason;
   resetPasswordUrl: string | undefined;
+  termsUrl: string;
+  privacyUrl: string;
   onSignedIn: () => void;
 }) {
   // Someone who ran out of guest allowance needs an account, not a password.
@@ -185,8 +218,7 @@ function SignInForm({
         <h2 className="text-base font-medium">Check your email</h2>
         <p className="text-muted-foreground leading-relaxed">
           We sent a confirmation link to <span className="text-foreground">{confirmSentTo}</span>.
-          You can keep chatting in the meantime — this conversation moves to your account once you
-          confirm.
+          You can keep chatting in the meantime, and this conversation carries on after you confirm.
         </p>
         <button type="button" className={secondaryClass} onClick={onSignedIn}>
           Back to the chat
@@ -214,6 +246,32 @@ function SignInForm({
               : 'You’re chatting as a guest. Signing in starts a fresh chat under your account.'}
         </p>
       </div>
+
+      {/* Above every way in, on sign-in and sign-up alike: Continue with Apple
+          and Continue with Google can create an account too, and a line under
+          the form can sit below the fold of a small panel. Like "Forgot it?",
+          the pages open beside the chat rather than navigating the host away. */}
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        By continuing, you agree to Talk2View’s{' '}
+        <a
+          href={termsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-foreground underline"
+        >
+          Terms of Use
+        </a>{' '}
+        and{' '}
+        <a
+          href={privacyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-foreground underline"
+        >
+          Privacy Policy
+        </a>
+        .
+      </p>
 
       {apple || google ? (
         <>

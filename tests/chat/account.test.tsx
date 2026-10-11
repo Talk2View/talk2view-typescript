@@ -199,6 +199,25 @@ describe('the Account view', () => {
     await waitFor(() => expect(form().getByRole('heading', { name: 'Sign in' })).toBeTruthy());
   });
 
+  it('says the account goes to every app but the conversations stay in this browser', async () => {
+    authState.user = { id: 'u1', email: 'someone@example.com' };
+    const listed = render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    expect(
+      await form().findByText(
+        'This account works in every Talk2View app. Your conversations are kept in this browser, not in the account.',
+      ),
+    ).toBeTruthy();
+    expect(accountView()!.textContent).not.toMatch(/saved to this account/i);
+    listed.unmount();
+
+    // With the thread list off nothing is kept, so there is nothing to say about it.
+    render(<Talk2ViewChat partnerKey="pk_test_x" features={{ threadList: false }} />);
+    await openAccount();
+    expect(await form().findByText('This account works in every Talk2View app.')).toBeTruthy();
+    expect(accountView()!.textContent).not.toMatch(/conversations/i);
+  });
+
   it('asks a new account to check its email', async () => {
     authState.signup.mockResolvedValue({ confirmationRequired: true });
     render(<Talk2ViewChat partnerKey="pk_test_x" />);
@@ -213,6 +232,10 @@ describe('the Account view', () => {
     expect(authState.signup).toHaveBeenCalledWith('new@example.com', 'longenough');
     expect(await screen.findByRole('heading', { name: /check your email/i })).toBeTruthy();
     expect(screen.getByText('new@example.com')).toBeTruthy();
+    // Conversations are kept in this browser, not in the account, so nothing
+    // "moves to" the account when it is confirmed.
+    expect(screen.getByText(/this conversation carries on after you confirm/i)).toBeTruthy();
+    expect(screen.queryByText(/moves to your account/i)).toBeNull();
   });
 
   it('offers only the sign-in websites the engine allows, and none while it is still asking', async () => {
@@ -266,6 +289,126 @@ describe('the Account view', () => {
     render(<Talk2ViewChat partnerKey="pk_test_x" features={{ account: false }} />);
     await screen.findByRole('heading', { name: /how can i help/i });
     expect(screen.queryByRole('button', { name: 'Account' })).toBeNull();
+  });
+});
+
+describe('the consent line', () => {
+  /** The line itself: the paragraph that holds the Terms of Use link. */
+  const consent = () => form().getByRole('link', { name: 'Terms of Use' }).closest('p')!;
+
+  async function switchMode(to: RegExp) {
+    await act(async () => {
+      fireEvent.click(form().getByRole('button', { name: to }));
+    });
+  }
+
+  it('is on sign-in and on sign-up, because both make or open an account', async () => {
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    expect(form().getByRole('heading', { name: 'Sign in' })).toBeTruthy();
+    expect(consent().textContent).toBe(
+      'By continuing, you agree to Talk2View’s Terms of Use and Privacy Policy.',
+    );
+
+    await switchMode(/create an account/i);
+    expect(form().getByRole('heading', { name: 'Create your account' })).toBeTruthy();
+    expect(consent().textContent).toBe(
+      'By continuing, you agree to Talk2View’s Terms of Use and Privacy Policy.',
+    );
+  });
+
+  it('links to Talk2View’s own Terms of Use and Privacy Policy by default', async () => {
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    expect(form().getByRole('link', { name: 'Terms of Use' }).getAttribute('href')).toBe(
+      'https://talk2view.com/legal/terms-of-use',
+    );
+    expect(form().getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe(
+      'https://talk2view.com/legal/privacy-policy',
+    );
+  });
+
+  it('links wherever the integrator points it, such as a translated copy', async () => {
+    render(
+      <Talk2ViewChat
+        partnerKey="pk_test_x"
+        termsUrl="https://example.com/terms"
+        privacyUrl="https://example.com/privacy"
+      />,
+    );
+    await openAccount();
+    expect(form().getByRole('link', { name: 'Terms of Use' }).getAttribute('href')).toBe(
+      'https://example.com/terms',
+    );
+    expect(form().getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe(
+      'https://example.com/privacy',
+    );
+  });
+
+  it('falls back to the defaults for an empty address rather than linking nowhere', async () => {
+    render(<Talk2ViewChat partnerKey="pk_test_x" termsUrl="" privacyUrl="" />);
+    await openAccount();
+    expect(form().getByRole('link', { name: 'Terms of Use' }).getAttribute('href')).toBe(
+      'https://talk2view.com/legal/terms-of-use',
+    );
+    expect(form().getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe(
+      'https://talk2view.com/legal/privacy-policy',
+    );
+  });
+
+  it('opens both in a new tab that cannot reach back into the host', async () => {
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    for (const name of ['Terms of Use', 'Privacy Policy']) {
+      const link = form().getByRole('link', { name });
+      expect(link.getAttribute('target')).toBe('_blank');
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    }
+  });
+
+  it('comes before Apple and Google, which can create an account too', async () => {
+    authState.getPopupProviders.mockResolvedValue(['apple', 'google']);
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    const apple = await screen.findByRole('button', { name: /continue with apple/i });
+    const google = screen.getByRole('button', { name: /continue with google/i });
+    const line = consent();
+    expect(line.compareDocumentPosition(apple) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // And before the email form, so one line covers every way in.
+    expect(
+      line.compareDocumentPosition(form().getByLabelText('Email')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('is shown to a guest who has run out of allowance, on the sign-up they are sent to', async () => {
+    const t2v = client();
+    setIsAnonymous(true);
+    authState.set({ id: 'anon', email: '' }, true);
+    vi.spyOn(t2v, 'chat' as never).mockImplementation((() =>
+      (async function* () {
+        yield { type: 'error', errorType: 'budget_exceeded', message: 'out of credit' } as ChatEvent;
+      })()) as never);
+
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await act(async () => {
+      await t2v.sendMessage('hi');
+    });
+
+    await waitFor(() => expect(accountView()).toBeTruthy());
+    expect(form().getByRole('heading', { name: /create your account/i })).toBeTruthy();
+    expect(form().getByRole('link', { name: 'Terms of Use' })).toBeTruthy();
+    expect(form().getByRole('link', { name: 'Privacy Policy' })).toBeTruthy();
+    setIsAnonymous(false);
+  });
+
+  it('is not shown once someone is signed in: there is nothing to agree to', async () => {
+    authState.user = { id: 'u1', email: 'someone@example.com' };
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    await openAccount();
+    expect(await screen.findByText('someone@example.com')).toBeTruthy();
+    expect(form().queryByRole('link', { name: 'Terms of Use' })).toBeNull();
   });
 });
 

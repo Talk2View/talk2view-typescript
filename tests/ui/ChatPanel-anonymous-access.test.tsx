@@ -24,7 +24,8 @@ vi.mock('../../src/react/usePartnerConfig', () => ({
 }));
 vi.mock('../../src/ui/components/ChatHeader', () => ({ ChatHeader: () => null }));
 vi.mock('../../src/ui/components/LoginForm', () => ({
-  LoginForm: () => React.createElement('div', { 'data-testid': 'login-form' }),
+  LoginForm: ({ subheading }: { subheading?: string }) =>
+    React.createElement('div', { 'data-testid': 'login-form' }, subheading),
 }));
 vi.mock('../../src/ui/components/Composer', () => ({ Composer: () => null }));
 vi.mock('../../src/ui/components/WelcomeScreen', () => ({ WelcomeScreen: () => null }));
@@ -53,5 +54,16 @@ describe('ChatPanel when anonymous sign-in is refused', () => {
     t2vState = { ...t2vState, anonymousUnavailable: true };
     const { getByTestId } = render(React.createElement(ChatPanel, {}));
     expect(getByTestId('login-form')).toBeTruthy();
+  });
+});
+
+describe('ChatPanel when a guest reaches the demo limit', () => {
+  it('asks for an account without claiming the conversation is saved anywhere', () => {
+    t2vState = { ...t2vState, isAuthenticated: true, isAnonymous: true, demoLimitReached: true };
+    const { getByTestId } = render(React.createElement(ChatPanel, {}));
+    // Nothing is saved: the conversation is in memory, and carries on once they sign in.
+    expect(getByTestId('login-form').textContent).toBe(
+      'Create an account to keep chatting — this conversation carries on.',
+    );
   });
 });

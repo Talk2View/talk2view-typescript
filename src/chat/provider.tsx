@@ -68,8 +68,10 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
   systemPrompt?: string;
   welcome?: Talk2ViewChatWelcome;
   /**
-   * Logged-out visitors chat as guests (default true). false → sign-in first:
-   * the Account view replaces the thread, and no guest session is started.
+   * Logged-out visitors chat as guests where the partner key allows guests
+   * (default true); where the engine refuses, the Account view asks them to
+   * sign in. false → sign-in first: the Account view replaces the thread, and
+   * no guest session is started.
    */
   allowAnonymous?: boolean;
   features?: Talk2ViewChatFeatures;
@@ -77,6 +79,20 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
   fontFamily?: string;
   /** Where "Forgot it?" sends people. Default: none (the link is left out). */
   resetPasswordUrl?: string;
+  /**
+   * The Terms of Use linked from the consent line on sign-in and sign-up.
+   * Default: https://talk2view.com/legal/terms-of-use. The accounts are
+   * Talk2View accounts and the line names "Talk2View’s Terms of Use", so point
+   * it only at another copy of Talk2View's own terms, such as a translation —
+   * never at your own, which belong in `footer`.
+   */
+  termsUrl?: string;
+  /**
+   * The Privacy Policy linked from the consent line on sign-in and sign-up.
+   * Default: https://talk2view.com/legal/privacy-policy. Like `termsUrl`, it
+   * must lead to Talk2View's own policy, which the line names.
+   */
+  privacyUrl?: string;
   /** A short line under the composer, e.g. terms. */
   footer?: ReactNode;
   /**
@@ -99,6 +115,8 @@ export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
 export interface Talk2ViewChatBehaviour {
   allowAnonymous: boolean;
   resetPasswordUrl?: string | undefined;
+  termsUrl?: string | undefined;
+  privacyUrl?: string | undefined;
   describeToolActivity?: Talk2ViewChatProps['describeToolActivity'];
   isToolDestructive?: Talk2ViewChatProps['isToolDestructive'];
   destructiveWarning?: Talk2ViewChatProps['destructiveWarning'];
@@ -195,6 +213,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     features: givenFeatures,
     allowAnonymous = true,
     resetPasswordUrl,
+    termsUrl,
+    privacyUrl,
     describeToolActivity,
     isToolDestructive,
     destructiveWarning,
@@ -341,6 +361,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   behaviour.current = {
     allowAnonymous,
     resetPasswordUrl,
+    termsUrl,
+    privacyUrl,
     describeToolActivity,
     isToolDestructive,
     destructiveWarning,

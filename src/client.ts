@@ -6,6 +6,7 @@ import {
   AuthenticationError,
   NetworkError,
   PartnerKeyError,
+  SESSION_EXPIRED_MESSAGE,
   T2VError,
   errorForType,
 } from './errors.js';
@@ -53,8 +54,9 @@ type RefreshResult = 'refreshed' | 'invalid' | 'transient';
 function assertPartnerKey(partnerKey: unknown): asserts partnerKey is string {
   if (typeof partnerKey !== 'string' || partnerKey.trim() === '') {
     throw new PartnerKeyError(
-      'No partner key. Pass `partnerKey` when creating the client — ' +
-        'get one at https://dashboard.talk2view.com.',
+      'No partner key. Pass `partnerKey` when creating the client. Talk2View is in ' +
+        'private beta — request a partner key at ' +
+        'https://talk2view.com/resources/contact?subject=partner-key (see https://docs.talk2view.com).',
       'partner_key_error',
       0,
     );
@@ -218,7 +220,7 @@ export class T2VClient {
       if (result === 'invalid') {
         // The refresh token is genuinely dead — this is a real logout.
         clearAuth();
-        throw new AuthenticationError('Session expired. Please log in again.');
+        throw new AuthenticationError(SESSION_EXPIRED_MESSAGE);
       }
       // transient: the session is still valid, we just couldn't refresh right
       // now. Surface a retryable error WITHOUT clearing auth.

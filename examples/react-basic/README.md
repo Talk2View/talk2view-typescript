@@ -4,7 +4,8 @@ Minimal example showing how to integrate Talk2View into a React application.
 
 ## Setup
 
-1. Get your partner key from the Talk2View dashboard
+1. Get a partner key. Talk2View is in private beta:
+   [request one](https://talk2view.com/resources/contact?subject=partner-key)
 2. Update `src/App.tsx` with your `partnerKey`
 3. Run:
 
@@ -15,7 +16,7 @@ npm run dev
 
 ## What this demonstrates
 
-- `T2VProvider` wraps the app with SDK context
+- `<Talk2View>` (from `@talk2view/sdk/ui`) wraps the app with SDK context
 - `ChatPanel` provides the full chat UI (login, messages, input)
 - Client tools are defined with schemas and `execute` functions
 - Tool calls from the AI agent run locally in your app

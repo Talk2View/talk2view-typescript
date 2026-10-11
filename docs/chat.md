@@ -13,6 +13,14 @@ import '@talk2view/sdk/chat.css';
 A runnable version of everything below, in a Vite app with no Tailwind, is in
 [`examples/react-chat`](../examples/react-chat).
 
+Talk2View is not a medical device and is not for diagnosis or treatment. Do not
+let the chat carry protected health information (PHI) or any other data that
+can identify a patient: what end-users type, attach or say, and what your tools
+return, goes to third-party AI providers, and Talk2View has no safeguard that
+detects, redacts or blocks it. The
+[Terms of Use](https://talk2view.com/legal/terms-of-use) and the
+[Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in full.
+
 ---
 
 ## Contents
@@ -55,14 +63,31 @@ half-typed message.
 
 The views are Account, Skills, Settings and Chats.
 
+**Account** signs the end-user in to their Talk2View account, or creates one,
+with email and password, or with Apple or Google where those are available.
+Both forms carry a consent line under the heading, above every way in: "By
+continuing, you agree to Talk2View’s Terms of Use and Privacy Policy." The two
+links open in a new tab. `termsUrl` and `privacyUrl` change where they point,
+for another copy of Talk2View's own documents such as a translation. The
+wording stays the same, because the accounts are Talk2View's: never point them
+at your own terms, which belong in `footer`. Someone already signed in does not
+see it.
+
+**Chats** lists the end-user's earlier conversations. They are kept in the
+browser, not in the account — see
+[Conversations are kept in this browser](#conversations-are-kept-in-this-browser).
+
 **Skills** is the end-user's own knowledge: markdown they write once — a
 protocol, a house style, the way their team names things — that the agent can
-load when it helps. They are kept on that device and sent with that person's
-chats, where they merge with the partner's and the built-in skills and win over
-both. A skill can be switched off without deleting it, and a `.md` file can be
-imported, taking its `name` and `description` from frontmatter when it has any.
-Turn the view off with `features={{ skills: false }}`; the underlying
-`client.skills` API stays available either way.
+load when it helps. They are kept in the browser, not in the account, and sent
+with the chats made from it, where they merge with the partner's and the
+built-in skills and win over both. They belong to the browser rather than to
+anyone in it: signing out leaves them, and on a shared browser whoever signs in
+next sees them in Skills and sends them with their own chats. A skill can be
+switched off without deleting it, and a `.md` file can be imported, taking its
+`name` and `description` from frontmatter when it has any. Turn the view off
+with `features={{ skills: false }}`; the underlying `client.skills` API stays
+available either way.
 
 ### `<Talk2ViewChatLauncher>`
 
@@ -108,10 +133,12 @@ take directly.
 | `tools` | none | Your client tools. They run in your app. |
 | `systemPrompt` | none | Your own instructions, sent with every message. Changing it does not restart the conversation. |
 | `welcome` | `{}` | `heading` and `suggestions` on the empty chat. Clicking a suggestion sends it. |
-| `allowAnonymous` | `true` | Logged-out visitors chat as guests. `false` shows sign-in first — **and see the note below**. |
+| `allowAnonymous` | `true` | Logged-out visitors chat as guests where your key allows it. `false` shows sign-in first — **see the [notes below](#guest-sessions-need-guest-access-on-your-key)**. |
 | `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled — see [voice.md](voice.md). |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
+| `termsUrl` | `'https://talk2view.com/legal/terms-of-use'` | Where the consent line's "Terms of Use" link goes: Talk2View's own terms, or another copy of them. Not yours — the line names Talk2View's, and yours go in `footer`. An empty string means the default. |
+| `privacyUrl` | `'https://talk2view.com/legal/privacy-policy'` | Where the consent line's "Privacy Policy" link goes: Talk2View's own policy, or another copy of it. An empty string means the default. |
 | `footer` | none | A short line under the composer — your terms, a disclaimer. |
 | `describeToolActivity` | none | `(name, args) => string \| null`. What a running tool is doing, in your words. |
 | `isToolDestructive` | none | `(name, args) => boolean`. Warn before this call. |
@@ -135,10 +162,21 @@ Launcher only:
 These are the things that surprise people. None of them is a bug; all of them
 have cost someone an afternoon.
 
+### Guest sessions need guest access on your key
+
+`allowAnonymous` lets the chat try; the engine decides. It starts a guest
+session only for a partner key with guest access switched on. That is off by
+default: switch it on under **Settings → Anonymous access** in the dashboard.
+Guest sign-in also needs a CAPTCHA check by default, and the chat sends none,
+so ask Talk2View to set your key up for guests as well. Talk2View sets the
+daily limit on new guests. When the engine refuses, or when a guest's allowance
+or your daily guest limit runs out, the chat opens Account and asks the visitor
+to sign in.
+
 ### `allowAnonymous: false` also stops guest sessions
 
 It is not only a screen. The gate is computed from whether anyone is signed in,
-and the client starts a guest session on demand — listing the models for
+and the client tries to start a guest session on demand — listing the models for
 Settings would be enough — which would sign the visitor in and open the gate
 from behind. So `allowAnonymous: false` also turns off `anonymousAutoStart`.
 
@@ -148,6 +186,30 @@ to), pass both explicitly:
 ```tsx
 <Talk2ViewChat partnerKey="…" allowAnonymous={false} anonymousAutoStart />
 ```
+
+### Conversations are kept in this browser
+
+With the thread list on (`features.threadList`, the default), the conversations
+in Chats are saved in the browser's `localStorage`: one entry per partner key
+(`t2v_chat_conversations_v1:<partner key>`), divided by end-user, so each
+account and each guest sees only their own. The engine has no API to list or
+fetch a past conversation, so they do not follow anyone to another browser,
+another device or another app. For each partner key the browser keeps up to 50
+conversations per end-user, fewer if they are long, for the eight end-users —
+guests included — who used it most recently.
+
+The conversation on screen goes when its account signs out, when that session
+ends, or when another account signs in. Signing out does not delete the saved
+ones: they stay in the browser and are listed again when the same account signs
+back in there. Only a conversation that a guest, or a visitor before any
+session, started on the page carries on into the account they then sign in to —
+never one from another account, and never past a sign-out.
+
+With the thread list off, nothing is saved: the conversation lives in memory,
+is lost on reload, and goes on the same sign-outs and account changes. When it
+goes because an account's session ended on its own — the sign-in expired, or
+the account signed out in another tab — the chat says "Session expired. Please
+log in again."
 
 ### A page with no font gets a serif chat
 
@@ -160,8 +222,8 @@ font on `body`, or pass one:
 <Talk2ViewChat partnerKey="…" fontFamily='"Space Grotesk", system-ui, sans-serif' />
 ```
 
-Nothing is fetched for it. The chat never loads a font, a stylesheet or a script
-from a third-party host, so whatever you name has to be available to the page.
+Nothing is fetched for it. The chat never loads a font or a stylesheet, so
+whatever you name has to be available to the page.
 
 ### `isToolDestructive` is your claim about your own tool
 
@@ -353,8 +415,17 @@ retires the label beside the mark.
 
 ## Content Security Policy, and hosts with no CSS loader
 
-The chat fetches nothing at runtime: no fonts, no CDN, no stylesheet, no script.
-A `connect-src` that allows your Talk2View engine is all it needs.
+Without voice, the chat fetches nothing at runtime but your Talk2View engine: no
+fonts, no CDN, no stylesheet, no script. A `connect-src` that allows the engine
+is all it needs, plus `blob:` in a strict `img-src` for the previews of files
+the end-user attaches.
+
+Voice needs more. A call downloads Daily's call engine from
+`https://c.daily.co` and runs it through `Function()`, so it needs
+`https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`, or no
+call starts — see [voice.md](voice.md#browser-requirements). If you would rather
+allow neither, `features={{ voice: false }}` keeps the microphone off the
+launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
 cannot — an Office add-in's webpack with no CSS rule, a strict `style-src` that
@@ -403,9 +474,9 @@ Stated plainly, because it is large.
 
 | | gzip |
 |---|---|
-| `@talk2view/sdk` (the core client) | 11.1 KB |
-| `@talk2view/sdk/ui` (the previous chat panel) | 40.3 KB |
-| **`@talk2view/sdk/chat`** | **372.4 KB** |
+| `@talk2view/sdk` (the core client) | 11.5 KB |
+| `@talk2view/sdk/ui` (the previous chat panel) | 40.9 KB |
+| **`@talk2view/sdk/chat`** | **373.3 KB** |
 | A whole page containing the chat and React | ~437 KB |
 
 The first three exclude React and React DOM, which your app already has. The

@@ -8,7 +8,7 @@
  *   <Talk2ViewChat partnerKey="pk_live_…" />
  *
  * Everything else in this file is the example's own page furniture: a route
- * switch, a dark toggle, and a report for the launcher to float over.
+ * switch, a dark toggle, and a made-up report for the launcher to float over.
  */
 import { useState } from 'react';
 import type { ClientTool } from '@talk2view/sdk';
@@ -64,6 +64,9 @@ function Report() {
     <main className="report">
       <h1>Northfield Imaging</h1>
       <p className="meta">Reporting workspace · Study 2026-0918-114</p>
+      <p className="fictional" role="note">
+        Fictional data. Never use real patient data.
+      </p>
 
       <h2>Findings</h2>
       <p data-highlightable>

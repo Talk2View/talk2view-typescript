@@ -7,23 +7,27 @@
  *
  * const t2v = new Talk2View({ partnerKey: 'pk_live_abc123' });
  *
- * // No login needed — chat() auto-starts an anonymous demo session.
- * // After the demo limit, listen for the prompt to sign up:
+ * // Nobody signed in? Where your partner key allows guests, chat() starts a
+ * // guest (anonymous) session by itself. Where it does not, nothing is sent
+ * // and the client says so — show your sign-in instead:
+ * t2v.on('anonymousUnavailable', () => showSignIn());
+ * // After the guest limit, listen for the prompt to sign up:
  * t2v.on('demoLimitReached', () => showSignupPrompt());
- * // Convert the demo into a real account (history is preserved). The
+ * // Convert the guest into a real account (history is preserved). The
  * // anonymous session stays live until the emailed confirmation link is
  * // clicked — check `confirmationRequired` to prompt the user to check email:
  * const { confirmationRequired } = await t2v.auth.signup('user@example.com', 'password');
  *
- * t2v.tools.handle('create_shape', async (args) => {
- *   return JSON.stringify(await myApp.createShape(args));
- * });
- *
+ * // Register the tools, then attach their handlers.
  * await t2v.tools.register([{
  *   name: 'create_shape',
  *   description: 'Create a 3D shape',
  *   parameters: { type: 'object', properties: { ... }, required: [...] },
  * }]);
+ *
+ * t2v.tools.handle('create_shape', async (args) => {
+ *   return JSON.stringify(await myApp.createShape(args));
+ * });
  *
  * for await (const event of t2v.chat('Make a red cylinder')) {
  *   if (event.type === 'text') console.log(event.content);
@@ -34,7 +38,7 @@
 import { T2VAuth } from './auth.js';
 import { T2VClient } from './client.js';
 import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
-import { T2VError } from './errors.js';
+import { SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
 import { TypedEventEmitter } from './event-emitter.js';
 import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
@@ -116,6 +120,12 @@ export class Talk2View {
   private currentSession: T2VSession | null = null;
   /** The signed-in user id the current session belongs to, to detect identity changes. */
   private _authUserId: string | null = null;
+  /**
+   * Whether that id was a guest's when it arrived. Recorded then, because by
+   * the time the next identity reaches us `auth.isAnonymous()` describes the
+   * new one, not the one leaving.
+   */
+  private _authAnonymous = false;
   private sessionClearListeners: Set<SessionClearCallback> = new Set();
   private sessionCreateListeners: Set<SessionCreateCallback> = new Set();
 
@@ -177,6 +187,7 @@ export class Talk2View {
     // time, so an initial auth event that merely re-announces the same user does
     // not spuriously reset a healthy session (dropping its thread mid-task).
     this._authUserId = this.auth.getUser?.()?.id ?? null;
+    this._authAnonymous = this._authUserId !== null && this.auth.isAnonymous?.() === true;
 
     // Auth state changes (login, logout, anonymous start, user switch) drop the
     // auth-scoped config cache so a stale partner config never leaks across users.
@@ -191,10 +202,30 @@ export class Talk2View {
       if (userId !== this._authUserId) {
         this._warmUp = null; // a different end-user has a different key
         const previousId = this._authUserId;
+        // Whose conversation is on screen, decided before anything below moves.
+        // It follows the end-user out of a guest session or out of no session
+        // into the account they sign in to — the visitor who typed first, the
+        // guest who hit the limit — and nowhere else. An account's conversation
+        // never goes on to whoever is next, and signing out ends it.
+        const forget =
+          previousId !== null && (this.auth.signingOut === true || !this._authAnonymous);
+        // An account's session that died on its own — a refresh token revoked
+        // or expired, a sign-out in another tab — empties the chat without the
+        // end-user doing anything. The request that found out cannot say so:
+        // its conversation has gone, so its error goes with it. Say it here,
+        // when there was something on screen to lose.
+        const expired =
+          forget &&
+          userId === null &&
+          this.auth.signingOut !== true &&
+          (this._messages.length > 0 || this._isLoading);
         this._authUserId = userId;
         this.endVoiceCallForIdentityChange(previousId, userId);
         this.resetSessionForIdentityChange();
+        if (forget) this.forgetConversation();
+        if (expired) this.setError(SESSION_EXPIRED_MESSAGE);
       }
+      this._authAnonymous = userId !== null && this.auth.isAnonymous?.() === true;
     });
   }
 
@@ -748,8 +779,8 @@ export class Talk2View {
    * chat() opens a fresh session owned by the new user. Unlike {@link clearSession}
    * this does NOT delete the old session on the server: it belongs to the previous
    * identity (we no longer hold its token), and the retention sweep reclaims it.
-   * Messages/history are kept so the UI isn't wiped and an interrupted task can be
-   * resumed in the new session.
+   * Messages/history are left alone here, so a guest's interrupted task can be
+   * resumed in the new session; {@link forgetConversation} is the other half.
    */
   private resetSessionForIdentityChange(): void {
     const hadSession = this.currentSession !== null;
@@ -760,6 +791,30 @@ export class Talk2View {
         listener();
       }
     }
+  }
+
+  /**
+   * Take the conversation on screen away when the end-user it belongs to has
+   * gone: signed out, or an account replaced by someone else. Kept, it was the
+   * next person's to read, and to carry on — the transcript is replayed with
+   * every message, so it would have gone to the engine under their account.
+   *
+   * Everything that belongs to the conversation goes, as in
+   * {@link restoreConversation}, including a reply still arriving, which must
+   * not finish writing into the empty chat. The engine session is the identity
+   * change's to drop (above), and is not deleted: it is not ours any more.
+   */
+  private forgetConversation(): void {
+    this.endCurrentTurn();
+    this.setMessages([]);
+    this._conversationHistory = [];
+    this.setLoading(false);
+    this.setError(null);
+    this.setPendingApproval(null);
+    this.setAgentStatus(null);
+    this._lastUserMessage = null;
+    this._lastUserAttachments = null;
+    this.setAlwaysAllowed(new Set());
   }
 
   /**

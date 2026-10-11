@@ -77,12 +77,22 @@ call ends with `'error'`), `auth_expired` (the sign-in expired; the call ends wi
 - **HTTPS.** Browsers only give microphone access on a secure page (localhost
   counts as secure).
 - **Microphone permission.** The browser asks on the first press. If the
-  end-user refuses, the call ends with a `mic_unavailable` error.
-- **WebRTC.** The call is a WebRTC connection to Talk2View's voice service. A
-  network that blocks WebRTC fails with `transport_error`.
+  end-user refuses, the call ends with a `mic_unavailable` error. Inside an
+  `<iframe>` from another origin, the iframe needs `allow="microphone"`.
+- **WebRTC.** The call is a WebRTC connection to Talk2View's voice service,
+  through the ICE servers the engine hands out for each call. A network that
+  blocks WebRTC fails with `transport_error`.
 - **Content-Security-Policy.** Your bundler puts the Pipecat client libraries
-  in a separate chunk that loads from your own origin on the first press. The
-  call then connects to the voice service URL returned by the engine, so
-  `connect-src` must allow that host as well as your engine.
+  in a separate chunk that loads from your own origin on the first press.
+  Starting a call, Pipecat's WebRTC transport has Daily's library
+  (`@daily-co/daily-js`) download its call engine from `https://c.daily.co`
+  and run it through `Function()`. So voice needs `https://c.daily.co` in
+  `connect-src` and `'unsafe-eval'` in `script-src`; without either, no call
+  starts. The call's offer then goes to the voice URL the engine returns,
+  which on Talk2View's hosted engine is the engine itself, so `connect-src`
+  must allow your engine too. If Daily's download fails, its library tries to
+  send an error report to Daily's own error tracking (Sentry); you can leave
+  that blocked.
 
-A chat-only integration never loads the Pipecat libraries.
+A chat-only integration never loads the Pipecat libraries or Daily's call
+engine.

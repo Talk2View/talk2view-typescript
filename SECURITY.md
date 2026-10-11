@@ -4,11 +4,11 @@
 
 Please do not open a public issue for a security problem.
 
-Report it through [talk2view.com/contact](https://talk2view.com/contact), or
-privately on GitHub through **Security → Report a vulnerability** on this
-repository. Tell us what you found, how to reproduce it, and what an attacker
-could do with it. We will confirm receipt, tell you what we intend to do, and
-credit you when it is fixed unless you would rather we did not.
+Report it privately through the contact form at
+[talk2view.com/resources/contact](https://talk2view.com/resources/contact).
+Tell us what you found, how to reproduce it, and what an attacker could do with
+it. We will confirm receipt, tell you what we intend to do, and credit you when
+it is fixed unless you would rather we did not.
 
 ## What this package is, and what it is not
 
@@ -27,6 +27,16 @@ browser refuses storage. Anything that lets a third party read it, replay it,
 or obtain one for somebody else is a vulnerability, and we want to hear about
 it. That includes the popup sign-in flow, cross-tab behaviour, and anything
 rendered from a model's reply.
+
+## Patient data
+
+Talk2View is not a medical device and is not for diagnosis or treatment. Do not
+send protected health information (PHI) or other patient-identifiable data
+through the SDK: what end-users send, and what a partner's tools return, goes to
+third-party AI providers, and Talk2View has no safeguard that detects, redacts
+or blocks it. The [Terms of Use](https://talk2view.com/legal/terms-of-use) and
+the [Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in
+full.
 
 ## Supported versions
 

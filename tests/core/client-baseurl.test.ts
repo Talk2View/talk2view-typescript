@@ -45,6 +45,20 @@ describe('the partner key', () => {
     );
   });
 
+  it('says where a key comes from while Talk2View is in private beta', () => {
+    let message = '';
+    try {
+      new T2VClient({ partnerKey: '' });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain('private beta');
+    expect(message).toContain('https://talk2view.com/resources/contact?subject=partner-key');
+    expect(message).toContain('https://docs.talk2view.com');
+    // Partners cannot create keys in the dashboard, so it must not send them there.
+    expect(message).not.toContain('dashboard.talk2view.com');
+  });
+
   it('refuses a secret pasted into the public field', () => {
     expect(() => new T2VClient({ partnerKey: 'sk_live_not_for_browsers' })).toThrow(
       /public identifiers rather than secrets/,

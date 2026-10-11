@@ -8,10 +8,26 @@ Add AI-powered natural language control to any application. Talk2View's SDK hand
 npm install @talk2view/sdk
 ```
 
-You need a partner key. Create one at
-**[dashboard.talk2view.com](https://dashboard.talk2view.com)** — a `pk_test_…`
-for development and a `pk_live_…` for production. Keys are public identifiers,
-safe to ship in a browser bundle; see [Partner Keys](#partner-keys).
+You need a partner key. Talk2View is in private beta:
+**[request a partner key](https://talk2view.com/resources/contact?subject=partner-key)**.
+You get one key, `pk_live_…`, a public identifier that is safe to ship in a
+browser bundle; see [Partner Keys](#partner-keys) and the docs at
+[docs.talk2view.com](https://docs.talk2view.com).
+
+## Intended use and data handling
+
+Talk2View is for education, research and general information. It is not a
+medical device: it is not regulated or approved as one, and it must not be used
+to diagnose or treat any condition or to make clinical decisions. Its answers
+come from AI models and can be wrong.
+
+Do not send protected health information (PHI), or any other data that can
+identify a patient, through the SDK. What end-users type, attach or say, and
+what your tools return, is passed to third-party AI providers, and Talk2View
+has no safeguard that detects, redacts or blocks such data.
+
+The [Terms of Use](https://talk2view.com/legal/terms-of-use) and the
+[Privacy Policy](https://talk2view.com/legal/privacy-policy) say this in full.
 
 ## Chat UI
 
@@ -27,8 +43,8 @@ import '@talk2view/sdk/chat.css';
 ```
 
 That is the full pane: sign-in, streaming replies, attachments, dictation,
-Settings, earlier conversations and tool approvals. Give it a parent with a
-height — it fills its box.
+Settings, earlier conversations (kept in the end-user's browser) and tool
+approvals. Give it a parent with a height — it fills its box.
 
 For a floating chat instead — a mark in the corner of the page, a popover on a
 desktop, a full-screen sheet on a phone:
@@ -41,16 +57,20 @@ import '@talk2view/sdk/chat.css';
 ```
 
 Theming is the custom properties on `.t2v-chat` (`--radius`, `--primary`, the
-rest); dark mode is `className="dark"`. The chat fetches nothing at runtime — no
-fonts, no CDN — and uses your page's font unless you pass `fontFamily`.
+rest); dark mode is `className="dark"`. The chat fetches nothing at runtime but
+your Talk2View engine — no fonts, no CDN — and uses your page's font unless you
+pass `fontFamily`. Voice is the exception; see
+[What loads at runtime](#what-loads-at-runtime).
 
-**It is large: 372.4 KB gzip, excluding React.** A consumer who never imports
+**It is large: 373.3 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
 
 **Voice.** For partners with the realtime voice agent enabled, the launcher
 shows a microphone beside the mark: press to talk, press again to hang up. The
 agent uses the same tools, permissions and approval card as the chat. Standalone
-it is `<VoiceButton client={t2v} />`; without a UI it is `t2v.voice`. See
+it is `<VoiceButton client={t2v} />`; without a UI it is `t2v.voice`. A call
+downloads Daily's call engine from `https://c.daily.co`, so a Content Security
+Policy has to allow it. See
 **[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
 
 Everything else — the full prop table, theming tokens, the launcher in a hostile
@@ -105,11 +125,11 @@ function App() {
 
 That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
 
-> `/ui` is smaller than the packaged chat (53.4 KB gzip against 362.7, plus
+> `/ui` is smaller than the packaged chat (40.9 KB gzip against 373.3, plus
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
-A logged-out visitor gets an anonymous demo session automatically, so there is nothing to wire up before the first reply. Pass `allowAnonymous={false}` to `<ChatPanel>` to ask people to sign in first.
+A logged-out visitor can chat as a guest, with no account, only where guest access is on for your partner key. It is off by default: switch it on under **Settings → Anonymous access** in the dashboard. Guest sign-in also needs a CAPTCHA check by default, which the SDK does not send, so ask Talk2View to set your key up for guests as well; Talk2View also sets your daily limit on new guests. Otherwise `<ChatPanel>` asks people to sign in. Pass `allowAnonymous={false}` to `<ChatPanel>` to always ask them to sign in first.
 
 ### Vanilla JavaScript
 
@@ -123,11 +143,7 @@ const t2v = new Talk2View({ partnerKey: 'pk_live_...' });
 // 1. Authenticate
 await t2v.auth.login('user@example.com', 'password');
 
-// 2. Register tools with handlers
-t2v.tools.handle('get_time', async () => {
-  return new Date().toISOString();
-});
-
+// 2. Register tools, then attach their handlers
 await t2v.tools.register([
   {
     name: 'get_time',
@@ -135,6 +151,10 @@ await t2v.tools.register([
     parameters: { type: 'object', properties: {} },
   },
 ]);
+
+t2v.tools.handle('get_time', async () => {
+  return new Date().toISOString();
+});
 
 // 3. Chat — tool calls are handled automatically
 let reply = '';
@@ -150,7 +170,8 @@ for await (const event of t2v.chat('What time is it?')) {
 
 This package follows semantic versioning, with one qualification that matters
 while it is below 1.0: a **minor** version may change behaviour, and a
-**patch** never changes the public surface. Breaking changes to exports or to
+**patch** never removes or changes anything in the public surface, though it
+may add to it — a new optional prop, say. Breaking changes to exports or to
 prop shapes are called out in [CHANGELOG.md](CHANGELOG.md) under the release
 that makes them.
 
@@ -165,23 +186,63 @@ anything.
 typed surface needs them, not because they are meant to be constructed
 directly. Use `Talk2View`.
 
+## Supported environments
+
+- **Node** `^22.14.0 || ^24.0.0 || >=26.0.0`, for builds, tests and server
+  rendering. That is the range the package's runtime dependencies declare;
+  outside it npm warns `EBADENGINE` on install.
+- **ES modules only.** There is no CommonJS build. Node's `require()` of ES
+  modules, on by default in the versions above, loads it too.
+- **React** 18 or 19, for `/react`, `/ui`, `/assistant-ui` and `/chat`. The
+  core client does not use React. The test suite runs on React 19.
+- **Browsers.** The packaged chat uses `dvh` units and the `inert` attribute,
+  so it needs at least Chrome or Edge 108, Safari 15.5 or Firefox 112. Part of
+  its styling also needs CSS nesting, `:has()` and media-query range syntax:
+  Chrome and Edge 112, Safari 16.5, Firefox 121. The package's own JavaScript
+  is ES2022, not transpiled further. Those versions come from the package's own
+  code and stylesheet; its dependencies were not measured, and the browser test
+  suites run in current Chromium only.
+- **Popup sign-in** (Google and Apple) works in a browser only: it opens a
+  window, so it throws in Node and during server rendering. It also needs an
+  `https://` website and never runs on `localhost`.
+
+## What loads at runtime
+
+What each entry point fetches once it is running, for your Content Security
+Policy. "The engine" is your `baseUrl`, `https://engine.talk2view.com` unless
+you set another.
+
+| Entry point | Fetches |
+|---|---|
+| `@talk2view/sdk` | The engine only. Popup sign-in opens a window on the engine, which hands over to Google or Apple. |
+| `/react`, `/assistant-ui` | The engine only. |
+| `/chat` | The engine only: no fonts, no CDN, no images (an image in a reply becomes a link). Previews of the files an end-user attaches are `blob:` URLs, so a strict `img-src` needs `blob:`. |
+| `/ui` (deprecated) | The engine, the IBM Plex fonts from Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) and the Talk2View logo from `db.talk2view.com`. Code highlighting compiles WebAssembly, which a strict CSP allows with `'wasm-unsafe-eval'`. |
+| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and Daily's call engine from `https://c.daily.co`, which runs through `Function()`. |
+
+So voice needs `https://c.daily.co` in `connect-src` and `'unsafe-eval'` in
+`script-src`. Without either, no call starts. If that download fails, Daily's
+library tries to send an error report to Daily's own error tracking (Sentry);
+you can leave that blocked. The Pipecat libraries voice runs on come from your
+own bundle, loaded on the first press, so a chat that never starts a call never
+loads them. The call's audio travels over WebRTC, through the ICE servers the
+engine hands out for each call.
+[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)
+has the rest.
+
 ## Concepts
 
 ### Partner Keys
 
-Every request requires a partner API key (`X-T2V-Partner-Key` header). Keys are scoped to your application:
+Every request requires a partner API key (`X-T2V-Partner-Key` header). The SDK attaches this header automatically.
 
-- `pk_test_...` — test keys for development
-- `pk_live_...` — production keys
+Each partner gets one key, `pk_live_…`, scoped to your application. Talk2View is in private beta: [request a partner key](https://talk2view.com/resources/contact?subject=partner-key).
 
-The SDK attaches this header automatically.
-
-**Partner keys are public identifiers**, not secrets. They identify your application but do not grant access to user data — every data-accessing request also requires a user JWT. It is safe to include partner keys in client-side bundles.
+**Partner keys are public identifiers**, not secrets. They identify your application but do not grant access to user data — every data-accessing request also requires a user JWT. It is safe to include partner keys in client-side bundles, and there is no secret key to keep on a server.
 
 Best practices:
-- Inject keys via environment variables at build time (e.g. `VITE_T2V_PARTNER_KEY`)
-- Use separate `pk_test_` and `pk_live_` keys for development and production
-- To rotate a key, generate a new one at [dashboard.talk2view.com](https://dashboard.talk2view.com), update your app, then deactivate the old key
+- Inject the key via an environment variable at build time (e.g. `VITE_T2V_PARTNER_KEY`)
+- There is no self-serve key creation or rotation. To rotate your key, [contact Talk2View](https://talk2view.com/resources/contact). Rotation issues a new key and retires the old one within about a minute, with no planned overlap, so plan the switch with us
 
 ### Two-Tier Authentication
 
@@ -215,7 +276,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 There are four React entry points, and they do different jobs:
 
 - **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
-- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.3 KB gzip against the packaged chat's 372.4, and no assistant-ui.
+- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 373.3, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
 
@@ -254,7 +315,11 @@ The full chat surface: header, message list, composer, sign-in, tool approvals. 
 />
 ```
 
-By default a logged-out visitor is signed into an anonymous demo session rather than being shown a login form. The sign-in form appears when `allowAnonymous` is `false`, when your partner account has anonymous access switched off or its daily cap is spent, or when the demo budget for that visitor runs out.
+With `allowAnonymous` on (the default), a logged-out visitor sees the chat, and the SDK tries to start a guest session the first time it needs one. The sign-in form appears instead:
+
+- when `allowAnonymous` is `false`;
+- when the engine refuses the guest session: guest access is off for your key (the default), its daily guest limit is spent, or it requires a CAPTCHA, which the SDK does not send;
+- when that visitor's guest allowance runs out.
 
 ### `<LoginForm>` (from `/ui`)
 
@@ -263,9 +328,9 @@ The sign-in form on its own, if you want to place it yourself. It renders uncond
 ```tsx
 <LoginForm
   heading="Sign in"
-  subheading="to keep your chat history"
+  subheading="to keep chatting"
   defaultMode="login"            // or 'signup'
-  signupUrl="https://talk2view.com/auth?signup"
+  signupUrl="https://talk2view.com/sign-up"
   resetPasswordUrl="https://..."
   termsUrl="https://..."
   privacyUrl="https://..."
@@ -443,7 +508,7 @@ function Chat() {
 Four things do not map, on purpose:
 
 - **Editing tool arguments before approval.** The SDK supports it (`HumanDecision.updatedInput`, used by `<ApprovalCard>` in `/ui`), but the stock assistant-ui approval card has no edit-and-resubmit affordance to drive it from — it can only approve, deny, or attach a free-form reason.
-- **Sign-in UI.** `useTalk2ViewRuntime` only creates a client and a runtime; there is no `<LoginForm>` equivalent. A logged-out visitor gets an anonymous demo session automatically (same default as `<ChatPanel>`), and building your own sign-in UI, or gating the app before it mounts, is on the partner.
+- **Sign-in UI.** `useTalk2ViewRuntime` only creates a client and a runtime; there is no `<LoginForm>` equivalent. Where your key allows guests, a logged-out visitor gets a guest session (same default as `<ChatPanel>`); where it does not, the message is not sent and the client emits `anonymousUnavailable`. Building your own sign-in UI, or gating the app before it mounts, is on the partner.
 - **The agent's plan.** The planning checklist `<ChatPanel>` shows arrives as a `data` part named `plan` (`{ markdown }`). The stock Thread has no renderer for it, so it is silently not shown; register one to see it: `<MessagePrimitive.Parts components={{ data: { by_name: { plan: PlanView } } }} />`.
 - **Editing and deleting sent messages.** The runtime supplies no `onEdit`/`onDelete`, so the stock Thread's pencil on user messages stays disabled. Remove it from your copy of the Thread if you'd rather not show it.
 
@@ -501,12 +566,7 @@ await t2v.tools.register([
   },
 ]);
 
-// Option B: separate handler registration
-t2v.tools.handle('zoom_in', async () => {
-  myApp.zoomIn();
-  return JSON.stringify({ success: true });
-});
-
+// Option B: register the schemas, then attach the handlers
 await t2v.tools.register([
   {
     name: 'zoom_in',
@@ -514,6 +574,11 @@ await t2v.tools.register([
     parameters: { type: 'object', properties: {} },
   },
 ]);
+
+t2v.tools.handle('zoom_in', async () => {
+  myApp.zoomIn();
+  return JSON.stringify({ success: true });
+});
 
 // Check state
 t2v.tools.getRegistered()     // ClientToolSchema[]
@@ -525,6 +590,8 @@ t2v.tools.hasHandler('zoom_in') // boolean
 Register user-defined skills — knowledge documents the AI agent can discover and load for specialised expertise. Skills are stored client-side and sent to the server per-session.
 
 ```typescript
+// Fictional data. Never use real patient data.
+
 // Add skills locally
 t2v.skills.add({
   name: 'radiology-workflow',
@@ -588,8 +655,9 @@ input.addEventListener('input', () => t2v.warmUp(), { once: true });
 
 It is safe to call repeatedly (one request per signed-in end-user), never
 throws, and is a no-op against an engine that predates it. Don't call it when
-the chat merely opens: for a logged-out visitor it starts an anonymous session,
-which counts toward your daily anonymous cap.
+the chat merely opens: for a logged-out visitor it starts a guest session
+wherever your key allows guests, and each one counts toward your daily guest
+limit.
 
 `<ChatWidget>`, `<ChatPanel>` and the assistant-ui runtime already do this.
 
@@ -664,6 +732,7 @@ A tool needs a **schema** (so the AI knows when and how to call it) and an **exe
 ```typescript
 import type { ClientTool } from '@talk2view/sdk';
 
+// Fictional data. Never use real patient data.
 const myTool: ClientTool = {
   name: 'set_window_level',
   description: 'Set the brightness and contrast of the medical image viewer',
@@ -747,8 +816,16 @@ Stored keys:
 - `talk2view_refresh_token`
 - `talk2view_user`
 - `talk2view_user_api_key`
+- `talk2view_is_anonymous`
 
-On logout, all keys are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
+On logout, all of these are cleared and a `talk2view_auth_cleared` event is dispatched on `window` for cross-component synchronization.
+
+Logging out leaves the rest of what the SDK keeps in `localStorage`:
+
+- `talk2view_preferences` — Settings choices: model, dictation (speech-to-text) model and language, font size.
+- `t2v_chat_conversations_v1:<partner key>` — the packaged chat's earlier conversations, one bucket per end-user. See [where conversations are kept](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md#conversations-are-kept-in-this-browser).
+- `t2v_user_skills` and `t2v_disabled_skills` — skills saved in the chat's Skills view or with `t2v.skills.save()`. They are not divided by end-user: in the packaged chat, whoever signs in next on that browser sees them and sends them with their chats.
+- `t2v-launcher-size`, `t2v-launcher-opened` and `t2v-launcher-colourway` — the launcher's size, whether it has been opened, and the colourway a visitor picked.
 
 ### Security Considerations
 
@@ -761,13 +838,13 @@ To mitigate this:
 - **Always serve your application over HTTPS**
 - **Sanitize user-generated content** to prevent XSS injection
 
-**CSRF protection:** The SDK sends a custom `X-T2V-Partner-Key` header on every request. Browsers block cross-origin requests with custom headers unless the server explicitly allows the origin via CORS. This makes CSRF attacks infeasible — a forged request from a malicious site would be blocked by the browser's preflight check.
+**CORS and CSRF:** The engine accepts cross-origin requests from any website (`Access-Control-Allow-Origin: *`), so CORS protects neither your key nor your users. Your key needs no protecting: it is a public identifier. What protects user data is the end-user's sign-in token, which the SDK sends in the `Authorization` header, never in a cookie, so a page on another site cannot make the browser send it.
 
 ---
 
 ## Rendering model replies
 
-Treat every model reply as untrusted. Prompt injection through web search, documents, email or tool results can make the model write anything. `<ChatPanel>` renders replies as markdown only, and never loads remote content on its own:
+Treat every model reply as untrusted. Prompt injection through web search, documents, email or tool results can make the model write anything. `<ChatPanel>` renders replies as markdown only, and nothing in a reply loads remote content on its own:
 
 - **Raw HTML** in a reply is shown as text, apart from a bare `<br>`, which is kept so a GFM table cell can break a line (a cell can't hold a literal newline).
 - **Images** become links (`Image: <alt> (<host>)`) that the end-user can choose to open.
@@ -860,7 +937,7 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 | `baseUrl` | `string` | No | `'https://engine.talk2view.com'` | Talk2View engine URL |
 | `model` | `string` | No | Server default | LLM model to use |
 | `requestTimeout` | `number` | No | `30000` | HTTP request timeout in ms. Does not apply to SSE streams after connection. |
-| `anonymousAutoStart` | `boolean` | No | `true` | Start an anonymous demo session on the first `chat()` when nobody is signed in. Set `false` to require sign-in. |
+| `anonymousAutoStart` | `boolean` | No | `true` | When nobody is signed in, try to start a guest session the first time a call needs one (sending, uploading, transcribing, listing models, `warmUp()`, voice). It succeeds only where your key allows guests; a refusal emits `anonymousUnavailable`. Set `false` to require sign-in. |
 | `debug` | `boolean` | No | `false` | Log streaming events, tool calls, history and state changes to the console. |
 
 ---
@@ -870,6 +947,7 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 System prompts set the AI's behavior and context for your application. Pass one to `<Talk2View>` (the UI components) or to `useT2VChat` (the hooks):
 
 ```tsx
+// Fictional data. Never use real patient data.
 <Talk2View
   partnerKey="pk_live_..."
   systemPrompt="You are a medical imaging assistant. Use the provided tools to control the DICOM viewer."
@@ -1019,8 +1097,8 @@ The source is at
 [github.com/Talk2View/talk2view-typescript](https://github.com/Talk2View/talk2view-typescript).
 Bugs and feature requests go in
 [Issues](https://github.com/Talk2View/talk2view-typescript/issues); pull
-requests are welcome, and [CONTRIBUTING.md](CONTRIBUTING.md) says how the repo
-is laid out and what a reviewer looks for.
+requests are welcome, and [CONTRIBUTING.md](CONTRIBUTING.md) says how to get
+set up and what a reviewer looks for.
 
 Security problems do **not** go in an issue — see
 [SECURITY.md](SECURITY.md).

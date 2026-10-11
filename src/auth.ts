@@ -6,6 +6,7 @@ import type { T2VClient } from './client.js';
 import { AuthenticationError, T2VError } from './errors.js';
 import {
   ACCESS_TOKEN_STORAGE_KEY,
+  USER_STORAGE_KEY,
   clearAuth,
   getAccessToken,
   getIsAnonymous,
@@ -45,6 +46,16 @@ function isExpiringSoon(token: string, skewSeconds = TOKEN_EXPIRY_SKEW_SECONDS):
   return exp - Date.now() / 1000 <= skewSeconds;
 }
 
+/** The stored end-user, or null when there is none or it cannot be read. */
+function parseUser(raw: string | null): User | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
 function decodeJwtExp(token: string): number | null {
   const payloadPart = token.split('.')[1];
   if (!payloadPart || typeof atob !== 'function') return null;
@@ -67,15 +78,31 @@ export class T2VAuth {
   };
 
   /**
-   * Cross-tab logout sync. The native `storage` event fires in *other* tabs
-   * when localStorage changes in one tab. When a sibling tab logs out (or a
-   * dead-refresh-token 401 clears auth), the access-token key is removed/nulled;
-   * we observe that here and flip this tab to logged-out too.
+   * Cross-tab auth sync. The native `storage` event fires in *other* tabs
+   * when localStorage changes in one tab.
+   *
+   * - When a sibling tab logs out (or a dead-refresh-token 401 clears auth),
+   *   the access-token key is removed/nulled; this tab flips to logged-out too.
+   * - When a sibling tab signs a different end-user in, the user key changes to
+   *   someone else. Every request this tab makes reads its token from storage,
+   *   so it is already acting as them; announcing it is what makes the rest of
+   *   this tab agree — above all, it takes the last account's conversation off
+   *   the screen instead of replaying it under the new account.
+   * - When it signs the same end-user in again, that is most often a guest
+   *   signing in to the account they converted to, which keeps the user id.
+   *   Announcing it tells this tab it holds an account now, not a guest, so
+   *   the conversation is treated as an account's from then on.
+   *
+   * A token refresh never writes the user key.
    */
   private readonly onStorage = (event: StorageEvent): void => {
-    // Only react to our access-token key being cleared (removed → newValue null).
     if (event.key === ACCESS_TOKEN_STORAGE_KEY && event.newValue === null) {
       this.notifyListeners(null);
+      return;
+    }
+    if (event.key === USER_STORAGE_KEY && event.newValue !== null) {
+      const next = parseUser(event.newValue);
+      if (next) this.notifyListeners(next);
     }
   };
 
@@ -135,8 +162,7 @@ export class T2VAuth {
       { method: 'POST', body: JSON.stringify(body) },
       false,
     );
-    this.storeTokens(response);
-    setIsAnonymous(true);
+    this.storeTokens(response, true);
     const user = response.user;
     if (!user) throw new AuthenticationError('Anonymous sign-in returned no user');
     this.notifyListeners(user);
@@ -435,13 +461,7 @@ export class T2VAuth {
    * Get the current user (from storage).
    */
   getUser(): User | null {
-    const raw = getUser();
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as User;
-    } catch {
-      return null;
-    }
+    return parseUser(getUser());
   }
 
   /**
@@ -496,16 +516,23 @@ export class T2VAuth {
     };
   }
 
-  private storeTokens(response: TokenResponse): void {
+  /**
+   * Write a new session. The user goes last: another tab hears a sign-in as
+   * the user key changing (see {@link onStorage}) and reads the rest of the
+   * session there and then — whether this is a guest above all, which decides
+   * whether the conversation on its screen may follow — so everything it reads
+   * is written before it.
+   */
+  private storeTokens(response: TokenResponse, anonymous = response.is_anonymous === true): void {
+    setIsAnonymous(anonymous);
     setAccessToken(response.access_token);
     setRefreshToken(response.refresh_token);
-    if (response.user) {
-      setUser(response.user);
-    }
     if (response.user_api_key) {
       setUserApiKey(response.user_api_key);
     }
-    setIsAnonymous(response.is_anonymous === true);
+    if (response.user) {
+      setUser(response.user);
+    }
   }
 
   private notifyListeners(user: User | null): void {

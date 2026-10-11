@@ -10,7 +10,12 @@ export interface T2VConfig {
   requestTimeout?: number;
   /** Enable debug logging to console. Logs streaming events, tool calls, history, and state changes. */
   debug?: boolean;
-  /** Auto-start an anonymous demo session on first chat() if not authenticated. Defaults to true. */
+  /**
+   * When nobody is signed in, try to start a guest (anonymous) session the
+   * first time a call needs one. It succeeds only where the partner key allows
+   * guests; a refusal emits `anonymousUnavailable`, and the call that needed
+   * the session is not sent. Defaults to true.
+   */
   anonymousAutoStart?: boolean;
 }
 

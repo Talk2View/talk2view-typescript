@@ -48,12 +48,6 @@
     baseUrl: 'http://localhost:8100',
   });
 
-  // Register tools
-  t2v.tools.handle('show_alert', async (args) => {
-    alert(args.message);
-    return JSON.stringify({ success: true });
-  });
-
   // Expose to global scope for onclick handlers
   window.doLogin = async () => {
     const email = document.getElementById('email').value;
@@ -63,7 +57,7 @@
     try {
       await t2v.auth.login(email, password);
 
-      // Register tools after login
+      // Register tools after login: the schemas first, then their handlers
       await t2v.tools.register([{
         name: 'show_alert',
         description: 'Show an alert dialog to the user',
@@ -75,6 +69,10 @@
           required: ['message'],
         },
       }]);
+      t2v.tools.handle('show_alert', async (args) => {
+        alert(args.message);
+        return JSON.stringify({ success: true });
+      });
 
       document.getElementById('login').style.display = 'none';
       document.getElementById('chat').style.display = 'block';

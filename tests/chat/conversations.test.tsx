@@ -15,6 +15,8 @@ const authState = vi.hoisted(() => {
   const state = {
     user: null as { id: string; email: string } | null,
     anonymous: false,
+    /** True only while `signOut()` announces it, as `auth.signingOut` is. */
+    signingOut: false,
     listeners: new Set<(user: unknown) => void>(),
     /** Change who is signed in and tell everyone, exactly as the real layer does. */
     set(user: { id: string; email: string } | null, anonymous = false) {
@@ -22,9 +24,19 @@ const authState = vi.hoisted(() => {
       state.anonymous = anonymous;
       for (const listener of [...state.listeners]) listener(user);
     },
+    /** A deliberate sign-out: `logout()`, rather than a session that ended on its own. */
+    signOut() {
+      state.signingOut = true;
+      try {
+        state.set(null);
+      } finally {
+        state.signingOut = false;
+      }
+    },
     reset() {
       state.user = null;
       state.anonymous = false;
+      state.signingOut = false;
       state.listeners.clear();
     },
   };
@@ -46,6 +58,9 @@ vi.mock('../../src/auth', () => ({
     },
     getUser: () => authState.user,
     isAnonymous: () => authState.anonymous,
+    get signingOut() {
+      return authState.signingOut;
+    },
     startAnonymous: vi.fn().mockResolvedValue(null),
     listen: vi.fn(),
     destroy: vi.fn(),
@@ -76,6 +91,7 @@ vi.mock('../../src/skills', () => ({
 
 import { Talk2View } from '../../src/index';
 import { Talk2ViewChat } from '../../src/chat/chat';
+import { identityKey, readConversations } from '../../src/chat/lib/conversation-store';
 import type { ChatEvent, ChatMessage } from '../../src/types';
 
 beforeAll(() => {
@@ -468,6 +484,80 @@ describe('who the conversations belong to', () => {
     });
     expect(listed(await openList())).toContain('Mine');
   });
+
+  it('takes an account’s conversation off the screen when they sign out, and keeps it for them', async () => {
+    authState.set({ id: 'account-1', email: 'a@b.c' });
+    const { t2v } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Mine, and nobody else’s');
+    await screen.findByText('Reply 1');
+
+    await act(async () => {
+      authState.signOut();
+    });
+    await waitFor(() => expect(screen.queryByText('Reply 1')).toBeNull());
+    expect(t2v.messages).toEqual([]);
+
+    await act(async () => {
+      authState.set({ id: 'account-1', email: 'a@b.c' });
+    });
+    expect(listed(await openList())).toEqual(['Mine, and nobody else’s']);
+  });
+
+  it('keeps a converted guest’s conversation in their account when that session ends on its own', async () => {
+    authState.set({ id: 'guest-1', email: '' }, true);
+    const { t2v } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Started as a guest');
+    await screen.findByText('Reply 1');
+
+    // They confirm the account the guest session became and sign in to it:
+    // the same user id, and an account from now on.
+    await act(async () => {
+      authState.set({ id: 'guest-1', email: 'a@b.c' });
+    });
+    expect(screen.getByText('Reply 1')).toBeTruthy();
+
+    // Later that session ends without anyone pressing Sign out.
+    await act(async () => {
+      authState.set(null);
+    });
+    await waitFor(() => expect(screen.queryByText('Reply 1')).toBeNull());
+
+    // Nothing of it is left for whoever uses this browser without signing in…
+    const signedOut = readConversations('pk_test_x', identityKey(null)).map((c) => c.title);
+    expect(signedOut).not.toContain('Started as a guest');
+    // …and it is still the account's.
+    await act(async () => {
+      authState.set({ id: 'guest-1', email: 'a@b.c' });
+    });
+    expect(listed(await openList())).toEqual(['Started as a guest']);
+  });
+
+  it('does not hand a signed-out guest’s conversation to the account that signs in next', async () => {
+    authState.set({ id: 'guest-1', email: '' }, true);
+    const { t2v, sent } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('A guest’s question');
+    await screen.findByText('Reply 1');
+
+    // The host's own sign-out button, through useTalk2ViewChatClient().
+    await act(async () => {
+      authState.signOut();
+    });
+    await act(async () => {
+      authState.set({ id: 'account-2', email: 'c@d.e' });
+    });
+
+    await waitFor(() => expect(screen.queryByText('Reply 1')).toBeNull());
+    expect((screen.getByRole('button', { name: 'Chats' }) as HTMLButtonElement).disabled).toBe(true);
+    await send('Hello');
+    await screen.findByText('Reply 2');
+    expect(sent.at(-1)).toEqual([]);
+  });
 });
 
 describe('with the thread list turned off', () => {
@@ -486,5 +576,54 @@ describe('with the thread list turned off', () => {
     expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
     // Nothing is kept either: the list is the only thing that would show it.
     expect(localStorage.length).toBe(0);
+  });
+
+  it('shows the next person to sign in nothing of the last one’s conversation', async () => {
+    authState.set({ id: 'account-1', email: 'a@b.c' });
+    const { t2v, sent } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} features={{ threadList: false }} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Private to the first account');
+    await screen.findByText('Reply 1');
+
+    await act(async () => {
+      authState.signOut();
+    });
+    await act(async () => {
+      authState.set({ id: 'account-2', email: 'c@d.e' });
+    });
+
+    expect(await screen.findByRole('heading', { name: /how can i help/i })).toBeTruthy();
+    expect(screen.queryByText('Private to the first account')).toBeNull();
+    expect(screen.queryByText('Reply 1')).toBeNull();
+    // …and none of it goes to the engine under the second account.
+    await send('Hello');
+    await screen.findByText('Reply 2');
+    expect(sent.at(-1)).toEqual([]);
+  });
+
+  it('says why the conversation went when the account’s session ends on its own', async () => {
+    authState.set({ id: 'account-1', email: 'a@b.c' });
+    const { t2v, sent } = scriptedClient();
+    render(<Talk2ViewChat client={t2v} features={{ threadList: false }} />);
+    await screen.findByRole('heading', { name: /how can i help/i });
+    await send('Private to the first account');
+    await screen.findByText('Reply 1');
+
+    // A revoked refresh token, or a sign-out in another tab: nobody pressed Sign out.
+    await act(async () => {
+      authState.set(null);
+    });
+
+    // The conversation goes, and the empty chat says why rather than nothing.
+    expect(await screen.findByText('Session expired. Please log in again.')).toBeTruthy();
+    expect(screen.queryByText('Reply 1')).toBeNull();
+    expect(screen.queryByText('Private to the first account')).toBeNull();
+
+    // The next message starts clean: no error, and nothing of the last one replayed.
+    await send('Hello');
+    await screen.findByText('Reply 2');
+    expect(screen.queryByText('Session expired. Please log in again.')).toBeNull();
+    expect(sent.at(-1)).toEqual([]);
   });
 });
