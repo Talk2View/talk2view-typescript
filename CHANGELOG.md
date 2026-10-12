@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Security reports go through GitHub's private vulnerability reporting.** `SECURITY.md` links this repository's private report form, and says we aim to confirm receipt within five business days. The contact form stays for anyone who has no GitHub account or would rather not use it. Reports about the Talk2View engine go to the report form in Talk2View/docs.
+
 ## [0.21.4] - 2026-10-09
 
 ### Fixed
