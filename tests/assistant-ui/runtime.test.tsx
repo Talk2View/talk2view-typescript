@@ -19,24 +19,24 @@ import {
 } from '@assistant-ui/react';
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({ request: vi.fn(), streamRequest: vi.fn() })),
+  T2VClient: vi.fn().mockImplementation(function () { return { request: vi.fn(), streamRequest: vi.fn() }; }),
 }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({ onAuthStateChange: vi.fn(), getUser: vi.fn().mockReturnValue(null) })),
+  T2VAuth: vi.fn().mockImplementation(function () { return { onAuthStateChange: vi.fn(), getUser: vi.fn().mockReturnValue(null) }; }),
 }));
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     reRegister: vi.fn().mockResolvedValue(null),
     register: vi.fn().mockResolvedValue({ registered: [], count: 0 }),
     handle: vi.fn(),
-  })),
+  }; }),
   stripNullArgs: (args: Record<string, unknown>) => args,
 }));
 vi.mock('../../src/skills', () => ({
   // A stub that answers the whole surface the client uses: createSession
   // re-registers the end-user's skills, so a bare {} breaks every test
   // that starts a session.
-  T2VSkills: vi.fn().mockImplementation(() => ({
+  T2VSkills: vi.fn().mockImplementation(function () { return {
     getAll: () => [],
     load: () => [],
     add: () => {},
@@ -44,7 +44,7 @@ vi.mock('../../src/skills', () => ({
     save: () => {},
     clear: () => {},
     register: async () => ({ registered: [], count: 0 }),
-  })),
+  }; }),
 }));
 
 import { Talk2View } from '../../src/index';

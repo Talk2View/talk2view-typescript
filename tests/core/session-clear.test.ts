@@ -3,22 +3,22 @@ import { Talk2View } from '../../src/index';
 
 // Mock the modules that Talk2View's constructor depends on
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn().mockResolvedValue({}),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn(),
     getUser: vi.fn().mockReturnValue(null),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     register: vi.fn(),
-  })),
+  }; }),
 }));
 
 function createT2V(): Talk2View {

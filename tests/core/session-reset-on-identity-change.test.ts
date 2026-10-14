@@ -6,27 +6,27 @@ import { Talk2View } from '../../src/index';
 const h = vi.hoisted(() => ({ cb: null as null | ((user: unknown) => void) }));
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn().mockResolvedValue({ session_id: 'S1', thread_id: 'T1', model: 'm' }),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn((fn: (user: unknown) => void) => {
       h.cb = fn;
       return () => {};
     }),
     getUser: vi.fn().mockReturnValue(null),
     isAnonymous: vi.fn().mockReturnValue(false),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     register: vi.fn(),
     reRegister: vi.fn().mockResolvedValue(null),
-  })),
+  }; }),
 }));
 
 function createT2V(): Talk2View {

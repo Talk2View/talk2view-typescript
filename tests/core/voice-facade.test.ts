@@ -7,7 +7,7 @@ import { T2VVoiceController, type VoiceLibs } from '../../src/voice.js';
 // Only for the identity-change test at the bottom: capture the auth callback.
 const h = vi.hoisted(() => ({ cb: null as null | ((user: unknown) => void) }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn((fn: (user: unknown) => void) => {
       h.cb = fn;
       return () => {};
@@ -15,7 +15,7 @@ vi.mock('../../src/auth', () => ({
     getUser: vi.fn().mockReturnValue(null),
     isAnonymous: vi.fn().mockReturnValue(false),
     signingOut: false,
-  })),
+  }; }),
 }));
 
 type Callbacks = Record<string, (...args: any[]) => void>;

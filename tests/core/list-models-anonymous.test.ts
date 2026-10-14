@@ -12,14 +12,14 @@ const request = vi.fn();
 const startAnonymous = vi.fn();
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({ request, streamRequest: vi.fn(), uploadRequest: vi.fn() })),
+  T2VClient: vi.fn().mockImplementation(function () { return { request, streamRequest: vi.fn(), uploadRequest: vi.fn() }; }),
 }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn(),
     getUser: vi.fn().mockReturnValue(null),
     startAnonymous,
-  })),
+  }; }),
 }));
 
 import { Talk2View } from '../../src/index';

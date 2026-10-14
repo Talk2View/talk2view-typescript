@@ -14,15 +14,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     reRegister: vi.fn().mockResolvedValue(null),
     register: vi.fn().mockResolvedValue({ registered: [], count: 0 }),
     handle: vi.fn(),
-  })),
+  }; }),
   stripNullArgs: (args: Record<string, unknown>) => args,
 }));
 vi.mock('../../src/skills', () => ({
-  T2VSkills: vi.fn().mockImplementation(() => ({
+  T2VSkills: vi.fn().mockImplementation(function () { return {
     getAll: () => [],
     load: () => [],
     add: () => {},
@@ -30,7 +30,7 @@ vi.mock('../../src/skills', () => ({
     save: () => {},
     clear: () => {},
     register: async () => ({ registered: [], count: 0 }),
-  })),
+  }; }),
 }));
 // `../../src/client` and `../../src/auth` are deliberately NOT mocked.
 

@@ -9,12 +9,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({ user: null as null | { id: string } }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn(() => () => {}),
     getUser: vi.fn(() => h.user),
     isAnonymous: vi.fn().mockReturnValue(true),
     signingOut: false,
-  })),
+  }; }),
 }));
 
 import { Talk2View } from '../../src/index.js';

@@ -13,7 +13,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 const requests: { path: string; body: unknown }[] = [];
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn().mockImplementation((path: string, init?: { body?: string }) => {
       requests.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
       if (path === '/v1/skills/register') return Promise.resolve({ registered: [], count: 0 });
@@ -21,7 +21,7 @@ vi.mock('../../src/client', () => ({
     }),
     streamRequest: vi.fn(),
     uploadRequest: vi.fn(),
-  })),
+  }; }),
 }));
 const authState = vi.hoisted(() => {
   const state = {
@@ -36,7 +36,7 @@ const authState = vi.hoisted(() => {
 });
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: (cb: (user: unknown) => void) => {
       authState.listeners.add(cb);
       return () => authState.listeners.delete(cb);
@@ -46,14 +46,14 @@ vi.mock('../../src/auth', () => ({
     startAnonymous: vi.fn().mockResolvedValue(null),
     listen: vi.fn(),
     destroy: vi.fn(),
-  })),
+  }; }),
 }));
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     reRegister: vi.fn().mockResolvedValue(null),
     register: vi.fn().mockResolvedValue({ registered: [], count: 0 }),
     handle: vi.fn(),
-  })),
+  }; }),
   stripNullArgs: (args: Record<string, unknown>) => args,
 }));
 

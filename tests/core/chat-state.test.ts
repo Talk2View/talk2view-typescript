@@ -8,20 +8,20 @@ import type { ChatEvent, DisplayMessage, PendingApproval, AgentStatus } from '..
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn(),
     streamRequest: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({ onAuthStateChange: vi.fn() })),
+  T2VAuth: vi.fn().mockImplementation(function () { return { onAuthStateChange: vi.fn() }; }),
 }));
 
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     reRegister: vi.fn().mockResolvedValue(null),
-  })),
+  }; }),
   stripNullArgs: (args: Record<string, unknown>) => {
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(args)) {
@@ -32,7 +32,7 @@ vi.mock('../../src/tools', () => ({
 }));
 
 vi.mock('../../src/skills', () => ({
-  T2VSkills: vi.fn().mockImplementation(() => ({
+  T2VSkills: vi.fn().mockImplementation(function () { return {
     getAll: () => [],
     load: () => [],
     add: () => {},
@@ -40,7 +40,7 @@ vi.mock('../../src/skills', () => ({
     save: () => {},
     clear: () => {},
     register: async () => ({ registered: [], count: 0 }),
-  })),
+  }; }),
 }));
 
 // ─── Chunk builders ──────────────────────────────────────────────────────────
