@@ -9,24 +9,24 @@ const hasHandler = vi.fn();
 const executeToolCall = vi.fn();
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({ request, streamRequest })),
+  T2VClient: vi.fn().mockImplementation(function () { return { request, streamRequest }; }),
 }));
 
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: vi.fn(),
     getUser: vi.fn().mockReturnValue(null),
-  })),
+  }; }),
 }));
 
 vi.mock('../../src/tools', () => ({
-  T2VTools: vi.fn().mockImplementation(() => ({
+  T2VTools: vi.fn().mockImplementation(function () { return {
     reRegister,
     checkPermission: vi.fn().mockResolvedValue({ action: 'allow' }),
     hasHandler,
     executeToolCall,
     getDescription: vi.fn().mockReturnValue(undefined),
-  })),
+  }; }),
   // src/index.ts imports this as a named function (not a T2VTools method);
   // consumeStream calls it for tool_call/approval_required events.
   stripNullArgs: vi.fn((args: unknown) => args),

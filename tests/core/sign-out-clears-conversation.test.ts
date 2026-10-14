@@ -39,13 +39,13 @@ const authState = vi.hoisted(() => {
 });
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn().mockResolvedValue({}),
     streamRequest: vi.fn(),
-  })),
+  }; }),
 }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({
+  T2VAuth: vi.fn().mockImplementation(function () { return {
     onAuthStateChange: (cb: (user: unknown) => void) => {
       authState.listeners.add(cb);
       return () => authState.listeners.delete(cb);
@@ -55,7 +55,7 @@ vi.mock('../../src/auth', () => ({
     get signingOut() {
       return authState.signingOut;
     },
-  })),
+  }; }),
 }));
 
 import { Talk2View } from '../../src/index';

@@ -15,13 +15,13 @@ import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/client', () => ({
-  T2VClient: vi.fn().mockImplementation(() => ({
+  T2VClient: vi.fn().mockImplementation(function () { return {
     request: vi.fn().mockResolvedValue({ registered: [], count: 0 }),
     streamRequest: vi.fn(),
-  })),
+  }; }),
 }));
 vi.mock('../../src/auth', () => ({
-  T2VAuth: vi.fn().mockImplementation(() => ({ onAuthStateChange: vi.fn(), getUser: vi.fn().mockReturnValue(null) })),
+  T2VAuth: vi.fn().mockImplementation(function () { return { onAuthStateChange: vi.fn(), getUser: vi.fn().mockReturnValue(null) }; }),
 }));
 
 import { Talk2View } from '../../src/index';
