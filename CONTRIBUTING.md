@@ -71,7 +71,7 @@ comes first:
    CHANGELOG entry. This is the release: someone reviews the diff that is about
    to become a published artifact. Merge it.
 2. **Actions → Publish → Run workflow**, choosing the dist-tag (`latest` for a
-   stable release, `beta`/`next`/`dev` for a prerelease). The workflow
+   stable release, `beta`/`next` for a prerelease). The workflow
    typechecks, tests, builds and prints `npm pack --dry-run` — then waits for an
    approval on the `npm-publish` environment. Approve it after reading what the
    tarball contains. It publishes, then tags the commit `v<version>`.
