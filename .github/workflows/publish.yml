@@ -15,7 +15,7 @@ on:
         required: true
         default: latest
         type: choice
-        options: [latest, next, beta, dev]
+        options: [latest, next, beta]
 
 permissions:
   contents: read
