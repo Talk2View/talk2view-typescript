@@ -4,18 +4,9 @@
  * The fallback has to install the sheet once, and only once, however often a
  * component calls it.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@talk2view/sdk/chat-css', () => ({ css: '.t2v-chat{color:red}' }));
-
-beforeAll(() => {
-  // The module imports its bytes from the build output; make sure it is there.
-  if (!existsSync('dist/chat-css.js')) {
-    execFileSync('node', ['scripts/chat/build-css.mjs'], { stdio: 'inherit' });
-  }
-}, 120_000);
 
 beforeEach(() => {
   vi.resetModules();

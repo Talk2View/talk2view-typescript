@@ -24,11 +24,9 @@
  * first and decide whether the growth is wanted — do not widen it reflexively.
  */
 import { build } from 'esbuild';
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 // Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only.
 // These are the numbers the README and docs/chat.md quote; change them together.
@@ -148,13 +146,6 @@ function record(name: string, b: Bundled) {
     `${name.padEnd(14)} raw ${b.rawKB.toFixed(1).padStart(7)} KB   gzip ${b.gzipKB.toFixed(2).padStart(7)} KB`,
   );
 }
-
-beforeAll(() => {
-  // These bundle the build output, not the source. A clean checkout has none.
-  if (!existsSync('dist/index.js') || !existsSync('dist/chat/index.js')) {
-    execFileSync('npm', ['run', 'build'], { stdio: 'inherit' });
-  }
-}, 600_000);
 
 describe('what a consumer pays for the entry points they use', () => {
   it(
