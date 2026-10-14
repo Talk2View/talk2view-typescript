@@ -7,8 +7,6 @@
  * uses), so a partner's first render is what these tests exercise.
  */
 import React from 'react';
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -342,14 +340,6 @@ describe('portals', () => {
 });
 
 describe('the /chat entry point', () => {
-  beforeAll(() => {
-    // injectTalk2ViewChatStyles() imports the built stylesheet by its published
-    // path, so the entry point cannot be loaded before a CSS build.
-    if (!existsSync('dist/chat-css.js')) {
-      execFileSync('node', ['scripts/chat/build-css.mjs'], { stdio: 'inherit' });
-    }
-  }, 120_000);
-
   it('exports the documented surface', async () => {
     const chat = await import('../../src/chat/index');
     expect(typeof chat.Talk2ViewChat).toBe('function');

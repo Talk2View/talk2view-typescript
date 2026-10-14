@@ -4,9 +4,8 @@
  * this test pins that the BUILD output has them, so a change to the pipeline
  * cannot quietly ship an unscoped sheet.
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it } from 'vitest';
 // @ts-expect-error -- plain .mjs build script, shared so the test splits selector
 // lists exactly the way the audit does: on top-level commas only.
 import { splitTopLevel } from '../../scripts/chat/split.mjs';
@@ -37,10 +36,6 @@ const withoutKeyframes = (source: string): string => {
   }
   return out;
 };
-
-beforeAll(() => {
-  execFileSync('node', ['scripts/chat/build-css.mjs'], { stdio: 'inherit' });
-}, 120_000);
 
 describe('dist/chat.css', () => {
   it('exists, is minified, and ships a string twin for the inject fallback', () => {

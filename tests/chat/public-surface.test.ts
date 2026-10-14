@@ -12,8 +12,6 @@
  * two prop types have. Adding an export is then a deliberate act — the test
  * fails and the list below has to be edited.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -82,9 +80,6 @@ let checker: ts.TypeChecker;
 let entryFile: ts.SourceFile;
 
 beforeAll(() => {
-  if (!existsSync(ENTRY)) {
-    execFileSync('npm', ['run', 'build'], { stdio: 'inherit' });
-  }
   const program = ts.createProgram([ENTRY], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext,
