@@ -705,6 +705,10 @@ const response = await t2v.completions({
 });
 ```
 
+It needs a signed-in end-user: for a guest the engine answers with a `T2VError`
+whose `type` is `sign_in_required`. One call asks for one reply, with
+`max_tokens` up to 16384.
+
 #### `t2v.createSession()` / `t2v.getSession()`
 
 For advanced use cases where you need direct session control:
