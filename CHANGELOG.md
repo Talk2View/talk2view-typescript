@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-21
+
 ### Added
 
 - **Errors carry `requestId` and `retryAfter`.** `requestId` is the engine's id for the failed request, from the error body or the `X-Request-Id` header; quote it when you contact support. Stream `error` events carry it as `requestId` too. `retryAfter` is the number of seconds from a `Retry-After` header, which the engine sends on rate limits and some temporary outages. Both are `undefined` when the engine sent nothing, and on errors raised in the SDK itself.
