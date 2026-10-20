@@ -167,6 +167,8 @@ export interface ChunkError {
   type: string;
   message: string;
   detail?: string;
+  /** The engine's id for the request this chunk belongs to. */
+  request_id?: string;
 }
 
 /**
@@ -245,6 +247,8 @@ export type ChatEvent =
        */
       errorType?: string;
       detail?: string;
+      /** The engine's id for the failed turn. Quote it when you contact support. */
+      requestId?: string;
     }
   | { type: 'status'; status: string; message: string };
 

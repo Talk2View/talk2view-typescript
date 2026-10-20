@@ -898,7 +898,12 @@ Some failures never reach a `catch` at all, because they arrive inside the chat 
 
 **On lost chat sessions:** `SessionError` is reserved for a dedicated engine type that isn't in use yet — today a chat session that no longer exists comes back as a `T2VError` with `type: 'not_found'` and `statusCode: 404`. You shouldn't need to catch it: the SDK recovers the session itself where that is safe, and otherwise reports an `error` event with `errorType: 'session_lost'`. See [Chat sessions and deploys](#chat-sessions-and-deploys).
 
-All errors extend `T2VError`, which exposes `message`, `type`, `statusCode`, `code`, and `detail` (the server's raw diagnostic text, kept out of `message` so it never reaches an end-user by accident):
+All errors extend `T2VError`, which exposes `message`, `type`, `statusCode`, `code`, and `detail` (the server's raw diagnostic text, kept out of `message` so it never reaches an end-user by accident). Errors from the engine also carry:
+
+- `requestId`: the engine's id for the failed request, also sent as the `X-Request-Id` header. Quote it when you contact support. A stream `error` event carries it too.
+- `retryAfter`: seconds to wait before trying again, when the engine sent `Retry-After` (rate limits and some temporary outages).
+
+Every error type the engine sends, with its status and meaning, is listed at [docs.talk2view.com/errors](https://docs.talk2view.com/errors):
 
 ```typescript
 import { T2VError, AuthenticationError, NetworkError, PartnerKeyError } from '@talk2view/sdk';
@@ -913,13 +918,13 @@ try {
   } else if (err instanceof PartnerKeyError) {
     console.log('Check your partner key:', err.message);
   } else if (err instanceof T2VError) {
-    // Access the error code for programmatic handling
-    console.log(`Error [${err.code}]: ${err.message} (HTTP ${err.statusCode})`);
+    // Branch on err.type; quote err.requestId to support.
+    console.log(`Error [${err.type}]: ${err.message} (HTTP ${err.statusCode}, request ${err.requestId})`);
   }
 }
 ```
 
-**Rate limiting:** The server may return HTTP 429 when rate limits are exceeded. This surfaces as a `T2VError` with `statusCode: 429`. Rate limiting is enforced server-side; implement app-level retry logic if needed.
+**Rate limiting:** The server may return HTTP 429 when rate limits are exceeded. This surfaces as a `T2VError` with `statusCode: 429` and, when the engine says how long to wait, `retryAfter` in seconds. The SDK does not retry for you; wait at least `retryAfter` before trying again.
 
 In React, the hooks catch errors internally and expose them via the `error` state:
 

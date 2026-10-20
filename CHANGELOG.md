@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Errors carry `requestId` and `retryAfter`.** `requestId` is the engine's id for the failed request, from the error body or the `X-Request-Id` header; quote it when you contact support. Stream `error` events carry it as `requestId` too. `retryAfter` is the number of seconds from a `Retry-After` header, which the engine sends on rate limits and some temporary outages. Both are `undefined` when the engine sent nothing, and on errors raised in the SDK itself.
+- **Requests name the SDK.** Every request to the engine sends `X-T2V-Client: talk2view-typescript/<version>`, so the engine can tell which release a request came from. The engine allows the header from any origin. If you put your own proxy in front of the engine with a CORS allow-list, add `X-T2V-Client` to it.
+
 ### Changed
 
 - **Security reports go through GitHub's private vulnerability reporting.** `SECURITY.md` links this repository's private report form, and says we aim to confirm receipt within five business days. The contact form stays for anyone who has no GitHub account or would rather not use it. Reports about the Talk2View engine go to the report form in Talk2View/docs.
