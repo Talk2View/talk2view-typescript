@@ -9,6 +9,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
   T2VError,
   errorForType,
+  parseRetryAfter,
 } from './errors.js';
 import {
   clearAuth,
@@ -18,6 +19,7 @@ import {
   setRefreshToken,
 } from './storage.js';
 import { decodeSSEStream } from './streaming.js';
+import { CLIENT_HEADER } from './version.js';
 import type {
   ChatCompletionChunk,
   RefreshResponse,
@@ -163,7 +165,14 @@ export class T2VClient {
     const code = typeof err.code === 'string' ? err.code : undefined;
     // Keep the raw detail for debugging only — out of the user-facing message.
     const detail = typeof err.detail === 'string' ? err.detail : undefined;
-    return errorForType(safeMessage, type, response.status, code, detail);
+    // `headers` is optional here only so a hand-built Response still works.
+    const header = (name: string): string | null => response.headers?.get(name) ?? null;
+    const requestId =
+      (typeof err.request_id === 'string' ? err.request_id : undefined) ??
+      header('X-Request-Id') ??
+      undefined;
+    const retryAfter = parseRetryAfter(header('Retry-After'));
+    return errorForType(safeMessage, type, response.status, code, detail, { requestId, retryAfter });
   }
 
   /**
@@ -240,6 +249,7 @@ export class T2VClient {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       'X-T2V-Partner-Key': this.partnerKey,
+      'X-T2V-Client': CLIENT_HEADER,
       ...extra,
     };
     if (requiresAuth) {
@@ -419,6 +429,7 @@ export class T2VClient {
         headers: {
           'Content-Type': 'application/json',
           'X-T2V-Partner-Key': this.partnerKey,
+          'X-T2V-Client': CLIENT_HEADER,
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
         signal,

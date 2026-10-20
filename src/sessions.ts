@@ -219,6 +219,7 @@ export class T2VSession {
           message: chunk.error.message,
           errorType: chunk.error.type,
           detail: chunk.error.detail,
+          requestId: chunk.error.request_id,
         };
       } else {
         // Text content

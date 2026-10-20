@@ -8,35 +8,55 @@
  * cannot leak to end users by default.
  */
 export class T2VError extends Error {
+  /**
+   * The engine's id for the failed request, also sent as `X-Request-Id`.
+   * Quote it when you contact support. Absent for errors raised in the SDK.
+   */
+  public readonly requestId?: string;
+  /**
+   * Seconds to wait before trying again, from the response's `Retry-After`
+   * header. Set on rate limits and on some temporary outages.
+   */
+  public readonly retryAfter?: number;
+
   constructor(
     message: string,
     public readonly type: string = 'sdk_error',
     public readonly statusCode?: number,
     public readonly code?: string,
     public readonly detail?: string,
+    details: T2VErrorDetails = {},
   ) {
     super(message);
     this.name = 'T2VError';
+    this.requestId = details.requestId;
+    this.retryAfter = details.retryAfter;
   }
 }
 
+/** What the engine said about a failed request beyond its error body. */
+export interface T2VErrorDetails {
+  requestId?: string;
+  retryAfter?: number;
+}
+
 export class AuthenticationError extends T2VError {
-  constructor(message: string, type = 'authentication_error', statusCode = 401, code?: string, detail?: string) {
-    super(message, type, statusCode, code, detail);
+  constructor(message: string, type = 'authentication_error', statusCode = 401, code?: string, detail?: string, details?: T2VErrorDetails) {
+    super(message, type, statusCode, code, detail, details);
     this.name = 'AuthenticationError';
   }
 }
 
 export class PartnerKeyError extends T2VError {
-  constructor(message: string, type = 'partner_key_error', statusCode = 401, code?: string, detail?: string) {
-    super(message, type, statusCode, code, detail);
+  constructor(message: string, type = 'partner_key_error', statusCode = 401, code?: string, detail?: string, details?: T2VErrorDetails) {
+    super(message, type, statusCode, code, detail, details);
     this.name = 'PartnerKeyError';
   }
 }
 
 export class SessionError extends T2VError {
-  constructor(message: string, type = 'session_error', statusCode?: number, code?: string, detail?: string) {
-    super(message, type, statusCode, code, detail);
+  constructor(message: string, type = 'session_error', statusCode?: number, code?: string, detail?: string, details?: T2VErrorDetails) {
+    super(message, type, statusCode, code, detail, details);
     this.name = 'SessionError';
   }
 }
@@ -67,6 +87,7 @@ const ERROR_CLASS_BY_TYPE: Record<string, new (
   statusCode?: number,
   code?: string,
   detail?: string,
+  details?: T2VErrorDetails,
 ) => T2VError> = {
   authentication_error: AuthenticationError,
   partner_key_error: PartnerKeyError,
@@ -85,9 +106,22 @@ export function errorForType(
   statusCode?: number,
   code?: string,
   detail?: string,
+  details?: T2VErrorDetails,
 ): T2VError {
   const Cls = type ? ERROR_CLASS_BY_TYPE[type] : undefined;
   return Cls
-    ? new Cls(message, type, statusCode, code, detail)
-    : new T2VError(message, type, statusCode, code, detail);
+    ? new Cls(message, type, statusCode, code, detail, details)
+    : new T2VError(message, type, statusCode, code, detail, details);
+}
+
+/**
+ * Seconds from a `Retry-After` header, which is either a number of seconds or
+ * an HTTP date. Undefined when it is absent or unreadable.
+ */
+export function parseRetryAfter(value: string | null, now: number = Date.now()): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const at = Date.parse(trimmed);
+  return Number.isNaN(at) ? undefined : Math.max(0, Math.ceil((at - now) / 1000));
 }
