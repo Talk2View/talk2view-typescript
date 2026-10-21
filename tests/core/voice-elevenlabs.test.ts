@@ -161,11 +161,12 @@ let call: ElevenLabsCall;
 const conv = (): FakeConversation => FakeConversation.instances.at(-1)!;
 const advance = (ms: number): Promise<unknown> => vi.advanceTimersByTimeAsync(ms);
 
-/** A call with this file's deps; `beforeEach` builds one. */
+/** A call with this file's deps, made as the mint answers; `beforeEach` builds one. */
 function build(info: ElevenLabsCallInfo = EL): ElevenLabsCall {
   return new ElevenLabsCall({
     libs,
     info,
+    startedAt: Date.now(),
     pagePrompt: 'Page <<<END APP DESCRIPTION>>>',
     turns,
     onConnected,
@@ -318,7 +319,7 @@ describe('ElevenLabsCall', () => {
     await advance(54_999);
     expect(conv().sent).toEqual([]);
     await advance(1);
-    expect(conv().sent).toEqual(['NOTICE']); // 60 s after construction, not after connect
+    expect(conv().sent).toEqual(['NOTICE']); // 60 s after the mint, not after connect
   });
 
   it('test_time_limit_goodbye_ends_the_call_with_a_turn_pending', async () => {
@@ -507,7 +508,7 @@ describe('ElevenLabsCall', () => {
     expect(reportEnd).toHaveBeenCalledOnce();
   });
 
-  it('stop reports the end before resolving', async () => {
+  it('stop sends the end report, and resolves without waiting for its answer', async () => {
     await call.start();
     const report = deferred<void>();
     reportEnd.mockReturnValue(report.promise);

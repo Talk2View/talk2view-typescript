@@ -18,6 +18,10 @@
 - **The chat settings' "Voice model" picker is "Dictation model".** It chooses what transcribes dictation, and "voice model" now means Gemini Live or ElevenLabs only. The hint under "Spoken language" says "dictation model" too.
 - **The runtime-hosts table lists ElevenLabs, and `blob:` for Gemini Live.** An ElevenLabs call connects to `wss://livekit.rtc.elevenlabs.io` and makes plain HTTPS requests to `https://livekit.rtc.elevenlabs.io` when a connection fails or the browser goes offline; it never contacts `api.elevenlabs.io`. It loads one audio worklet from a `blob:` URL, and the call works without it. A Gemini Live call's audio worklets also load from `blob:` URLs, and it does not start without them, so a strict `script-src` needs `blob:` as well as `'unsafe-eval'`; the docs said only `'unsafe-eval'`. The README, `docs/chat.md` and `docs/voice.md` list the hosts and the `script-src` sources of both voice models.
 
+### Fixed
+
+- **A voice call that ends while it is being set up no longer leaves the microphone on.** Where the browser already allows the microphone, the SDK opens it while the engine sets up the call. If the end-user hung up then, or the engine refused the call, and the microphone finished opening afterwards, nothing released it: it stayed on, with the browser's recording indicator, and no call. It is now released as soon as it opens.
+
 ### Dependencies
 
 - **`@elevenlabs/client` 1.29.0**, pinned exactly, with its LiveKit dependency. It loads with `import()` on the first ElevenLabs call only, so none of it is in the up-front bundles. The bundle fence now keeps `@elevenlabs/client` and `livekit-client` out of the core, `/ui` and `/chat` entry chunks; core stays under its 12 KB gzip limit, at 11.85 KB.

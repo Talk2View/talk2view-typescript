@@ -87,11 +87,14 @@ export interface ElevenLabsCallDeps {
    * {@link ElevenLabsCall.stop}.
    */
   onEnded(reason: VoiceEndReason, error?: VoiceError): void;
+  /** The library reported an error mid-call. `message` is its own text, written for developers. */
   onError(message: string): void;
   /** Tells the engine the call has ended, with the reason it ended with. Called once per call. */
   reportEnd(reason: string): Promise<void>;
   /** Default {@link GOODBYE_WAIT_MS}. */
   goodbyeWaitMs?: number;
+  /** When the mint answered, by the `now` clock: the time limit counts from here. */
+  startedAt: number;
   /** The clock for the time limit. Default `Date.now`. */
   now?: () => number;
 }
@@ -113,7 +116,7 @@ async function quietly(task: () => Promise<unknown>): Promise<void> {
  * `start()` rejects, and the caller reports it.
  */
 export class ElevenLabsCall {
-  /** When the time limit runs out: counted from the mint's response, when the call is made. */
+  /** When the time limit runs out: counted from the mint's response (`startedAt`). */
   private readonly deadline: number;
   private started = false;
   private conversation: ElevenLabsConversationLike | null = null;
@@ -140,7 +143,7 @@ export class ElevenLabsCall {
   private wake: (() => void) | null = null;
 
   constructor(private readonly deps: ElevenLabsCallDeps) {
-    this.deadline = this.now() + deps.info.time_limit_seconds * 1000;
+    this.deadline = deps.startedAt + deps.info.time_limit_seconds * 1000;
   }
 
   /**

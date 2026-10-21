@@ -1465,6 +1465,57 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     expect(w.client().connectParams).toBeUndefined();
   });
 
+  it.each(['the mint answers', 'the mint fails', 'the token arrives'] as const)(
+    'an allowed mic still opening at a hang-up mid-start is released once it opens (%s after the hang-up)',
+    async (after) => {
+      const devices = deferred<void>();
+      let answerMint!: (mint: typeof MINT) => void;
+      let failMint!: (err: Error) => void;
+      const mint = new Promise<typeof MINT>((resolve, reject) => {
+        answerMint = resolve;
+        failMint = reject;
+      });
+      const token = deferred<string | null>();
+      const w = world({
+        micPermission: async () => 'granted',
+        request: vi.fn(() => (after === 'the token arrives' ? Promise.resolve(MINT) : mint)) as unknown as T2VVoiceDeps['request'],
+        getValidAccessToken: vi.fn(() => (after === 'the token arrives' ? token.promise : Promise.resolve('jwt-1'))),
+      });
+      FakePipecatClient.deviceGate = devices.promise; // the mic opens alongside the mint, slowly
+      const starting = w.voice.start();
+      await tick();
+      expect(w.deps.request).toHaveBeenCalledOnce();
+      await w.voice.stop(); // the mic has not opened yet: the hang-up finds none to release
+      if (after === 'the mint answers') answerMint(MINT);
+      else if (after === 'the mint fails') failMint(new Error('the engine is down'));
+      else token.resolve('jwt-1');
+      await starting;
+      devices.resolve(); // it opens after all
+      await tick();
+      expect(w.client().micOpen).toBe(false);
+      expect(w.client().micStops).toBe(1);
+      expect(w.client().connectParams).toBeUndefined();
+    },
+  );
+
+  it('a refused mint releases an allowed mic still opening, once it opens', async () => {
+    const devices = deferred<void>();
+    const err = Object.assign(new Error('You have used up your credits for now.'), { type: 'insufficient_credit' });
+    const w = world({
+      micPermission: async () => 'granted',
+      request: vi.fn(async () => {
+        throw err;
+      }) as unknown as T2VVoiceDeps['request'],
+    });
+    FakePipecatClient.deviceGate = devices.promise; // the refusal comes before the mic has opened
+    await expect(w.voice.start()).rejects.toBe(err);
+    expect(w.voice.state).toBe('error');
+    devices.resolve();
+    await tick();
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().micStops).toBe(1);
+  });
+
   it('a start that fails after the mic opened releases it', async () => {
     const w = world({ getValidAccessToken: vi.fn(async () => null) });
     await expect(w.voice.start()).rejects.toMatchObject({ type: 'auth_expired' });
@@ -1695,20 +1746,33 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.voice.state).toBe('listening');
   });
 
-  it('relays the transcript and the library’s errors', async () => {
+  it('relays the transcript; a library error is a transport_error, its text only in the debug log', async () => {
     const w = elWorld();
     const transcripts: unknown[] = [];
     w.voice.on('transcript', (t) => transcripts.push(t));
-    await w.voice.start();
-    const { opts } = w.el.conversation();
-    opts.onMessage({ message: 'hello', role: 'user' });
-    opts.onMessage({ message: 'Hi there.', role: 'agent' });
-    opts.onError('Something broke');
-    expect(transcripts).toEqual([
-      { role: 'user', text: 'hello', final: true },
-      { role: 'bot', text: 'Hi there.', final: true },
-    ]);
-    expect(w.errors).toEqual([{ type: 'voice_error', message: 'Something broke' }]);
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await w.voice.start();
+      const { opts } = w.el.conversation();
+      opts.onMessage({ message: 'hello', role: 'user' });
+      opts.onMessage({ message: 'Hi there.', role: 'agent' });
+      opts.onError('Server error: Internal error');
+      expect(transcripts).toEqual([
+        { role: 'user', text: 'hello', final: true },
+        { role: 'bot', text: 'Hi there.', final: true },
+      ]);
+      // The fixed message a Gemini Live transport error falls back to: the button shows its own copy.
+      expect(w.errors).toEqual([{ type: 'transport_error', message: 'Voice connection error' }]);
+      expect(debug).not.toHaveBeenCalled();
+      localStorage.setItem('t2v:debug', '1');
+      opts.onError('Microphone permission denied');
+      expect(w.errors.map((e) => e.message)).toEqual(['Voice connection error', 'Voice connection error']);
+      expect(debug).toHaveBeenCalledOnce();
+      expect(debug.mock.calls[0]).toContain('Microphone permission denied');
+    } finally {
+      localStorage.removeItem('t2v:debug');
+      debug.mockRestore();
+    }
   });
 
   it('test_start_falls_back_after_a_connect_failure', async () => {
@@ -2033,6 +2097,30 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
       expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'session_cap' }]]);
       expect(w.el.conversation().sent).toEqual([]);
       expect(w.voice.state).toBe('ended');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the time limit counts from the mint, so a slow library load does not stretch the call', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }); // Date is the call's clock
+    try {
+      const load = deferred<ElevenLabsLibs>();
+      const w = elWorld({ loadElevenLabs: vi.fn(() => load.promise) });
+      const starting = w.voice.start(); // EL.time_limit_seconds is 60
+      // Runs what is queued without moving the clock: the mint is sent and answered.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(w.request).toHaveBeenCalledOnce();
+      const mintedAt = Date.now();
+      await vi.waitFor(() => expect(w.deps.loadElevenLabs).toHaveBeenCalled()); // moves the clock as it polls
+      await vi.advanceTimersByTimeAsync(5_000); // the first ElevenLabs call of the page: a slow load
+      load.resolve(w.el.libs);
+      await starting;
+      expect(w.voice.state).toBe('listening');
+      await vi.advanceTimersByTimeAsync(mintedAt + 59_999 - Date.now());
+      expect(w.el.conversation().sent).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(w.el.conversation().sent).toEqual(['NOTICE']); // 60 s after the mint, not after the load
     } finally {
       vi.useRealTimers();
     }

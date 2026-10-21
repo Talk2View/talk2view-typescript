@@ -128,10 +128,20 @@ interface LoadedElevenLabs {
   libs: import('./voice-elevenlabs.js').ElevenLabsLibs;
 }
 
+/** The voice debug log: written only when `localStorage['t2v:debug'] === '1'`. */
+function debugLog(label: string, detail: unknown): void {
+  let enabled = false;
+  try {
+    enabled = globalThis.localStorage?.getItem('t2v:debug') === '1';
+  } catch {
+    // storage blocked: stay quiet
+  }
+  if (enabled) console.debug(`[Talk2View] ${label}`, detail);
+}
+
 /**
- * Where a call's start spends its time, in ms since the click. Logged only
- * when `localStorage['t2v:debug'] === '1'`: step names and numbers, nothing
- * about the user.
+ * Where a call's start spends its time, in ms since the click, for the debug
+ * log: step names and numbers, nothing about the user.
  */
 function startTimings(): { mark(step: string): void; done(step: string): void } {
   const clock = globalThis.performance;
@@ -144,13 +154,7 @@ function startTimings(): { mark(step: string): void; done(step: string): void } 
     mark,
     done(step) {
       mark(step);
-      let enabled = false;
-      try {
-        enabled = globalThis.localStorage?.getItem('t2v:debug') === '1';
-      } catch {
-        // storage blocked: stay quiet
-      }
-      if (enabled) console.debug('[Talk2View] voice start, ms since click', steps);
+      debugLog('voice start, ms since click', steps);
     },
   };
 }
@@ -175,6 +179,9 @@ const AUTH_EXPIRED: VoiceError = {
   type: 'auth_expired',
   message: 'Your sign-in expired. Sign in again to keep talking.',
 };
+
+/** A `transport_error`'s message when the call library gives none, or gives one only a developer should read. */
+const VOICE_CONNECTION_ERROR = 'Voice connection error';
 
 export interface T2VVoiceDeps {
   request: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
@@ -399,6 +406,9 @@ export class T2VVoiceController {
       if (!orphan || !connectCall) return;
       connectCall.then(() => orphan.disconnect(), () => undefined).catch(() => undefined);
     };
+    // Once the microphone is asked for: a start that ends before it opens
+    // releases it as soon as it opens, since the teardown found none to release.
+    let releaseMicWhenOpen = (): void => undefined;
     const timings = startTimings();
     try {
       // An ElevenLabs call's end report the engine has not answered yet, or a
@@ -440,13 +450,15 @@ export class T2VVoiceController {
       if (stale()) return;
       const devices = first.pipecat.initDevices();
       devices.catch(() => undefined); // awaited below
+      releaseMicWhenOpen = () => {
+        devices.then(() => releaseMic(first.pipecat), () => undefined);
+      };
       // A hang-up must not wait on the prompt: start() returns at once, and
-      // the mic the prompt opens later is released as soon as it opens (the
-      // teardown that ran first found none to release).
+      // the mic the prompt opens later is released as soon as it opens.
       const micOpened = async (): Promise<boolean> => {
         await Promise.race([devices, aborted]);
         if (!stale()) return true;
-        devices.then(() => releaseMic(first.pipecat), () => undefined);
+        releaseMicWhenOpen();
         return false;
       };
       if (!micAllowed) {
@@ -467,10 +479,15 @@ export class T2VVoiceController {
         // In the same step as the check below: no ending falls between them.
         if (this.mintInFlight === minting) this.mintInFlight = null;
       }
+      // An ElevenLabs call's time limit counts from here, however long its library takes to load.
+      const mintedAt = Date.now();
       timings.mark('mint');
       const elevenlabs = mint.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
       // Hung up during the mint: the ending took the mint over, and reports its end.
-      if (stale()) return;
+      if (stale()) {
+        releaseMicWhenOpen();
+        return;
+      }
       // An ElevenLabs call's module and library load while the token and the
       // microphone are awaited. Until the call takes over, an ending reports
       // the end of the call the engine minted.
@@ -481,7 +498,10 @@ export class T2VVoiceController {
       if (mint.note) this.safeEmit('note', mint.note);
       const token = await tokenFetch;
       timings.mark('token');
-      if (stale()) return;
+      if (stale()) {
+        releaseMicWhenOpen();
+        return;
+      }
       if (!token) throw new VoiceStartError('auth_expired', 'Sign in again to use voice');
       if (micAllowed) {
         if (!(await micOpened())) return;
@@ -493,7 +513,7 @@ export class T2VVoiceController {
         releaseMic(first.pipecat);
         this.client = null;
         client = null;
-        if (await this.startElevenLabs(elevenlabs, mint.session_id, options, elevenlabsLoad, stale, aborted)) {
+        if (await this.startElevenLabs(elevenlabs, mintedAt, mint.session_id, options, elevenlabsLoad, stale, aborted)) {
           if (!stale()) timings.done('connected');
           return;
         }
@@ -518,11 +538,13 @@ export class T2VVoiceController {
       if (stale()) {
         abandon();
         if (client) releaseMic(client);
+        releaseMicWhenOpen();
         return;
       }
       this.abortStart = null;
       this.epoch += 1; // late callbacks from this failed client are not this call's
       await this.teardown('error');
+      releaseMicWhenOpen();
       const error = await describeStartError(err, connecting);
       this.emitError(error.type, error.message);
       this.setState('error');
@@ -574,7 +596,7 @@ export class T2VVoiceController {
           if (current()) void this.finish('disconnected');
         },
         onError: (msg) => {
-          if (current()) this.emitError('transport_error', msg?.data?.message ?? 'Voice connection error');
+          if (current()) this.emitError('transport_error', msg?.data?.message ?? VOICE_CONNECTION_ERROR);
         },
         onServerMessage: (data) => {
           if (!current()) return;
@@ -658,7 +680,8 @@ export class T2VVoiceController {
 
   /**
    * Start the ElevenLabs call the engine minted, once its module and library
-   * have loaded. Its requests run as engine turns on the chat session the
+   * have loaded. Its time limit counts from `mintedAt`, when the mint
+   * answered. Its requests run as engine turns on the chat session the
    * mint names, with the page prompt as their system message; the agent gets
    * the page prompt unfenced (`voice-elevenlabs.ts`). Resolves `true` when
    * the call started, or the start was hung up (that ending reported the
@@ -667,6 +690,7 @@ export class T2VVoiceController {
    */
   private async startElevenLabs(
     info: ElevenLabsCallInfo,
+    mintedAt: number,
     sessionId: string,
     options: VoiceStartOptions,
     load: Promise<LoadedElevenLabs>,
@@ -704,6 +728,7 @@ export class T2VVoiceController {
     const call: ElevenLabsCallHandle = new loaded.ElevenLabsCall({
       libs: loaded.libs,
       info,
+      startedAt: mintedAt,
       pagePrompt,
       turns,
       onConnected: () => {
@@ -714,8 +739,11 @@ export class T2VVoiceController {
       onTranscript: (transcript) => {
         if (!stale()) this.safeEmit('transcript', transcript);
       },
+      // The library's own words are for developers: the end-user gets a transport error's copy.
       onError: (message) => {
-        if (!stale()) this.emitError('voice_error', message);
+        if (stale()) return;
+        debugLog('voice: the ElevenLabs library reported an error', message);
+        this.emitError('transport_error', VOICE_CONNECTION_ERROR);
       },
       onEnded: (reason, error) => {
         if (!stale()) void this.finish(reason, error);
@@ -764,11 +792,15 @@ export class T2VVoiceController {
     return mint;
   }
 
-  /** Keep an end report until the engine answers it: the next start waits for it. */
+  /**
+   * Keep an end report until the engine answers it: the next start waits for
+   * it. A report that fails counts as answered.
+   */
   private keepEndReport(report: Promise<void>): void {
+    const answered = report.catch(() => undefined);
     const pending: Promise<void> = this.pendingEndReports
-      ? Promise.all([this.pendingEndReports, report]).then(() => undefined)
-      : report;
+      ? Promise.all([this.pendingEndReports, answered]).then(() => undefined)
+      : answered;
     this.pendingEndReports = pending;
     void pending.then(() => {
       if (this.pendingEndReports === pending) this.pendingEndReports = null;
