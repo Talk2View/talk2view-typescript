@@ -14,17 +14,39 @@
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
+import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
 import type {
   HumanDecision,
   VoiceEndReason,
   VoiceError,
   VoiceEventMap,
+  VoiceModelId,
   VoicePendingApproval,
+  VoiceSessionRequest,
   VoiceSessionResponse,
   VoiceStartOptions,
   VoiceState,
 } from './types.js';
+
+// ── Voice models ──
+
+/** The voice models this SDK can run, as it asks the engine for them. */
+export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live', 'elevenlabs'];
+
+/** What the end-user is told when no voice model this app allows can take the call. */
+export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
+
+/** Each voice model's name, as the notes say it. */
+export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = { 'gemini-live': 'Gemini Live', elevenlabs: 'ElevenLabs' };
+
+/** The note when a voice model couldn't connect and another took the call: the engine's text. */
+export const NOTE_COULD_NOT_CONNECT = 'Using {fallback} — {wanted} couldn’t connect.';
+
+/** {@link NOTE_COULD_NOT_CONNECT} for the voice model used (`fallback`) and the one given up (`wanted`). */
+export function couldNotConnectNote(fallback: VoiceModelId, wanted: VoiceModelId): string {
+  return NOTE_COULD_NOT_CONNECT.replace('{fallback}', VOICE_MODEL_NAMES[fallback]).replace('{wanted}', VOICE_MODEL_NAMES[wanted]);
+}
 
 // ── The slice of the Pipecat client we use, so tests can hand in a fake ──
 
@@ -136,6 +158,15 @@ export interface T2VVoiceDeps {
   approvalTimeoutMs?: number;
   /** Whether the browser will prompt for the microphone. Default: the Permissions API. */
   micPermission?: () => Promise<PermissionState | 'unknown'>;
+  /**
+   * The chat session a voice call's turns run on, from the mint's
+   * `session_id`: the end-user's one engine session for this partner.
+   */
+  sessionFor: (sessionId: string) => T2VSession;
+  /** Loads the ElevenLabs client library, only when an ElevenLabs call starts. */
+  loadElevenLabs?: () => Promise<unknown>;
+  /** The browser's language tag, for the call's greeting and language. Default: `navigator.language`. */
+  language?: () => string;
 }
 
 /** The microphone's permission state, or 'unknown' where the browser cannot say. */
@@ -345,6 +376,7 @@ export class T2VVoiceController {
             }
             if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
             this.setState('listening');
+            this.safeEmit('callStarted', { voiceModel: 'gemini-live', greeting: null });
           },
           onDisconnected: () => {
             if (!stale()) void this.finish('disconnected');
@@ -404,13 +436,11 @@ export class T2VVoiceController {
       // The access token is fetched alongside the mint, not after it.
       const tokenFetch = this.deps.getValidAccessToken();
       tokenFetch.catch(() => undefined); // awaited below
-      const systemPrompt = options.systemPrompt?.trim();
-      const mint = await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', {
-        method: 'POST',
-        ...(systemPrompt ? { body: JSON.stringify({ system_prompt: systemPrompt }) } : {}),
-      });
+      const mint = await this.mintVoice(options, []);
       timings.mark('mint');
       if (stale()) return;
+      // The engine's word on the voice model it chose, shown once, at the start.
+      if (mint.note) this.safeEmit('note', mint.note);
       const token = await tokenFetch;
       timings.mark('token');
       if (stale()) return;
@@ -419,7 +449,8 @@ export class T2VVoiceController {
         if (!(await micOpened())) return;
         timings.mark('mic');
       }
-      transport.iceServers = mint.ice_servers.map((s) => ({
+      // A Gemini Live call: the mint carries its ticket, offer URL and ICE servers.
+      transport.iceServers = (mint.ice_servers ?? []).map((s) => ({
         urls: s.urls,
         ...(s.username ? { username: s.username } : {}),
         ...(s.credential ? { credential: s.credential } : {}),
@@ -428,8 +459,8 @@ export class T2VVoiceController {
       connecting = true;
       connectCall = pipecat.connect({
         webrtcRequestParams: {
-          endpoint: mint.voice_url,
-          requestData: { ticket: mint.ticket, partner_key: this.deps.partnerKey, access_token: token },
+          endpoint: mint.voice_url!,
+          requestData: { ticket: mint.ticket!, partner_key: this.deps.partnerKey, access_token: token },
         },
       });
       // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
@@ -454,6 +485,34 @@ export class T2VVoiceController {
         : new VoiceStartError(error.type, error.message, { cause: err });
     } finally {
       if (!stale()) this.abortStart = null;
+    }
+  }
+
+  /**
+   * Ask the engine for a call (`POST /v1/voice/sessions`) on any voice model
+   * this SDK runs but `exclude`, with the page's instructions and the
+   * browser's language. The engine chooses the voice model. When none is left
+   * for this app and this SDK (403 `voice_model_unavailable`), the start fails
+   * with {@link NO_VOICE_MESSAGE}.
+   */
+  private async mintVoice(options: VoiceStartOptions, exclude: readonly VoiceModelId[]): Promise<VoiceSessionResponse> {
+    const systemPrompt = options.systemPrompt?.trim();
+    const language = (this.deps.language ?? (() => globalThis.navigator?.language))();
+    const body: VoiceSessionRequest = {
+      ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
+      voice_models: VOICE_MODELS_THIS_SDK_RUNS.filter((model) => !exclude.includes(model)),
+      ...(language ? { language } : {}),
+    };
+    try {
+      return await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      if ((err as { type?: unknown } | undefined)?.type === 'voice_model_unavailable') {
+        throw new VoiceStartError('voice_model_unavailable', NO_VOICE_MESSAGE, { cause: err });
+      }
+      throw err;
     }
   }
 

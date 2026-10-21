@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { T2VVoiceController as T2VVoice, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
+import { T2VVoiceController as T2VVoice, couldNotConnectNote, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
 import type { PermissionCheckResult, VoiceState } from '../../src/types.js';
 
 type Callbacks = Record<string, (...args: any[]) => void>;
@@ -102,12 +102,15 @@ class FakePipecatClient {
 }
 
 const MINT = {
+  voice_model: 'gemini-live',
+  note: null,
   ticket: 't'.repeat(43),
   voice_url: 'https://engine.test/v1/voice/offer',
   session_id: 's1',
   ice_servers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:t.test'], username: 'u', credential: 'c' }],
   expires_in: 60,
   model: 'gemini-3.8-live',
+  elevenlabs: null,
 };
 
 function world(overrides: Partial<T2VVoiceDeps> = {}) {
@@ -135,6 +138,9 @@ function world(overrides: Partial<T2VVoiceDeps> = {}) {
     loadLibs: async () => libs,
     attachAudio: vi.fn(),
     approvalTimeoutMs: 30,
+    // jsdom has a navigator.language: the mint sends a language only when a test gives one.
+    language: () => '',
+    sessionFor: vi.fn() as unknown as T2VVoiceDeps['sessionFor'],
     ...overrides,
   };
   const voice = new T2VVoice(deps);
@@ -149,21 +155,27 @@ describe('T2VVoice.start', () => {
     await w.voice.start({ systemPrompt: 'Update the study list table.' });
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ system_prompt: 'Update the study list table.' }),
+      body: JSON.stringify({ system_prompt: 'Update the study list table.', voice_models: ['gemini-live', 'elevenlabs'] }),
     });
   });
 
-  it('sends no body without a system prompt, or with a blank one', async () => {
+  it('sends no system prompt without one, or with a blank one', async () => {
     const w = world();
     await w.voice.start({ systemPrompt: '   ' });
-    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
   });
 
   it('mints, lazy-loads, connects with the ticket and credentials, and listens', async () => {
     const w = world();
     await w.voice.start();
     expect(w.deps.ensureSession).toHaveBeenCalledOnce();
-    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
     const c = w.client();
     expect((c.opts.transport as FakeTransport).iceServers).toEqual([
       { urls: ['stun:stun.test:3478'] },
@@ -237,6 +249,57 @@ describe('T2VVoice.start', () => {
     w.client().callbacks.onTrackStarted?.(track, { local: true });
     w.client().callbacks.onTrackStarted?.(track, { local: false });
     expect(w.deps.attachAudio).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('T2VVoice.start: the voice model', () => {
+  it('mint sends both voice models and the browser language', async () => {
+    const w = world({ language: () => 'fr-CA' });
+    await w.voice.start({ systemPrompt: 'Page' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ system_prompt: 'Page', voice_models: ['gemini-live', 'elevenlabs'], language: 'fr-CA' }),
+    });
+  });
+
+  it('gemini live path is unchanged when the engine picks it', async () => {
+    const loadElevenLabs = vi.fn();
+    const w = world({ loadElevenLabs });
+    const started: unknown[] = [];
+    w.voice.on('callStarted', (c) => started.push(c));
+    await w.voice.start();
+    expect(w.client().connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(loadElevenLabs).not.toHaveBeenCalled();
+    expect(started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+  });
+
+  it('note is emitted once at the start', async () => {
+    const note = 'Using Gemini Live — this app doesn’t offer ElevenLabs.';
+    const w = world({ request: vi.fn(async () => ({ ...MINT, note })) as unknown as T2VVoiceDeps['request'] });
+    const log: unknown[] = [];
+    w.voice.on('note', (n) => log.push(['note', n]));
+    w.voice.on('stateChange', (s) => log.push(['state', s]));
+    await w.voice.start();
+    expect(log).toEqual([['state', 'connecting'], ['note', note], ['state', 'listening']]);
+  });
+
+  it('voice_model_unavailable shows the no-voice message', async () => {
+    const err = Object.assign(new Error('HTTP 403'), { type: 'voice_model_unavailable', status: 403 });
+    const w = world({ request: vi.fn(async () => { throw err; }) as unknown as T2VVoiceDeps['request'] });
+    const errors: unknown[] = [];
+    w.voice.on('error', (e) => errors.push(e));
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'voice_model_unavailable' });
+    expect(errors).toEqual([{ type: 'voice_model_unavailable', message: 'Voice isn’t available right now.' }]);
+    expect(w.voice.state).toBe('error');
+  });
+
+  it("names both voice models in the could-not-connect note, in the engine's words", () => {
+    expect(couldNotConnectNote('gemini-live', 'elevenlabs')).toBe('Using Gemini Live — ElevenLabs couldn’t connect.');
   });
 });
 

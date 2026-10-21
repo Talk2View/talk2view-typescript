@@ -47,12 +47,15 @@ class FakePipecatClient {
 }
 
 const MINT = {
+  voice_model: 'gemini-live',
+  note: null,
   ticket: 't'.repeat(43),
   voice_url: 'https://engine.test/v1/voice/offer',
   session_id: 's1',
   ice_servers: [],
   expires_in: 60,
   model: 'gemini-3.8-live',
+  elevenlabs: null,
 };
 
 function deferred<T>() {
@@ -78,6 +81,7 @@ function facade(overrides: Partial<T2VVoiceOptions> = {}) {
     partnerKey: 'pk_test_x',
     loadLibs: async () => libs,
     attachAudio: vi.fn(),
+    sessionFor: vi.fn() as unknown as T2VVoiceOptions['sessionFor'],
     ...overrides,
   };
   return { voice: new T2VVoice(options), options };
@@ -216,6 +220,18 @@ describe('T2VVoice facade', () => {
     await tick();
     expect(log.at(-1)).toEqual(['approvalChange', null]);
     expect(sent).toEqual([]);
+  });
+
+  it('forwards note and callStarted', async () => {
+    const { voice } = facade({
+      loadController: async () => T2VVoiceController,
+      request: vi.fn(async () => ({ ...MINT, note: 'n' })) as unknown as T2VVoiceOptions['request'],
+    });
+    const log: unknown[] = [];
+    voice.on('note', (n) => log.push(['note', n]));
+    voice.on('callStarted', (c) => log.push(['callStarted', c.voiceModel]));
+    await voice.start();
+    expect(log).toEqual([['note', 'n'], ['callStarted', 'gemini-live']]);
   });
 });
 

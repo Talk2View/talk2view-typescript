@@ -242,6 +242,15 @@ export class Talk2View {
         getValidAccessToken: (opts) => this.auth.getValidAccessToken(opts),
         tools: this.tools,
         partnerKey: this.config.partnerKey,
+        // A voice call's turns run on the session the mint names, never on a
+        // new one: the end-user has one engine session per partner.
+        sessionFor: (sessionId) =>
+          new T2VSession(
+            { session_id: sessionId, thread_id: '', model: this.config.model ?? '' },
+            this.client,
+            this.tools,
+            this.config,
+          ),
       });
     }
     return this._voice;
@@ -1234,6 +1243,7 @@ export { T2VVoice } from './voice-facade.js';
 /** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
 export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
 export { VoiceStartError } from './voice-error.js';
+export { VOICE_PREFERENCE_URL } from './constants.js';
 // Type-only: the controller itself stays a lazy chunk.
 export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
 export type {
@@ -1281,6 +1291,10 @@ export type {
   UserPreferences,
   DisplayMessage,
   ToolStep,
+  VoiceModelId,
+  VoiceSessionRequest,
+  VoiceCapability,
+  ElevenLabsCallInfo,
   VoiceSessionResponse,
   VoiceStartOptions,
   VoiceState,

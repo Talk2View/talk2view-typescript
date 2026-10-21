@@ -1,8 +1,9 @@
 /**
- * Shared attachment constraints — the single source of truth for which file
- * types the SDK will upload. Both the public `Talk2View.uploadAttachment()`
- * guard and the bundled Composer derive from these, so partners with their own
- * composer get the same client-side validation as the built-in UI.
+ * Shared constants. The attachment constraints are the single source of truth
+ * for which file types the SDK will upload. Both the public
+ * `Talk2View.uploadAttachment()` guard and the bundled Composer derive from
+ * these, so partners with their own composer get the same client-side
+ * validation as the built-in UI.
  */
 
 /** MIME whitelist (mirrors the server). Also drives the file input's `accept`. */
@@ -18,3 +19,9 @@ export const ATTACHMENT_TYPES_LABEL = 'PNG, JPEG, WebP, GIF, or PDF';
 export function isAllowedAttachmentType(type: string): boolean {
   return ALLOWED_ATTACHMENT_MIME.has(type);
 }
+
+/**
+ * Where an end-user chooses their preferred voice model: the Voice section of
+ * their Profile page on the Talk2View dashboard.
+ */
+export const VOICE_PREFERENCE_URL = 'https://dashboard.talk2view.com/enduser/profile#voice';
