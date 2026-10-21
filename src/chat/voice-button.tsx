@@ -311,7 +311,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
             </div>
           ) : null}
           {note ? (
-            // Hidden from screen readers, like the status: the live region below reads it out.
+            // Hidden from screen readers, like the status: the note's live region below reads it out.
             <div aria-hidden="true" className="t2v-voice-note">
               {note}
             </div>
@@ -341,9 +341,17 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
         </div>
       ) : null}
       {/* Always in the DOM, so a screen reader hears each change: a live region
-          that appears together with its text is often not announced. */}
+          that appears together with its text is often not announced. There are
+          two because a live region is read out whole when any of it changes:
+          with the note in the status region's, the note would be read again
+          with every change of status, and the status again when the note went.
+          Apart, the note is read once, as it arrives, and its going says
+          nothing. */}
       <span role="status" className="t2v-voice-sr">
-        {error ? '' : [status, note].filter(Boolean).join(' ')}
+        {error ? '' : (status ?? '')}
+      </span>
+      <span role="status" className="t2v-voice-sr">
+        {note ?? ''}
       </span>
       <button
         type="button"
