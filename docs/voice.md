@@ -27,7 +27,8 @@ listening, working, or why it ended. Until the end-user speaks it says "Say
 hello!", or, on an ElevenLabs call, shows the greeting the agent opens with.
 Errors are written for the end-user, not the developer. For example, when every
 voice slot is taken, the note reads "Voice is busy right now. Try again
-shortly." When a tool needs approval, its card appears in the same place.
+shortly." When a tool call needs the end-user's go-ahead or approval, its card
+appears in the same place.
 
 When the call runs on a different voice model from the one the end-user wanted,
 the engine's note says so for the first few seconds. An end-user who has signed
