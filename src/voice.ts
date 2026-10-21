@@ -751,14 +751,14 @@ export class T2VVoiceController {
       onTranscript: (transcript) => {
         if (!stale()) this.safeEmit('transcript', transcript);
       },
-      // The library's own words are for developers. The end-user gets the
-      // microphone's copy for an error about the microphone (1.29.0 sends none
-      // on a WebRTC call; a later version may), and a transport error's for
-      // any other.
+      // The library's own words are for developers. An error about the
+      // microphone ends the call with the microphone's copy, as a Gemini Live
+      // device error does (1.29.0 sends none on a WebRTC call; a later version
+      // may). Any other gets a transport error's copy, and the call goes on.
       onError: (message) => {
         if (stale()) return;
         debugLog('voice: the ElevenLabs library reported an error', message);
-        if (/microphone/i.test(message)) this.emitError(MIC_UNAVAILABLE.type, MIC_UNAVAILABLE.message);
+        if (/microphone/i.test(message)) void this.finish('error', MIC_UNAVAILABLE);
         else this.emitError('transport_error', VOICE_CONNECTION_ERROR);
       },
       onEnded: (reason, error) => {

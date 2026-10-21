@@ -1826,16 +1826,23 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     }
   });
 
-  it('a library error about the microphone is a mic_unavailable, in the words a Gemini Live call uses', async () => {
+  it('a library error about the microphone ends the call with mic_unavailable, as on Gemini Live', async () => {
     const w = elWorld();
     await w.voice.start();
     const { opts } = w.el.conversation();
+    opts.onError('Server error: Internal error'); // any other error: the call goes on
+    await tick();
+    expect(w.voice.state).toBe('listening');
     opts.onError('Microphone permission denied');
-    opts.onError('Server error: Internal error');
+    await tick();
     expect(w.errors).toEqual([
-      { type: 'mic_unavailable', message: 'Voice needs microphone access. Allow the microphone and try again.' },
       { type: 'transport_error', message: 'Voice connection error' },
+      { type: 'mic_unavailable', message: 'Voice needs microphone access. Allow the microphone and try again.' },
     ]);
+    expect(w.ended).toEqual(['error']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.el.conversation().ended).toBe(1); // the session ends, and its microphone with it
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'error' }]]);
   });
 
   it('test_start_falls_back_after_a_connect_failure', async () => {
