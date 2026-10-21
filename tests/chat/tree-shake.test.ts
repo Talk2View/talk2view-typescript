@@ -28,13 +28,15 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 
-// Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only.
+// Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only;
+// `core` again on 2026-10-22 for 0.23.0, at 38.0 / 11.85 KB (0.21.4: 37.1 / 11.51;
+// 0.22.0: 11.73 gzip).
 // These are the numbers the README and docs/chat.md quote; change them together.
 // Previously 11.14 / 40.25 / 372.38 KB gzip (2026-09-24, after the voice agent
 // landed behind a lazy facade), and before that 9.35 / 39.93 / 361.77
 // (2026-09-18, no splitting).
 const MEASURED = {
-  core: { raw: 37.1, gzip: 11.51 },
+  core: { raw: 38.0, gzip: 11.85 },
   ui: { raw: 124.4, gzip: 40.94 },
   chat: { raw: 1197.8, gzip: 373.32 },
 };
@@ -137,8 +139,15 @@ async function bundle(entry: string): Promise<Bundled> {
   };
 }
 
-/** The voice agent's WebRTC stack: allowed only in lazy chunks. */
-const isVoiceStack = (p: string): boolean => p.startsWith('@pipecat-ai/') || p.startsWith('@daily-co/');
+/**
+ * The voice agent's WebRTC stacks, Gemini Live's (Pipecat and Daily) and
+ * ElevenLabs' (its client and LiveKit): allowed only in lazy chunks.
+ */
+const isVoiceStack = (p: string): boolean =>
+  p.startsWith('@pipecat-ai/') ||
+  p.startsWith('@daily-co/') ||
+  p.startsWith('@elevenlabs/') ||
+  p === 'livekit-client';
 
 const sizes: string[] = [];
 function record(name: string, b: Bundled) {
@@ -170,6 +179,12 @@ describe('what a consumer pays for the entry points they use', () => {
       // facade (dist/voice-facade.js), which import()s dist/voice.js on start().
       expect(core.modules.has('dist/voice.js')).toBe(false);
       expect(core.lazyModules.has('dist/voice.js')).toBe(true);
+      // An ElevenLabs call's module and its library load on the first ElevenLabs
+      // call: a Gemini Live call, and a page that never starts one, load neither.
+      expect([...core.lazyPackages].some((p) => p === '@elevenlabs/client')).toBe(true);
+      expect(core.code).not.toContain('@elevenlabs');
+      expect(core.modules.has('dist/voice-elevenlabs.js')).toBe(false);
+      expect(core.lazyModules.has('dist/voice-elevenlabs.js')).toBe(true);
 
       expect(core.rawKB).toBeLessThan(40);
       // Fence, not a budget: measured + ~10%. 9.35 KB gzip before the voice
@@ -190,6 +205,8 @@ describe('what a consumer pays for the entry points they use', () => {
       expect([...ui.packages].filter((p) => p.startsWith('@assistant-ui'))).toEqual([]);
       expect([...ui.packages].filter((p) => p.startsWith('@base-ui'))).toEqual([]);
       expect(ui.code).not.toContain('@assistant-ui');
+      // Neither voice stack is up front here either.
+      expect([...ui.packages].filter(isVoiceStack)).toEqual([]);
 
       // `/ui` is the older panel and is not growing; the fence is loose enough
       // that a bug fix does not trip it and tight enough to catch a new

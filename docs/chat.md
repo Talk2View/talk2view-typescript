@@ -476,7 +476,7 @@ Stated plainly, because it is large.
 
 | | gzip |
 |---|---|
-| `@talk2view/sdk` (the core client) | 11.5 KB |
+| `@talk2view/sdk` (the core client) | 11.8 KB |
 | `@talk2view/sdk/ui` (the previous chat panel) | 40.9 KB |
 | **`@talk2view/sdk/chat`** | **373.3 KB** |
 | A whole page containing the chat and React | ~437 KB |
