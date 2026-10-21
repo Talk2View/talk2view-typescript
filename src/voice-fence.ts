@@ -6,9 +6,11 @@
  * ElevenLabs call's page prompt and capabilities reach the agent as dynamic
  * variables inside that fence, so the SDK guards them as the engine does:
  * nothing from the page or a tool can close the fence early. Each function
- * gives exactly the engine's text for the same input
- * (`t2v/core/voice_rules.py`), so the instructions read the same whichever
- * voice model takes the call.
+ * gives the engine's text for the same input (`t2v/core/voice_rules.py`), so
+ * the instructions read the same whichever voice model takes the call, with
+ * one difference: `formatCapabilities([])` gives `(none)` where the engine's
+ * `format_capabilities` gives `""`, because the dynamic variable needs a
+ * value and the agent's placeholder is `(none)`.
  */
 
 import type { VoiceCapability } from './types.js';

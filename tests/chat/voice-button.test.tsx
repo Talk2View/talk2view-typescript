@@ -350,6 +350,7 @@ describe('with the real facade', () => {
       getValidAccessToken: vi.fn(),
       tools: {} as never,
       partnerKey: 'pk_test_x',
+      sessionFor: vi.fn(),
       // Never loads: the call stays in "connecting" until it is hung up.
       loadController: () => new Promise(() => {}),
     }) } as unknown as Talk2View;

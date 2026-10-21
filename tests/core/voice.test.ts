@@ -262,6 +262,26 @@ describe('T2VVoice.start: the voice model', () => {
     });
   });
 
+  it("leaves out a language longer than the engine's 35 characters, so the mint is not refused", async () => {
+    const w = world({ language: () => 'x'.repeat(36) });
+    await w.voice.start();
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('sends a language of exactly 35 characters as is', async () => {
+    const language = 'x'.repeat(35);
+    const w = world({ language: () => language });
+    await w.voice.start();
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'], language }),
+    });
+  });
+
   it('gemini live path is unchanged when the engine picks it', async () => {
     const loadElevenLabs = vi.fn();
     const w = world({ loadElevenLabs });
@@ -275,6 +295,34 @@ describe('T2VVoice.start: the voice model', () => {
       },
     });
     expect(loadElevenLabs).not.toHaveBeenCalled();
+    expect(started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+  });
+
+  it("an old engine's mint (no voice_model, note or elevenlabs) still connects to Gemini Live", async () => {
+    // What the engine answered before voice models: the deploy-order and rollback case.
+    const oldMint = {
+      ticket: MINT.ticket,
+      voice_url: MINT.voice_url,
+      session_id: MINT.session_id,
+      ice_servers: MINT.ice_servers,
+      expires_in: MINT.expires_in,
+      model: MINT.model,
+    };
+    const w = world({ request: vi.fn(async () => oldMint) as unknown as T2VVoiceDeps['request'] });
+    const notes: unknown[] = [];
+    const started: unknown[] = [];
+    w.voice.on('note', (n) => notes.push(n));
+    w.voice.on('callStarted', (c) => started.push(c));
+    await w.voice.start();
+    expect((w.client().opts.transport as FakeTransport).iceServers).toEqual(MINT.ice_servers);
+    expect(w.client().connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(w.states).toEqual(['connecting', 'listening']);
+    expect(notes).toEqual([]);
     expect(started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
   });
 

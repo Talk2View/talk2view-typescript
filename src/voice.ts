@@ -37,6 +37,14 @@ export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live
 /** What the end-user is told when no voice model this app allows can take the call. */
 export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
 
+/**
+ * The longest language the engine takes on a mint (35 characters). A longer
+ * one is left out, so the engine uses its default instead of refusing the
+ * whole mint. `.length` counts UTF-16 units, never fewer than the engine's
+ * code points, so anything sent fits.
+ */
+const MAX_LANGUAGE_LENGTH = 35;
+
 /** Each voice model's name, as the notes say it. */
 export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = { 'gemini-live': 'Gemini Live', elevenlabs: 'ElevenLabs' };
 
@@ -491,9 +499,10 @@ export class T2VVoiceController {
   /**
    * Ask the engine for a call (`POST /v1/voice/sessions`) on any voice model
    * this SDK runs but `exclude`, with the page's instructions and the
-   * browser's language. The engine chooses the voice model. When none is left
-   * for this app and this SDK (403 `voice_model_unavailable`), the start fails
-   * with {@link NO_VOICE_MESSAGE}.
+   * browser's language (left out when longer than {@link MAX_LANGUAGE_LENGTH}).
+   * The engine chooses the voice model. When none is left for this app and
+   * this SDK (403 `voice_model_unavailable`), the start fails with
+   * {@link NO_VOICE_MESSAGE}.
    */
   private async mintVoice(options: VoiceStartOptions, exclude: readonly VoiceModelId[]): Promise<VoiceSessionResponse> {
     const systemPrompt = options.systemPrompt?.trim();
@@ -501,7 +510,7 @@ export class T2VVoiceController {
     const body: VoiceSessionRequest = {
       ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
       voice_models: VOICE_MODELS_THIS_SDK_RUNS.filter((model) => !exclude.includes(model)),
-      ...(language ? { language } : {}),
+      ...(language && language.length <= MAX_LANGUAGE_LENGTH ? { language } : {}),
     };
     try {
       return await this.deps.request<VoiceSessionResponse>('/v1/voice/sessions', {
