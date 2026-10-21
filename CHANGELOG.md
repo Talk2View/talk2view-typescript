@@ -16,7 +16,7 @@
 
 - **`ticket`, `voice_url` and `ice_servers` are optional on `VoiceSessionResponse`.** The exported type now describes both voice models: a Gemini Live call carries those three, and an ElevenLabs call carries `elevenlabs` instead. Code that reads them as always present needs a check. The type also gains `voice_model`, `note` and `elevenlabs`.
 - **The chat settings' "Voice model" picker is "Dictation model".** It chooses what transcribes dictation, and "voice model" now means Gemini Live or ElevenLabs only. The hint under "Spoken language" says "dictation model" too.
-- **The runtime-hosts table lists ElevenLabs.** An ElevenLabs call connects to `wss://livekit.rtc.elevenlabs.io`, asks `https://livekit.rtc.elevenlabs.io` why when a connection fails, and needs `blob:` and `data:` in `script-src` for the client's audio worklets. It never contacts `api.elevenlabs.io`. The README, `docs/chat.md` and `docs/voice.md` list the hosts of both voice models.
+- **The runtime-hosts table lists ElevenLabs, and `blob:` for Gemini Live.** An ElevenLabs call connects to `wss://livekit.rtc.elevenlabs.io` and makes plain HTTPS requests to `https://livekit.rtc.elevenlabs.io` when a connection fails or the browser goes offline; it never contacts `api.elevenlabs.io`. It loads one audio worklet from a `blob:` URL, and the call works without it. A Gemini Live call's audio worklets also load from `blob:` URLs, and it does not start without them, so a strict `script-src` needs `blob:` as well as `'unsafe-eval'`; the docs said only `'unsafe-eval'`. The README, `docs/chat.md` and `docs/voice.md` list the hosts and the `script-src` sources of both voice models.
 
 ### Dependencies
 

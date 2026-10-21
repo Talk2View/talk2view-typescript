@@ -173,27 +173,41 @@ isn’t available right now."
 
   | Voice model | `connect-src`, besides your engine | `script-src` |
   |---|---|---|
-  | Gemini Live | `https://c.daily.co` | `'unsafe-eval'` |
-  | ElevenLabs | `wss://livekit.rtc.elevenlabs.io`, `https://livekit.rtc.elevenlabs.io` | `blob:`, `data:` |
+  | Gemini Live | `https://c.daily.co` | `'unsafe-eval'`, `blob:` |
+  | ElevenLabs | `wss://livekit.rtc.elevenlabs.io`, `https://livekit.rtc.elevenlabs.io` | `blob:` (optional) |
+
+  Audio worklets are governed by `script-src`, not `worker-src`.
 
   **Gemini Live.** Starting a call, Pipecat's WebRTC transport has Daily's
   library (`@daily-co/daily-js`) download its call engine from
-  `https://c.daily.co` and run it through `Function()`. So Gemini Live needs
-  `https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`;
-  without either, no call starts. The call's offer then goes to the voice URL
-  the engine returns, which on Talk2View's hosted engine is the engine itself,
-  so `connect-src` must allow your engine too. If Daily's download fails, its
-  library tries to send an error report to Daily's own error tracking (Sentry);
-  you can leave that blocked.
+  `https://c.daily.co` and run it through `Function()`, and loads its microphone
+  and playback audio worklets from `blob:` URLs. So Gemini Live needs
+  `https://c.daily.co` in `connect-src`, and `'unsafe-eval'` and `blob:` in
+  `script-src`; without any of them, no call starts. The call's offer then goes
+  to the voice URL the engine returns, which on Talk2View's hosted engine is the
+  engine itself, so `connect-src` must allow your engine too. If Daily's
+  download fails, its library tries to send an error report to Daily's own error
+  tracking (Sentry); you can leave that blocked.
 
   **ElevenLabs.** With the token the engine mints, the client connects to
-  ElevenLabs' LiveKit service at `wss://livekit.rtc.elevenlabs.io` and, when a
-  connection fails, asks `https://livekit.rtc.elevenlabs.io` what went wrong. It
-  never contacts `api.elevenlabs.io`. Its audio processing loads worklet code
-  from a `blob:` URL, with `data:` as the fallback when `blob:` is refused, so
-  `script-src` needs `blob:` and `data:`. A call that cannot connect is retried
-  on Gemini Live (see above), so where the app offers Gemini Live a missing host
-  costs the end-user the ElevenLabs voice, not the call.
+  ElevenLabs' LiveKit service at `wss://livekit.rtc.elevenlabs.io`. It also
+  makes plain HTTPS requests to `https://livekit.rtc.elevenlabs.io`, to find out
+  what went wrong when a connection fails and to check the connection when the
+  browser reports it has gone offline or come back online. Those are the only
+  hosts it needs in `connect-src`: it never contacts `api.elevenlabs.io`, and it
+  loads nothing from a CDN. A call that cannot connect is retried on Gemini Live
+  (see above), so where the app offers Gemini Live a missing host costs the
+  end-user the ElevenLabs voice, not the call.
+
+  ElevenLabs needs nothing in `script-src` for the call itself. The client loads
+  one audio worklet, which copies the agent's audio for a callback the SDK does
+  not use. It loads it from a `blob:` URL and, where the browser refuses that
+  (Safari inside an iframe), from a `data:` URL. If both are blocked, the client
+  logs "Failed to set up audio capture" and the call carries on, the agent's
+  voice playing as usual. Allow `blob:` to keep that warning, and the CSP
+  violation report behind it, out of your console. Add `data:` only if the chat
+  runs inside an iframe that Safari end-users reach and you want it quiet there
+  too.
 
 A chat-only integration never loads either voice model's libraries. Gemini
 Live's (the Pipecat libraries, and Daily's call engine) load on the first Gemini

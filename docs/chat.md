@@ -422,12 +422,14 @@ the end-user attaches.
 
 Voice needs more, for each voice model your app offers. A Gemini Live call
 downloads Daily's call engine from `https://c.daily.co` and runs it through
-`Function()`, so it needs `https://c.daily.co` in `connect-src` and
-`'unsafe-eval'` in `script-src`, or no call starts. An ElevenLabs call connects
-to ElevenLabs' LiveKit hosts instead, and needs `blob:` and `data:` in
-`script-src`; see [voice.md](voice.md#browser-requirements) for both. If you
-would rather allow none of it, `features={{ voice: false }}` keeps the microphone
-off the launcher.
+`Function()`, and loads its audio worklets from `blob:` URLs, so it needs
+`https://c.daily.co` in `connect-src` and `'unsafe-eval'` and `blob:` in
+`script-src`, or no call starts. An ElevenLabs call connects to ElevenLabs'
+LiveKit service instead, so it needs `wss://livekit.rtc.elevenlabs.io` and
+`https://livekit.rtc.elevenlabs.io` in `connect-src`; it needs nothing in
+`script-src`, though `blob:` keeps a console warning out. See
+[voice.md](voice.md#browser-requirements) for both. If you would rather allow
+none of it, `features={{ voice: false }}` keeps the microphone off the launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
 cannot — an Office add-in's webpack with no CSS rule, a strict `style-src` that
