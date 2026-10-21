@@ -738,7 +738,10 @@ export class T2VVoiceController {
       return null;
     }
     this.mintedCall = null;
-    await this.reportEnd(conversationId, 'connect_failed');
+    // Awaited, and kept: a start after a hang-up meanwhile waits for it too.
+    const report = this.reportEnd(conversationId, 'connect_failed');
+    this.keepEndReport(report);
+    await report;
     if (stale()) return null;
     const mint = await this.mintVoice(options, ['elevenlabs']);
     if (stale()) return null;

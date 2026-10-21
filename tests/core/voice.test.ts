@@ -1814,6 +1814,26 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.voice.state).toBe('listening');
   });
 
+  it('a start straight after a hang-up mid-fallback mints once the connect_failed report is answered', async () => {
+    const answer = deferred<void>();
+    const w = elWorld({}, { endReport: () => answer.promise });
+    w.el.control.failWith = new Error('could not establish signal connection');
+    const mints = () => w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions');
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]));
+    await w.voice.stop(); // before the engine answers that report
+    expect(w.ended).toEqual(['stopped']);
+    w.el.control.failWith = null;
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints()).toHaveLength(1);
+    answer.resolve();
+    await Promise.all([first, restarting]);
+    expect(mints()).toHaveLength(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
   it('the page going away ends the call, its end report sent with keepalive at once', async () => {
     const w = elWorld();
     await w.voice.start();
