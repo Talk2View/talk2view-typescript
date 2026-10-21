@@ -16,6 +16,34 @@ import type {
 } from './types.js';
 
 /**
+ * What the engine is told about a turn beyond its messages. Each option is
+ * sent only when given, on `/messages` and on every `/resume` of the turn, so
+ * the model calls after a resume see the same. The chat gives none.
+ */
+export interface TurnOptions {
+  /**
+   * The client surface the turn comes from: `'keyboard'` (a panel the size of
+   * the keyboard, inside another app), `'app'` (a full-screen chat) or
+   * `'voice'` (a voice call: the reply is spoken, so the engine asks for short
+   * plain prose).
+   */
+  surface?: 'keyboard' | 'app' | 'voice';
+  /** The client can show approval prompts, so the engine gates flagged tools behind them. */
+  supportsApproval?: boolean;
+  /** The client shows platform-tool activity, so the engine streams `tool_event` chunks. */
+  supportsToolEvents?: boolean;
+}
+
+/** The given turn options, under the engine's names. */
+function turnFields(turn?: TurnOptions): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  if (turn?.surface !== undefined) fields.surface = turn.surface;
+  if (turn?.supportsApproval !== undefined) fields.supports_approval = turn.supportsApproval;
+  if (turn?.supportsToolEvents !== undefined) fields.supports_tool_events = turn.supportsToolEvents;
+  return fields;
+}
+
+/**
  * Build user message content — a plain string normally, structured content
  * parts when attachments are present.
  */
@@ -50,7 +78,8 @@ export class T2VSession {
    * Send a message and stream the response.
    *
    * Tool calls are handled automatically if handlers are registered.
-   * Yields ChatEvent objects for the caller to render.
+   * Yields ChatEvent objects for the caller to render. The {@link TurnOptions}
+   * go with this request and every resume of the turn.
    */
   async *sendMessage(
     content: string,
@@ -60,7 +89,7 @@ export class T2VSession {
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
-    },
+    } & TurnOptions,
   ): AsyncGenerator<ChatEvent> {
     const messages: ChatMessage[] = [];
 
@@ -74,24 +103,28 @@ export class T2VSession {
 
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,
-      { messages, stream: true, model: options?.model ?? this.config?.model },
+      { messages, stream: true, model: options?.model ?? this.config?.model, ...turnFields(options) },
       options?.signal,
+      options,
     );
   }
 
   /**
-   * Resume after a tool call (for manual tool handling).
+   * Resume after a tool call (for manual tool handling). `turn` carries the
+   * options the turn started with.
    */
   async *resumeToolCall(
     toolCallId: string,
     result: string,
     isError = false,
     signal?: AbortSignal,
+    turn?: TurnOptions,
   ): AsyncGenerator<ChatEvent> {
     yield* this.processStream(
       `/v1/sessions/${this.id}/resume`,
-      { tool_call_id: toolCallId, result, is_error: isError },
+      { tool_call_id: toolCallId, result, is_error: isError, ...turnFields(turn) },
       signal,
+      turn,
     );
   }
 
@@ -101,11 +134,14 @@ export class T2VSession {
    * - once: executes the tool with original args, resumes with result
    * - always: same as once (session-level memory is handled by the hook layer)
    * - deny: skips execution, resumes with corrective feedback
+   *
+   * `turn` carries the options the turn started with.
    */
   async *respondToApproval(
     approval: PendingApproval,
     decision: HumanDecision,
     signal?: AbortSignal,
+    turn?: TurnOptions,
   ): AsyncGenerator<ChatEvent> {
     const { toolCallId, toolName } = approval;
     const execArgs = decision.updatedInput ?? approval.arguments;
@@ -128,16 +164,18 @@ export class T2VSession {
     }
 
     yield { type: 'approval_result', toolName, decision: decision.action };
-    yield* this.resumeToolCall(toolCallId, result, isError, signal);
+    yield* this.resumeToolCall(toolCallId, result, isError, signal, turn);
   }
 
   /**
-   * Internal: process an SSE stream with automatic tool call handling.
+   * Internal: process an SSE stream with automatic tool call handling. Its
+   * resumes carry the turn's options.
    */
   private async *processStream(
     endpoint: string,
     body: object,
     signal?: AbortSignal,
+    turn?: TurnOptions,
   ): AsyncGenerator<ChatEvent> {
     for await (const chunk of this.client.streamRequest(endpoint, body, signal)) {
       // Debug: log raw chunks to see what the server actually sends
@@ -179,6 +217,7 @@ export class T2VSession {
               `Permission denied: ${permResult.message ?? 'Tool not allowed'}`,
               true,
               signal,
+              turn,
             );
             return;
 
@@ -194,7 +233,7 @@ export class T2VSession {
               };
 
               const { result, isError } = await this.tools.executeToolCall(tool_name, execArgs);
-              yield* this.resumeToolCall(tool_call_id, result, isError, signal);
+              yield* this.resumeToolCall(tool_call_id, result, isError, signal, turn);
               return;
             }
 

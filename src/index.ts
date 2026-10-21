@@ -1224,6 +1224,7 @@ export type { PopupProvider } from './auth.js';
 export { T2VClient } from './client.js';
 /** @internal Exported for typing. Sessions are created by {@link Talk2View}. */
 export { T2VSession } from './sessions.js';
+export type { TurnOptions } from './sessions.js';
 export { T2VSkills } from './skills.js';
 export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
