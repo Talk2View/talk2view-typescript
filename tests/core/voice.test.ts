@@ -442,6 +442,9 @@ describe('bundle boundary', () => {
     expect(controller).toMatch(/import\('\.\/voice-elevenlabs\.js'\)/);
     // The module itself, not only its types: the call is loaded with an awaited import().
     expect(controller).toMatch(/await import\('\.\/voice-elevenlabs\.js'\)/);
+    // The voice turn runner comes with that module: a Gemini Live call never loads it.
+    const turnImports: string[] = controller.match(/^(?:import|export)\b[^;]*from '\.\/voice-turn\.js'/gm) ?? [];
+    expect(turnImports.filter((statement) => !statement.startsWith('import type '))).toEqual([]);
   });
 });
 
@@ -1475,6 +1478,12 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     await w.voice.start();
     expect((w.client().opts.transport as FakeTransport).iceServers).toHaveLength(2);
   });
+
+  it('ICE servers the mint garbles fail the start before it connects, as voice_error', async () => {
+    const w = world({ request: vi.fn(async () => ({ ...MINT, ice_servers: [null] })) as unknown as T2VVoiceDeps['request'] });
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'voice_error' });
+    expect(w.client().connectParams).toBeUndefined();
+  });
 });
 
 // ── ElevenLabs calls ──
@@ -1606,13 +1615,18 @@ const elWorlds: Array<{ voice: T2VVoice }> = [];
 
 /**
  * A world whose engine picks ElevenLabs while the mint allows it, and Gemini
- * Live once ElevenLabs is left out. An end report answers `{}`.
+ * Live once ElevenLabs is left out. `engine.elevenlabs` changes the mint's
+ * ElevenLabs half. An end report answers `engine.endReport()`, or `{}`.
  */
-function elWorld(overrides: Partial<T2VVoiceDeps> = {}) {
+function elWorld(
+  overrides: Partial<T2VVoiceDeps> = {},
+  engine: { elevenlabs?: Partial<ElevenLabsCallInfo>; endReport?: () => Promise<unknown> } = {},
+) {
   const el = fakeElevenLabs();
+  const mintEl = { ...MINT_EL, elevenlabs: { ...EL, ...engine.elevenlabs } };
   const request = vi.fn(async (endpoint: string, init?: RequestInit): Promise<unknown> => {
-    if (endpoint !== '/v1/voice/sessions') return {};
-    return bodyOf(init).voice_models?.includes('elevenlabs') ? MINT_EL : MINT;
+    if (endpoint !== '/v1/voice/sessions') return engine.endReport ? engine.endReport() : {};
+    return bodyOf(init).voice_models?.includes('elevenlabs') ? mintEl : MINT;
   });
   const loadElevenLabs = vi.fn(async () => el.libs);
   const w = world({ request: request as unknown as T2VVoiceDeps['request'], loadElevenLabs, ...overrides });
@@ -1773,6 +1787,33 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.voice.state).toBe('ended');
   });
 
+  it('a hang-up whose end report is never answered still ends the call', async () => {
+    const w = elWorld({}, { endReport: () => new Promise<never>(() => {}) });
+    await w.voice.start();
+    await w.voice.stop();
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.el.conversation().ended).toBe(1); // the session, and its microphone, ended first
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+  });
+
+  it('a start straight after a hang-up mints once the last call’s end report is answered', async () => {
+    const answer = deferred<void>();
+    const w = elWorld({}, { endReport: () => answer.promise });
+    const mints = () => w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions');
+    await w.voice.start();
+    await w.voice.stop();
+    expect(w.ended).toEqual(['stopped']);
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints()).toHaveLength(1); // the engine hears of the last call's end before this one's mint
+    answer.resolve();
+    await restarting;
+    expect(mints()).toHaveLength(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
   it('the page going away ends the call, its end report sent with keepalive at once', async () => {
     const w = elWorld();
     await w.voice.start();
@@ -1898,6 +1939,22 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'budget_exhausted' }]]);
     expect(conversation.sent).toEqual([]);
     expect(w.voice.state).toBe('ended');
+  });
+
+  it('a call that reaches the call cap ends as session_cap, with no credit error', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const w = elWorld({}, { elevenlabs: { time_limit_seconds: 900 } });
+      await w.voice.start();
+      await vi.advanceTimersByTimeAsync(900_000);
+      expect(w.ended).toEqual(['session_cap']);
+      expect(w.errors).toEqual([]);
+      expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'session_cap' }]]);
+      expect(w.el.conversation().sent).toEqual([]);
+      expect(w.voice.state).toBe('ended');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a client tool that needs approval shows the voice card, and always skips it next time', async () => {

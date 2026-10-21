@@ -11,9 +11,9 @@
  * microphone opens through them before the mint, carry its WebRTC audio to
  * the voice agent service, and the client tools the agent calls arrive here
  * over the RTVI data channel. An ElevenLabs call gets a conversation token:
- * it runs in `voice-elevenlabs.ts` on the `@elevenlabs/client` library, both
- * loaded with `import()` only for such a call, and the agent's requests
- * become engine turns on the end-user's chat session (`voice-turn.ts`). An
+ * it runs in `voice-elevenlabs.ts` on the `@elevenlabs/client` library, and
+ * the agent's requests become engine turns on the end-user's chat session
+ * (`voice-turn.ts`), all three loaded with `import()` only for such a call. An
  * ElevenLabs call that can't connect is tried once more, on Gemini Live.
  * Either way, client tools run through the SAME tool registry and permission
  * check as chat, so partners write no new code.
@@ -21,7 +21,6 @@
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
-import { VoiceTurnRunner } from './voice-turn.js';
 import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
 import type {
@@ -119,9 +118,13 @@ export const loadPipecatLibs: VoiceLibLoader = async () => {
 /** An ElevenLabs call, as the controller holds it. */
 type ElevenLabsCallHandle = import('./voice-elevenlabs.js').ElevenLabsCall;
 
-/** What an ElevenLabs call needs loaded before it starts: the call itself, and the library it runs on. */
+/**
+ * What an ElevenLabs call needs loaded before it starts: the call itself, the
+ * runner for its requests, and the library it runs on.
+ */
 interface LoadedElevenLabs {
   ElevenLabsCall: typeof import('./voice-elevenlabs.js').ElevenLabsCall;
+  VoiceTurnRunner: typeof import('./voice-elevenlabs.js').VoiceTurnRunner;
   libs: import('./voice-elevenlabs.js').ElevenLabsLibs;
 }
 
@@ -223,6 +226,15 @@ function releaseMic(client: PipecatClientLike): void {
   }
 }
 
+/** A Gemini Live mint's ICE servers, as the transport takes them. */
+function iceServersOf(mint: VoiceSessionResponse): RTCIceServer[] {
+  return (mint.ice_servers ?? []).map((s) => ({
+    urls: s.urls,
+    ...(s.username ? { username: s.username } : {}),
+    ...(s.credential ? { credential: s.credential } : {}),
+  }));
+}
+
 const DEFAULT_APPROVAL_TIMEOUT_MS = 25_000;
 
 /** What the voice service's refusal statuses mean when its JSON body is unreadable. */
@@ -274,6 +286,12 @@ export class T2VVoiceController {
    * {@link elCall} has taken over yet: an ending reports its end.
    */
   private mintedCall: string | null = null;
+  /**
+   * ElevenLabs end reports the engine has not answered yet. The next start
+   * waits for them before it mints, since the engine releases a call's
+   * credit when it hears of the end. Never rejects.
+   */
+  private pendingEndReports: Promise<void> | null = null;
   private audio: HTMLAudioElement | null = null;
   private libs: Promise<VoiceLibs> | null = null;
   private pendingApproval: VoicePendingApproval | null = null;
@@ -376,6 +394,15 @@ export class T2VVoiceController {
     };
     const timings = startTimings();
     try {
+      // An ElevenLabs call's end report the engine has not answered yet: it
+      // releases that call's credit as it hears, and this call's mint must
+      // find it released. A slow engine holds back this start, which shows
+      // `connecting`, never the last call's `ended`.
+      const endReports = this.pendingEndReports;
+      if (endReports) {
+        await Promise.race([endReports, aborted]);
+        if (stale()) return;
+      }
       // The call libraries load while the session is checked: the same chunk
       // whatever the answer. Awaited before the mint, so a chunk that fails
       // to load still never burns a ticket.
@@ -426,7 +453,7 @@ export class T2VVoiceController {
       const elevenlabs = mint.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
       if (stale()) {
         // Hung up during the mint: the engine still hears that the ElevenLabs call it minted has ended.
-        if (elevenlabs) void aborted.then((reason) => this.reportEnd(elevenlabs.conversation_id, reason));
+        if (elevenlabs) void aborted.then((reason) => this.keepEndReport(this.reportEnd(elevenlabs.conversation_id, reason)));
         return;
       }
       // An ElevenLabs call's module and library load while the token and the
@@ -455,25 +482,18 @@ export class T2VVoiceController {
           if (!stale()) timings.done('connected');
           return;
         }
-        // It couldn't connect, and nothing has reported its end. The engine
-        // is told (it releases the credit it holds for the call), and the
-        // call is tried once more, on Gemini Live, with a fresh client.
-        if (stale()) {
-          void this.reportEnd(elevenlabs.conversation_id, 'connect_failed');
-          return;
-        }
-        this.mintedCall = null;
-        await this.reportEnd(elevenlabs.conversation_id, 'connect_failed');
-        if (stale()) return;
-        mint = await this.mintVoice(options, ['elevenlabs']);
-        if (stale()) return;
-        this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
+        // It couldn't connect: tried once more, on Gemini Live, with a fresh client.
+        const retry = await this.fallBackToGeminiLive(elevenlabs.conversation_id, options, stale);
+        if (!retry || stale()) return;
+        mint = retry;
         ({ pipecat, transport } = this.buildPipecat(libs, stale));
         client = pipecat;
         this.client = pipecat;
       }
+      // A Gemini Live call: the mint carries its ticket, offer URL and ICE servers.
+      transport.iceServers = iceServersOf(mint);
       connecting = true;
-      connectCall = this.connectGemini(pipecat, transport, mint, token);
+      connectCall = this.connectGemini(pipecat, mint, token);
       // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
       await Promise.race([connectCall, aborted]);
       if (stale()) abandon();
@@ -570,20 +590,10 @@ export class T2VVoiceController {
   }
 
   /**
-   * Connect a Gemini Live call: the mint carries its ticket, offer URL and
-   * ICE servers. Resolves once the bot is ready.
+   * Connect a Gemini Live call with the mint's ticket and offer URL, its ICE
+   * servers already on the transport. Resolves once the bot is ready.
    */
-  private connectGemini(
-    pipecat: PipecatClientLike,
-    transport: { iceServers: RTCIceServer[] },
-    mint: VoiceSessionResponse,
-    token: string,
-  ): Promise<unknown> {
-    transport.iceServers = (mint.ice_servers ?? []).map((s) => ({
-      urls: s.urls,
-      ...(s.username ? { username: s.username } : {}),
-      ...(s.credential ? { credential: s.credential } : {}),
-    }));
+  private connectGemini(pipecat: PipecatClientLike, mint: VoiceSessionResponse, token: string): Promise<unknown> {
     return pipecat.connect({
       webrtcRequestParams: {
         endpoint: mint.voice_url!,
@@ -621,11 +631,14 @@ export class T2VVoiceController {
     }
   }
 
-  /** The ElevenLabs call's module and the library it runs on, both loaded with `import()`. */
+  /**
+   * The ElevenLabs call's module, with the voice turn runner, and the
+   * library it runs on, both loaded with `import()`.
+   */
   private async loadElevenLabsCall(): Promise<LoadedElevenLabs> {
-    const { ElevenLabsCall, loadElevenLabsLibs } = await import('./voice-elevenlabs.js');
+    const { ElevenLabsCall, VoiceTurnRunner, loadElevenLabsLibs } = await import('./voice-elevenlabs.js');
     const libs = await (this.deps.loadElevenLabs ?? loadElevenLabsLibs)();
-    return { ElevenLabsCall, libs };
+    return { ElevenLabsCall, VoiceTurnRunner, libs };
   }
 
   /**
@@ -654,7 +667,7 @@ export class T2VVoiceController {
     }
     if (stale()) return true;
     const pagePrompt = options.systemPrompt?.trim() || undefined;
-    const turns = new VoiceTurnRunner({
+    const turns = new loaded.VoiceTurnRunner({
       session: this.deps.sessionFor(sessionId),
       pagePrompt,
       onApproval: async (toolCallId, toolName, args) => {
@@ -707,6 +720,41 @@ export class T2VVoiceController {
       if (!stale()) this.elCall = null;
       return false;
     }
+  }
+
+  /**
+   * The ElevenLabs call couldn't connect, and nothing has reported its end.
+   * The engine is told (it releases the credit it holds for the call), then
+   * asked for the call once more, without ElevenLabs, and its note shown.
+   * Resolves that mint, or `null` once the start is hung up.
+   */
+  private async fallBackToGeminiLive(
+    conversationId: string,
+    options: VoiceStartOptions,
+    stale: () => boolean,
+  ): Promise<VoiceSessionResponse | null> {
+    if (stale()) {
+      this.keepEndReport(this.reportEnd(conversationId, 'connect_failed'));
+      return null;
+    }
+    this.mintedCall = null;
+    await this.reportEnd(conversationId, 'connect_failed');
+    if (stale()) return null;
+    const mint = await this.mintVoice(options, ['elevenlabs']);
+    if (stale()) return null;
+    this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
+    return mint;
+  }
+
+  /** Keep an end report until the engine answers it: the next start waits for it. */
+  private keepEndReport(report: Promise<void>): void {
+    const pending: Promise<void> = this.pendingEndReports
+      ? Promise.all([this.pendingEndReports, report]).then(() => undefined)
+      : report;
+    this.pendingEndReports = pending;
+    void pending.then(() => {
+      if (this.pendingEndReports === pending) this.pendingEndReports = null;
+    });
   }
 
   /**
@@ -802,9 +850,14 @@ export class T2VVoiceController {
       releaseMic(client);
     }
     // An ElevenLabs call ends its session and reports its own end; the end of
-    // one minted but not started yet is reported here.
-    if (call) await call.stop(reason);
-    else if (minted) await this.reportEnd(minted, reason);
+    // one minted but not started yet is reported here. Neither waits for the
+    // engine's answer: the next start does.
+    if (call) {
+      await call.stop(reason);
+      this.keepEndReport(call.reported());
+    } else if (minted) {
+      this.keepEndReport(this.reportEnd(minted, reason));
+    }
     // Last: closing the card emits `approvalChange(null)`. Nothing is sent for
     // it, since the call is gone.
     this.endApproval('The call ended');

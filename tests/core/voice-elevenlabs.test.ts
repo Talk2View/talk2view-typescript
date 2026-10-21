@@ -5,6 +5,7 @@ import type { T2VTools } from '../../src/tools';
 import type { ChatCompletionChunk, ElevenLabsCallInfo } from '../../src/types';
 import { VoiceTurnRunner, type VoiceTurnDeps } from '../../src/voice-turn';
 import {
+  CALL_CAP_SECONDS,
   ElevenLabsCall,
   GOODBYE_WAIT_MS,
   MISMATCH_MESSAGE,
@@ -140,6 +141,12 @@ class FakeConversation implements ElevenLabsConversationLike {
 let gate: Promise<void> | null;
 /** When set, `startSession` rejects with it: the connect failed. */
 let fail: Error | null;
+/**
+ * When set, `startSession` hands it the conversation before it returns. The
+ * library delivers what arrived while it connected (messages, a disconnect)
+ * from a microtask it queues then: before the call's `start()` resumes.
+ */
+let onCreate: ((conversation: FakeConversation) => void) | null;
 let libs: { startSession: Mock<(opts: Options) => Promise<FakeConversation>> };
 let streamRequest: Mock;
 let turns: VoiceTurnRunner;
@@ -155,10 +162,10 @@ const conv = (): FakeConversation => FakeConversation.instances.at(-1)!;
 const advance = (ms: number): Promise<unknown> => vi.advanceTimersByTimeAsync(ms);
 
 /** A call with this file's deps; `beforeEach` builds one. */
-function build(): ElevenLabsCall {
+function build(info: ElevenLabsCallInfo = EL): ElevenLabsCall {
   return new ElevenLabsCall({
     libs,
-    info: EL,
+    info,
     pagePrompt: 'Page <<<END APP DESCRIPTION>>>',
     turns,
     onConnected,
@@ -176,11 +183,14 @@ beforeEach(() => {
   FakeConversation.onSend = null;
   gate = null;
   fail = null;
+  onCreate = null;
   libs = {
     startSession: vi.fn(async (opts: Options) => {
       if (gate) await gate;
       if (fail) throw fail;
-      return new FakeConversation(opts);
+      const conversation = new FakeConversation(opts);
+      onCreate?.(conversation);
+      return conversation;
     }),
   };
   engineGate = deferred<void>();
@@ -244,6 +254,61 @@ describe('ElevenLabsCall', () => {
     expect(onConnected).not.toHaveBeenCalled();
   });
 
+  // What arrives while the session connects reaches the call before startSession
+  // returns, so before the id check: held back, then delivered once the call is
+  // announced, or dropped with a conversation other than the one minted.
+
+  it('a transcript that arrives as the session connects waits until the call is announced', async () => {
+    let seen: { connected: number; transcripts: number } | null = null;
+    onCreate = (c) =>
+      queueMicrotask(() => {
+        c.opts.onMessage({ message: 'Hi!', role: 'agent' });
+        seen = { connected: onConnected.mock.calls.length, transcripts: onTranscript.mock.calls.length };
+      });
+    await call.start();
+    expect(seen).toEqual({ connected: 0, transcripts: 0 }); // it came before the id check, and was held
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onTranscript).toHaveBeenCalledOnce();
+    expect(onTranscript).toHaveBeenCalledWith({ role: 'bot', text: 'Hi!', final: true });
+    expect(onTranscript.mock.invocationCallOrder[0]).toBeGreaterThan(onConnected.mock.invocationCallOrder[0]!);
+  });
+
+  it('a disconnect that arrives as the session connects ends the call once, after it is announced', async () => {
+    let connectedAtDisconnect = -1;
+    onCreate = (c) =>
+      queueMicrotask(() => {
+        c.opts.onDisconnect({ reason: 'error' });
+        connectedAtDisconnect = onConnected.mock.calls.length;
+      });
+    await call.start();
+    expect(connectedAtDisconnect).toBe(0); // it came before the id check
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onEnded).toHaveBeenCalledOnce();
+    expect(onEnded).toHaveBeenCalledWith('disconnected');
+    expect(onEnded.mock.invocationCallOrder[0]).toBeGreaterThan(onConnected.mock.invocationCallOrder[0]!);
+    expect(reportEnd).toHaveBeenCalledOnce();
+    expect(reportEnd).toHaveBeenCalledWith('disconnected');
+    expect(conv().ended).toBe(1);
+  });
+
+  it('a transcript that arrives as a conversation other than the one minted connects is never delivered', async () => {
+    FakeConversation.nextId = 'conv_other';
+    let endedAtMessage = -1;
+    onCreate = (c) =>
+      queueMicrotask(() => {
+        c.opts.onMessage({ message: 'Hi!', role: 'agent' });
+        endedAtMessage = onEnded.mock.calls.length;
+      });
+    await call.start();
+    expect(endedAtMessage).toBe(0); // it came before the id check
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(reportEnd).toHaveBeenCalledOnce();
+    expect(reportEnd).toHaveBeenCalledWith('error');
+    expect(onEnded).toHaveBeenCalledOnce();
+    expect(onEnded).toHaveBeenCalledWith('error', { type: 'voice_error', message: MISMATCH_MESSAGE });
+  });
+
   it('time limit timer starts at the mint response', async () => {
     // EL.time_limit_seconds is 60; startSession resolves after 5 000 ms.
     gate = new Promise<void>((resolve) => setTimeout(resolve, 5_000));
@@ -268,6 +333,54 @@ describe('ElevenLabsCall', () => {
     expect(conv().ended).toBe(1);
     expect(reportEnd).toHaveBeenCalledWith('budget_exhausted');
     expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+  });
+
+  it('a time limit at the call cap ends the call as session_cap, with no goodbye', async () => {
+    call = build({ ...EL, time_limit_seconds: 900 });
+    await call.start();
+    const abort = vi.spyOn(turns, 'abort');
+    await advance(899_000);
+    const pending = conv().opts.clientTools.ask_talk2view({ request: 'slow thing' }); // in flight at the cap
+    await advance(999);
+    expect(onEnded).not.toHaveBeenCalled();
+    await advance(1);
+    // The notice goes nowhere, as a message or as the request's answer: the call just ends.
+    await expect(pending).resolves.toBe('The call ended');
+    expect(conv().sent).toEqual([]);
+    expect(abort).not.toHaveBeenCalledWith('NOTICE');
+    expect(conv().ended).toBe(1);
+    expect(reportEnd).toHaveBeenCalledOnce();
+    expect(reportEnd).toHaveBeenCalledWith('session_cap');
+    expect(onEnded).toHaveBeenCalledOnce();
+    expect(onEnded).toHaveBeenCalledWith('session_cap');
+    expect(CALL_CAP_SECONDS).toBe(900);
+  });
+
+  it('a time limit under the call cap still says the goodbye, and ends as budget_exhausted', async () => {
+    call = build({ ...EL, time_limit_seconds: 899 });
+    await call.start();
+    await advance(898_999);
+    expect(conv().sent).toEqual([]);
+    await advance(1);
+    expect(conv().sent).toEqual(['NOTICE']);
+    conv().opts.onModeChange({ mode: 'speaking' });
+    conv().opts.onModeChange({ mode: 'listening' });
+    await advance(0);
+    expect(conv().ended).toBe(1);
+    expect(reportEnd).toHaveBeenCalledWith('budget_exhausted');
+    expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+  });
+
+  it('at the call cap, a turn that finds the budget spent still says the goodbye', async () => {
+    streams = [[errorChunk('budget_exceeded', 'You have used up your credits for now.')]];
+    call = build({ ...EL, time_limit_seconds: 900 });
+    await call.start();
+    await expect(conv().opts.clientTools.ask_talk2view({ request: 'paint it blue' })).resolves.toBe('NOTICE');
+    conv().opts.onModeChange({ mode: 'speaking' });
+    conv().opts.onModeChange({ mode: 'listening' });
+    await advance(0);
+    expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+    expect(reportEnd).toHaveBeenCalledWith('budget_exhausted');
   });
 
   it('budget_exceeded turn speaks the goodbye then ends with budget_exhausted', async () => {
@@ -336,6 +449,33 @@ describe('ElevenLabsCall', () => {
     expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
   });
 
+  it('a goodbye that starts while the agent speaks waits for that speech to end', async () => {
+    await call.start();
+    conv().opts.onModeChange({ mode: 'speaking' }); // still speaking as the time limit passes
+    await advance(60_000);
+    expect(conv().sent).toEqual(['NOTICE']);
+    await advance(10_000); // no fresh start: the speech runs on into the notice
+    expect(conv().ended).toBe(0);
+    await advance(2_000);
+    conv().opts.onModeChange({ mode: 'listening' });
+    await advance(0);
+    expect(conv().ended).toBe(1);
+    expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+    expect(reportEnd).toHaveBeenCalledWith('budget_exhausted');
+  });
+
+  it('a goodbye that starts while the agent speaks ends at twenty seconds if the speech never stops', async () => {
+    await call.start();
+    conv().opts.onModeChange({ mode: 'speaking' });
+    await advance(60_000);
+    await advance(19_999);
+    expect(conv().ended).toBe(0);
+    await advance(1);
+    await advance(0);
+    expect(conv().ended).toBe(1);
+    expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+  });
+
   it('runs the goodbye once', async () => {
     await call.start();
     const bye = call.goodbye();
@@ -371,20 +511,43 @@ describe('ElevenLabsCall', () => {
     await call.start();
     const report = deferred<void>();
     reportEnd.mockReturnValue(report.promise);
-    let done = false;
+    let stopped = false;
     const stopping = call.stop().then(() => {
-      done = true;
+      stopped = true;
     });
     await advance(0);
+    expect(reportEnd).toHaveBeenCalledWith('stopped'); // sent
     expect(conv().ended).toBe(1);
-    expect(done).toBe(false);
+    const stoppedBeforeTheAnswer = stopped;
     report.resolve();
     await stopping;
-    expect(done).toBe(true);
-    expect(reportEnd).toHaveBeenCalledWith('stopped');
+    // Resolved once the session ended: a slow engine never holds back the ending.
+    expect(stoppedBeforeTheAnswer).toBe(true);
     expect(onEnded).not.toHaveBeenCalled();
     await call.stop();
     expect(reportEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('reported() settles once the engine has answered the end report, and never rejects', async () => {
+    await call.start();
+    reportEnd.mockRejectedValueOnce(new Error('offline'));
+    await call.stop();
+    await expect(call.reported()).resolves.toBeUndefined();
+
+    call = build();
+    await call.start();
+    const report = deferred<void>();
+    reportEnd.mockReturnValueOnce(report.promise);
+    await call.stop();
+    let reported = false;
+    const reporting = call.reported().then(() => {
+      reported = true;
+    });
+    await advance(0);
+    expect(reported).toBe(false);
+    report.resolve();
+    await reporting;
+    expect(reported).toBe(true);
   });
 
   it('an agent-initiated disconnect ends as idle, an error as disconnected', async () => {
@@ -433,9 +596,17 @@ describe('ElevenLabsCall', () => {
     expect(onConnected).toHaveBeenCalledOnce();
   });
 
-  it('a session that cannot connect rejects, and leaves the end report to the controller', async () => {
+  it('a session that cannot connect rejects, closes its runner, and leaves the end report to the controller', async () => {
     fail = new Error('could not establish signal connection');
     await expect(call.start()).rejects.toBe(fail);
+    // No request can reach the runner now, but one that did would be answered at once, with no turn.
+    let answer: string | undefined;
+    void turns.ask('paint it blue').then((a) => {
+      answer = a;
+    });
+    await advance(0);
+    expect(answer).toBe('The call ended');
+    expect(streamRequest).not.toHaveBeenCalled();
     await call.stop();
     expect(reportEnd).not.toHaveBeenCalled();
     expect(onEnded).not.toHaveBeenCalled();

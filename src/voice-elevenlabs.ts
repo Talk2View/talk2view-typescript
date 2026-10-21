@@ -4,21 +4,27 @@
  *
  * The engine mints the call when it picks ElevenLabs (`POST
  * /v1/voice/sessions`): a conversation token, the conversation's id, the
- * time limit the end-user's budget allows, and the notice the agent speaks
- * when the call has to end. This module starts the conversation with that
- * token, answers the agent's `ask_talk2view` requests through the voice turn
- * runner (`voice-turn.ts`), says goodbye when the time limit passes or a turn
- * finds the budget spent, and tells the engine, once, that the call has
- * ended, so the engine settles the credit it holds for it.
+ * time limit the end-user's budget allows (never past the call cap), and the
+ * notice the agent speaks when the credit runs out. This module starts the
+ * conversation with that token, answers the agent's `ask_talk2view`
+ * requests through the voice turn runner (`voice-turn.ts`), says goodbye
+ * when the budget's time limit passes or a turn finds the budget spent, ends
+ * the call at the cap without one, and tells the engine, once, that the call
+ * has ended, so the engine settles the credit it holds for it.
  *
  * Keep this module and the library out of core's up-front bundle: only the
  * voice controller loads this module, with `import()`, and only for an
- * ElevenLabs call; this module loads the library the same way.
+ * ElevenLabs call; this module loads the library the same way. The
+ * controller gets the voice turn runner from this module too, so a Gemini
+ * Live call loads neither.
  */
 
 import { formatCapabilities, NONE_PLACEHOLDER, unfence } from './voice-fence.js';
-import type { VoiceTurnRunner } from './voice-turn.js';
+import { VoiceTurnRunner } from './voice-turn.js';
 import type { ElevenLabsCallInfo, VoiceEndReason, VoiceError, VoiceTranscript } from './types.js';
+
+/** The voice turn runner, for the controller: it loads it only with this module. */
+export { VoiceTurnRunner };
 
 /** The library's conversation, as the call uses it. */
 export interface ElevenLabsConversationLike {
@@ -51,6 +57,15 @@ export const GOODBYE_WAIT_MS = 10_000;
 /** The error when the conversation that started is not the one the engine minted. */
 export const MISMATCH_MESSAGE = 'The call did not start as expected. Try again.';
 
+/**
+ * The longest an ElevenLabs call runs, in seconds, and so the cap on its time
+ * limit. Mirrors the engine's `CALL_CAP_SECONDS`
+ * (`t2v/services/elevenlabs_calls.py`). A time limit this long is the cap,
+ * not the end of the end-user's credit: the call ends there as `session_cap`,
+ * with no goodbye, as a Gemini Live call does at its cap.
+ */
+export const CALL_CAP_SECONDS = 900;
+
 /** The answer to a request still waiting on an engine turn as the call ends. */
 const CALL_ENDED = 'The call ended';
 
@@ -67,8 +82,9 @@ export interface ElevenLabsCallDeps {
   onTranscript(t: VoiceTranscript): void;
   /**
    * The call ended by itself: the agent or the connection ended it, the
-   * goodbye finished, the page went away, or the conversation was not the
-   * one minted. Never called for {@link ElevenLabsCall.stop}.
+   * goodbye finished, the time limit reached the call cap, the page went
+   * away, or the conversation was not the one minted. Never called for
+   * {@link ElevenLabsCall.stop}.
    */
   onEnded(reason: VoiceEndReason, error?: VoiceError): void;
   onError(message: string): void;
@@ -91,10 +107,10 @@ async function quietly(task: () => Promise<unknown>): Promise<void> {
 
 /**
  * One ElevenLabs call, from `start()` until it ends. It ends once: by
- * `stop()`, by the library (the agent or the connection), by the goodbye, or
- * as the page goes away; and it reports that end once, through `reportEnd`.
- * A call whose session never connected reports nothing: `start()` rejects,
- * and the caller reports it.
+ * `stop()`, by the library (the agent or the connection), by the goodbye, at
+ * the call cap, or as the page goes away; and it reports that end once,
+ * through `reportEnd`. A call whose session never connected reports nothing:
+ * `start()` rejects, and the caller reports it.
  */
 export class ElevenLabsCall {
   /** When the time limit runs out: counted from the mint's response, when the call is made. */
@@ -109,9 +125,13 @@ export class ElevenLabsCall {
   /** A disconnect that arrived before the conversation was verified. */
   private earlyDisconnect: { reason: unknown } | null = null;
   private closed = false;
-  /** The ending, under way or done: a later `stop()` joins it. */
+  /** The session's ending, under way or done: a later `stop()` joins it. */
   private closing: Promise<void> = Promise.resolve();
+  /** The end report, once the call has ended: settles with the engine's answer, never rejects. */
+  private reporting: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** The agent is speaking, as the library last said. */
+  private speaking = false;
   private saidGoodbye = false;
   /** Since the goodbye was said, the agent started speaking; then it stopped. */
   private goodbyeSpeaking = false;
@@ -139,6 +159,8 @@ export class ElevenLabsCall {
       // Hung up while it connected: the hang-up reported the end.
       if (this.closed) return;
       this.closed = true;
+      // No request can reach the runner, but it ends with the call all the same.
+      this.deps.turns.abort(CALL_ENDED);
       throw err;
     }
     if (this.closed) {
@@ -154,7 +176,7 @@ export class ElevenLabsCall {
       return;
     }
     this.verified = true;
-    this.timer = setTimeout(() => void this.goodbye(), Math.max(0, this.deadline - this.now()));
+    this.timer = setTimeout(() => this.timeUp(), Math.max(0, this.deadline - this.now()));
     if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide);
     this.announce();
     const early = this.early;
@@ -165,26 +187,40 @@ export class ElevenLabsCall {
 
   /**
    * Hang up: the caller's own ending, so `onEnded` is not called. Resolves
-   * once the end is reported and the session has ended. On a call that has
-   * ended already it joins that ending, and reports nothing more.
+   * once the session has ended, its microphone with it. The end report has
+   * gone by then; {@link reported} settles with the engine's answer. On a
+   * call that has ended already it joins that ending, and reports nothing
+   * more.
    */
   stop(reason: VoiceEndReason = 'stopped'): Promise<void> {
     return this.close(reason, false);
   }
 
   /**
-   * Say goodbye, then end the call as `budget_exhausted`: the time limit
-   * passed, or a turn found the end-user's budget spent. The agent gets the
-   * mint's notice as the answer to the request it is waiting on, or else as a
-   * message. The call ends once the agent has spoken it: after up to
+   * Settles once the engine has answered the end report, or the report
+   * failed; never rejects. Settled already while the call has not ended, and
+   * for a call that never connected (it reports nothing).
+   */
+  reported(): Promise<void> {
+    return this.reporting;
+  }
+
+  /**
+   * Say goodbye, then end the call as `budget_exhausted`: the budget's time
+   * limit passed, or a turn found the end-user's budget spent. The agent gets
+   * the mint's notice as the answer to the request it is waiting on, or else
+   * as a message. The call ends once the agent has spoken it: after up to
    * {@link GOODBYE_WAIT_MS} for the agent to start speaking and, once it has,
-   * as long again for it to finish. Runs once; never rejects.
+   * as long again for it to finish. An agent already speaking as the notice
+   * goes can run straight on into it, with no fresh start: then the call
+   * waits as long again for that speech to end. Runs once; never rejects.
    */
   async goodbye(): Promise<void> {
     if (this.saidGoodbye || this.closed || !this.verified) return;
     this.saidGoodbye = true;
     this.clearTimer();
     const { info, turns } = this.deps;
+    const speakingAtNotice = this.speaking;
     try {
       if (turns.busy) turns.abort(info.budget_notice);
       else this.conversation?.sendUserMessage(info.budget_notice);
@@ -192,8 +228,23 @@ export class ElevenLabsCall {
       // The connection is going: the waits below end the call.
     }
     const wait = this.deps.goodbyeWaitMs ?? GOODBYE_WAIT_MS;
-    if (await this.waitFor(() => this.goodbyeSpeaking, wait)) await this.waitFor(() => this.goodbyeSpoken, wait);
+    if (await this.waitFor(() => this.goodbyeSpeaking, wait)) {
+      await this.waitFor(() => this.goodbyeSpoken, wait);
+    } else if (speakingAtNotice && this.speaking) {
+      // No fresh start: the speech under way as the notice went ran on into it.
+      await this.waitFor(() => !this.speaking, wait);
+    }
     await this.close('budget_exhausted', true);
+  }
+
+  /**
+   * The time limit ran out. A limit at the call cap is the cap, not the end
+   * of the end-user's credit: the call ends as `session_cap`, with no
+   * goodbye. Under it, the credit ran out: the goodbye.
+   */
+  private timeUp(): void {
+    if (this.deps.info.time_limit_seconds >= CALL_CAP_SECONDS) void this.close('session_cap', true);
+    else void this.goodbye();
   }
 
   /** The options `startSession` gets, as `@elevenlabs/client` 1.29.0 names them. */
@@ -257,8 +308,14 @@ export class ElevenLabsCall {
     void this.close(ending, true);
   }
 
-  /** The agent started (`speaking`) or stopped (`listening`) speaking: only the goodbye listens. */
+  /**
+   * The agent started (`speaking`) or stopped (`listening`) speaking. Only
+   * the goodbye listens; it also asks whether the agent was speaking as it
+   * began.
+   */
   private modeChanged(mode: unknown): void {
+    if (mode === 'speaking') this.speaking = true;
+    else if (mode === 'listening') this.speaking = false;
     if (!this.saidGoodbye) return;
     if (mode === 'speaking') this.goodbyeSpeaking = true;
     else if (mode === 'listening' && this.goodbyeSpeaking) this.goodbyeSpoken = true;
@@ -297,8 +354,8 @@ export class ElevenLabsCall {
    * answer any request still waiting on a turn, report the end, and end the
    * session; then, when the call ended by itself (`notify`), tell the
    * caller. The report goes first, so it is sent even as the page goes away.
-   * Resolves once the report is sent and the session has ended; never
-   * rejects.
+   * Resolves once the session has ended, without waiting for the engine's
+   * answer to the report ({@link reported}); never rejects.
    */
   private close(reason: VoiceEndReason, notify: boolean, error?: VoiceError): Promise<void> {
     if (this.closed) return this.closing;
@@ -306,10 +363,9 @@ export class ElevenLabsCall {
     this.clearTimer();
     if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide);
     this.deps.turns.abort(CALL_ENDED);
-    const reported = quietly(() => this.deps.reportEnd(reason));
+    this.reporting = quietly(() => this.deps.reportEnd(reason));
     const conversation = this.conversation;
-    const ended = conversation ? quietly(() => conversation.endSession()) : Promise.resolve();
-    this.closing = Promise.all([reported, ended]).then(() => undefined);
+    this.closing = conversation ? quietly(() => conversation.endSession()) : Promise.resolve();
     this.wake?.();
     if (notify) {
       try {
