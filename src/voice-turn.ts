@@ -155,14 +155,27 @@ export class VoiceTurnRunner {
       expire(TURN_FAILED);
     }, this.deps.turnTimeoutMs ?? TURN_TIMEOUT_MS);
     try {
-      this.deps.onState('working');
+      this.reportState('working');
       return await Promise.race([this.turn(request, controller.signal), expired]);
     } catch {
       return TURN_FAILED;
     } finally {
       clearTimeout(timer);
       this.controller = null;
-      this.deps.onState('idle');
+      this.reportState('idle');
+    }
+  }
+
+  /**
+   * Tell the caller the runner's state. A throw from `onState` is swallowed,
+   * and nothing is logged: it must not lose the turn's answer, nor stop the
+   * turns queued behind it.
+   */
+  private reportState(state: 'working' | 'idle'): void {
+    try {
+      this.deps.onState(state);
+    } catch {
+      // Swallowed, as above.
     }
   }
 
@@ -200,9 +213,10 @@ export class VoiceTurnRunner {
   }
 
   /**
-   * The resume of a tool call that needs the end-user's go-ahead: approved at
-   * once for a tool they always allow, else their decision on the card, or
-   * the reason the card closed without one. Nothing runs until it is read.
+   * The resume of a client tool call that needs the end-user's go-ahead. A
+   * tool they always allow runs at once. Otherwise the card decides: the
+   * resume carries their decision, or the reason the card closed without one.
+   * Nothing runs until the resume is read.
    */
   private async resume(approval: PendingApproval, signal: AbortSignal): Promise<AsyncGenerator<ChatEvent>> {
     const { session } = this.deps;

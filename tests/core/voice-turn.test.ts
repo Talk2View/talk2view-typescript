@@ -261,7 +261,14 @@ describe('VoiceTurnRunner', () => {
     onApproval.mockResolvedValue({ decision: { action: 'once' } });
     await expect(runner.ask('send both')).resolves.toBe('Sending both. Both sent.');
     expect(onApproval.mock.calls.map(([toolCallId]) => toolCallId)).toEqual(['c1', 'c2']);
-    expect(body(2)).toMatchObject({ tool_call_id: 'c2', result: 'ok', is_error: false, surface: 'voice' });
+    expect(body(2)).toMatchObject({
+      tool_call_id: 'c2',
+      result: 'ok',
+      is_error: false,
+      surface: 'voice',
+      supports_approval: false,
+      supports_tool_events: false,
+    });
   });
 
   it('budget_exceeded error triggers the callback', async () => {
@@ -289,6 +296,26 @@ describe('VoiceTurnRunner', () => {
     expect(runner.busy).toBe(false);
   });
 
+  it.each(['working', 'idle'] as const)(
+    'an onState that throws on %s still answers with the text, and the queued request still runs',
+    async (throwsOn) => {
+      setup([gated(textChunk('A.'), stopChunk()), [textChunk('B.'), stopChunk()]], {
+        deps: {
+          onState: (state) => {
+            states.push(state);
+            if (state === throwsOn) throw new Error('listener failed');
+          },
+        },
+      });
+      const a = runner.ask('a');
+      const b = runner.ask('b'); // queued behind a
+      gate.resolve();
+      await expect(Promise.all([a, b])).resolves.toEqual(['A.', 'B.']);
+      expect(streamRequest).toHaveBeenCalledTimes(2);
+      expect(states).toEqual(['working', 'idle', 'working', 'idle']);
+    },
+  );
+
   it('abort resolves the in-flight and queued asks with the reason', async () => {
     setup([gated(textChunk('A.'), stopChunk()), [textChunk('B.'), stopChunk()]]);
     const a = runner.ask('a'); // gated
@@ -299,6 +326,9 @@ describe('VoiceTurnRunner', () => {
     expect(streamRequest.mock.calls[0]![2].aborted).toBe(true); // the in-flight signal
     await expect(runner.ask('c')).resolves.toBe('NOTICE');
     expect(runner.busy).toBe(false);
+    gate.resolve(); // the aborted turn settles, so its time limit is cleared before the file ends
+    await tick();
+    expect(states).toEqual(['working', 'idle']);
   });
 
   it('once aborted, a queued request never reaches the engine', async () => {
