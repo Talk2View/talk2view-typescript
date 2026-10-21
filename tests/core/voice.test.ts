@@ -1,8 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { T2VVoiceController as T2VVoice, couldNotConnectNote, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
-import type { PermissionCheckResult, VoiceState } from '../../src/types.js';
+import { T2VSession } from '../../src/sessions.js';
+import type { T2VClient } from '../../src/client.js';
+import type { T2VTools } from '../../src/tools.js';
+import type { ElevenLabsLibs } from '../../src/voice-elevenlabs.js';
+import type {
+  ChatCompletionChunk,
+  ElevenLabsCallInfo,
+  HumanDecision,
+  PermissionCheckResult,
+  VoiceState,
+} from '../../src/types.js';
 
 type Callbacks = Record<string, (...args: any[]) => void>;
 
@@ -111,6 +121,27 @@ const MINT = {
   expires_in: 60,
   model: 'gemini-3.8-live',
   elevenlabs: null,
+};
+
+const EL: ElevenLabsCallInfo = {
+  token: 'tok',
+  conversation_id: 'conv_1',
+  agent_id: 'ag',
+  time_limit_seconds: 60,
+  capabilities: [{ name: 'paint', description: 'Paints' }],
+  budget_notice: 'NOTICE',
+  greeting: 'Hi! What can I help you with?',
+  language: 'fr',
+};
+
+/** The engine picked ElevenLabs: the mint carries a conversation token, no ticket. */
+const MINT_EL = {
+  ...MINT,
+  voice_model: 'elevenlabs',
+  ticket: undefined,
+  voice_url: undefined,
+  ice_servers: undefined,
+  elevenlabs: EL,
 };
 
 function world(overrides: Partial<T2VVoiceDeps> = {}) {
@@ -399,6 +430,18 @@ describe('bundle boundary', () => {
     expect(source).not.toMatch(/^import .* from '@pipecat-ai/m);
     expect(source).toMatch(/import\('@pipecat-ai\/client-js'\)/);
     expect(source).toMatch(/import\('@pipecat-ai\/small-webrtc-transport'\)/);
+  });
+
+  it('imports the ElevenLabs client library only through import(), and its module only on an ElevenLabs call', () => {
+    // Relative paths: read from the working directory, the repo root, as above.
+    const call = readFileSync('src/voice-elevenlabs.ts', 'utf8');
+    expect(call).not.toMatch(/from '@elevenlabs\/client'/);
+    expect(call).toMatch(/import\('@elevenlabs\/client'\)/);
+    const controller = readFileSync('src/voice.ts', 'utf8');
+    expect(controller).not.toMatch(/from '\.\/voice-elevenlabs\.js'/);
+    expect(controller).toMatch(/import\('\.\/voice-elevenlabs\.js'\)/);
+    // The module itself, not only its types: the call is loaded with an awaited import().
+    expect(controller).toMatch(/await import\('\.\/voice-elevenlabs\.js'\)/);
   });
 });
 
@@ -1431,5 +1474,480 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     const w = world({ micPermission: async () => 'granted' });
     await w.voice.start();
     expect((w.client().opts.transport as FakeTransport).iceServers).toHaveLength(2);
+  });
+});
+
+// ── ElevenLabs calls ──
+
+/** Helper: an SSE chunk with text content, as `tests/core/sessions.test.ts` builds it. */
+function textChunk(content: string): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    thread_id: 'thread_1',
+  };
+}
+
+/** Helper: a stop chunk. */
+function stopChunk(): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+    thread_id: 'thread_1',
+  };
+}
+
+/** Helper: a client tool call's interrupt. */
+function interruptChunk(toolName: string, toolCallId: string, args: Record<string, unknown>): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+    thread_id: 'thread_1',
+    interrupt: { type: 'tool_call', tool_name: toolName, tool_call_id: toolCallId, arguments: args },
+  };
+}
+
+/** Helper: the engine's error chunk, its message mirrored into the text as the engine sends it. */
+function errorChunk(type: string, message: string): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: { content: message }, finish_reason: 'stop' }],
+    thread_id: 'thread_1',
+    error: { type, message },
+  };
+}
+
+/** A fake engine client: each stream request takes the next reply. */
+function engineClient(...replies: ChatCompletionChunk[][]): T2VClient {
+  return {
+    streamRequest: vi.fn().mockImplementation(async function* () {
+      for (const chunk of replies.shift() ?? []) yield chunk;
+    }),
+  } as unknown as T2VClient;
+}
+
+/** The end-user's chat session the mint names, over a fake engine. */
+function chatSession(id: string, engine: T2VClient, tools: Partial<T2VTools> = {}): T2VSession {
+  return new T2VSession({ session_id: id, thread_id: '', model: '' }, engine, {
+    hasHandler: () => true,
+    checkPermission: vi.fn(async () => ({ action: 'allow' })),
+    getDescription: () => '',
+    executeToolCall: vi.fn(async () => ({ result: '{"ok":true}', isError: false })),
+    ...tools,
+  } as unknown as T2VTools);
+}
+
+/** A request's JSON body. */
+function bodyOf(init?: RequestInit): Record<string, any> {
+  return JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+}
+
+/** The ElevenLabs library's conversation, as the controller's call drives it. */
+class FakeElevenLabsConversation {
+  sent: string[] = [];
+  ended = 0;
+  constructor(
+    public opts: Record<string, any>,
+    private readonly id: string,
+  ) {}
+  getId(): string {
+    return this.id;
+  }
+  sendUserMessage(text: string): void {
+    this.sent.push(text);
+  }
+  async endSession(): Promise<void> {
+    this.ended += 1;
+    this.opts.onDisconnect?.({ reason: 'user' });
+  }
+}
+
+/**
+ * A fake `@elevenlabs/client`. `startSession` waits on `control.gate`,
+ * rejects with `control.failWith`, or connects to `control.id`, firing
+ * `onConnect` before it resolves, as the library does. It notes whether a
+ * Pipecat microphone was still open as it started.
+ */
+function fakeElevenLabs() {
+  const control = {
+    failWith: null as Error | null,
+    gate: null as Promise<void> | null,
+    id: EL.conversation_id,
+    micOpenAtStart: [] as boolean[],
+  };
+  const conversations: FakeElevenLabsConversation[] = [];
+  const startSession = vi.fn(async (opts: Record<string, any>) => {
+    control.micOpenAtStart.push(FakePipecatClient.instances.some((c) => c.micOpen));
+    if (control.gate) await control.gate;
+    if (control.failWith) throw control.failWith;
+    const conversation = new FakeElevenLabsConversation(opts, control.id);
+    conversations.push(conversation);
+    opts.onConnect?.({ conversationId: control.id });
+    return conversation;
+  });
+  const libs: ElevenLabsLibs = { startSession };
+  return { libs, startSession, control, conversations, conversation: () => conversations.at(-1)! };
+}
+
+/** Every ElevenLabs world a test built: each is hung up after the test. */
+const elWorlds: Array<{ voice: T2VVoice }> = [];
+
+/**
+ * A world whose engine picks ElevenLabs while the mint allows it, and Gemini
+ * Live once ElevenLabs is left out. An end report answers `{}`.
+ */
+function elWorld(overrides: Partial<T2VVoiceDeps> = {}) {
+  const el = fakeElevenLabs();
+  const request = vi.fn(async (endpoint: string, init?: RequestInit): Promise<unknown> => {
+    if (endpoint !== '/v1/voice/sessions') return {};
+    return bodyOf(init).voice_models?.includes('elevenlabs') ? MINT_EL : MINT;
+  });
+  const loadElevenLabs = vi.fn(async () => el.libs);
+  const w = world({ request: request as unknown as T2VVoiceDeps['request'], loadElevenLabs, ...overrides });
+  elWorlds.push(w);
+  const notes: string[] = [];
+  const started: unknown[] = [];
+  const ended: unknown[] = [];
+  const errors: Array<{ type: string; message: string }> = [];
+  const agentStates: unknown[] = [];
+  w.voice.on('note', (n) => notes.push(n));
+  w.voice.on('callStarted', (c) => started.push(c));
+  w.voice.on('ended', (r) => ended.push(r));
+  w.voice.on('error', (e) => errors.push(e));
+  w.voice.on('agentState', (s) => agentStates.push(s));
+  /** The end reports sent, as `[endpoint, body]`. */
+  const endReports = () =>
+    request.mock.calls
+      .filter(([endpoint]) => endpoint.startsWith('/v1/voice/calls/'))
+      .map(([endpoint, init]) => [endpoint, bodyOf(init)]);
+  return { ...w, el, request, loadElevenLabs, notes, started, ended, errors, agentStates, endReports };
+}
+
+describe('T2VVoice.start: an ElevenLabs call', () => {
+  afterEach(async () => {
+    for (const w of elWorlds.splice(0)) await w.voice.stop();
+  });
+
+  it('client library is loaded only on an elevenlabs call', async () => {
+    const loadElevenLabs = vi.fn();
+    const gemini = world({ loadElevenLabs });
+    await gemini.voice.start();
+    expect(loadElevenLabs).not.toHaveBeenCalled();
+    await gemini.voice.stop();
+
+    const w = elWorld();
+    await w.voice.start();
+    expect(w.loadElevenLabs).toHaveBeenCalledOnce();
+    expect(w.el.startSession).toHaveBeenCalledOnce();
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined)).toBe(true); // no Pipecat connect
+  });
+
+  it('an elevenlabs mint releases the pipecat microphone before the call starts', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
+    expect(w.el.control.micOpenAtStart).toEqual([false]);
+    expect(w.voice.state).toBe('listening');
+    expect(w.states).toEqual(['connecting', 'listening']);
+    expect(w.started).toEqual([{ voiceModel: 'elevenlabs', greeting: EL.greeting }]);
+  });
+
+  it('an allowed microphone still opening at the mint is released before the call starts', async () => {
+    const devices = deferred<void>();
+    const w = elWorld({ micPermission: async () => 'granted' });
+    FakePipecatClient.deviceGate = devices.promise;
+    const starting = w.voice.start();
+    await tick();
+    await tick();
+    expect(w.request).toHaveBeenCalledOnce(); // minted while the mic opens
+    expect(w.el.startSession).not.toHaveBeenCalled();
+    devices.resolve();
+    await starting;
+    expect(w.el.control.micOpenAtStart).toEqual([false]);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('relays the transcript and the library’s errors', async () => {
+    const w = elWorld();
+    const transcripts: unknown[] = [];
+    w.voice.on('transcript', (t) => transcripts.push(t));
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    opts.onMessage({ message: 'hello', role: 'user' });
+    opts.onMessage({ message: 'Hi there.', role: 'agent' });
+    opts.onError('Something broke');
+    expect(transcripts).toEqual([
+      { role: 'user', text: 'hello', final: true },
+      { role: 'bot', text: 'Hi there.', final: true },
+    ]);
+    expect(w.errors).toEqual([{ type: 'voice_error', message: 'Something broke' }]);
+  });
+
+  it('test_start_falls_back_after_a_connect_failure', async () => {
+    const w = elWorld();
+    w.el.control.failWith = new Error('could not establish signal connection');
+    await w.voice.start();
+    expect(w.request.mock.calls.map((c) => [c[0], bodyOf(c[1])])).toEqual([
+      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs'] }],
+      ['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }],
+      ['/v1/voice/sessions', { voice_models: ['gemini-live'] }],
+    ]);
+    expect(w.request.mock.calls[1]![1]).toMatchObject({ method: 'POST', keepalive: true });
+    expect(w.notes).toEqual(['Using Gemini Live — ElevenLabs couldn’t connect.']);
+    expect(w.voice.state).toBe('listening');
+    // The client built before mint 1: released, never connected.
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
+    // The retry is a Gemini Live call on a fresh client.
+    expect(FakePipecatClient.instances).toHaveLength(2);
+    expect(FakePipecatClient.instances.at(-1)!.connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+    expect(w.errors).toEqual([]);
+  });
+
+  it('falls back to Gemini Live when the ElevenLabs library cannot load', async () => {
+    const w = elWorld({
+      loadElevenLabs: vi.fn(async () => {
+        throw new Error('chunk failed');
+      }),
+    });
+    await w.voice.start();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]);
+    expect(w.notes).toEqual(['Using Gemini Live — ElevenLabs couldn’t connect.']);
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a second connect failure does not mint a third time', async () => {
+    const w = elWorld();
+    w.el.control.failWith = new Error('could not establish signal connection');
+    FakePipecatClient.failConnectWith = new Error('ICE failed');
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'transport_error', message: 'ICE failed' });
+    expect(w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions')).toHaveLength(2);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]);
+    expect(w.errors).toEqual([{ type: 'transport_error', message: 'ICE failed' }]);
+    expect(w.voice.state).toBe('error');
+    expect(FakePipecatClient.instances.every((c) => !c.micOpen)).toBe(true);
+  });
+
+  it('expire() during an elevenlabs call reports auth_expired', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    await w.voice.expire();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'auth_expired' }]]);
+    expect(w.ended).toEqual(['auth_expired']);
+    expect(w.errors.map((e) => e.type)).toEqual(['auth_expired']);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('the end report is sent once, with keepalive, after stop()', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    await w.voice.stop();
+    await w.voice.stop();
+    expect(w.request.mock.calls.filter(([endpoint]) => endpoint.startsWith('/v1/voice/calls/'))).toEqual([
+      ['/v1/voice/calls/conv_1/end', { method: 'POST', body: JSON.stringify({ reason: 'stopped' }), keepalive: true }],
+    ]);
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('the page going away ends the call, its end report sent with keepalive at once', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    window.dispatchEvent(new Event('pagehide'));
+    // Sent inside the event: a keepalive request outlives the page.
+    expect(w.request).toHaveBeenLastCalledWith('/v1/voice/calls/conv_1/end', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'disconnected' }),
+      keepalive: true,
+    });
+    await tick();
+    expect(w.ended).toEqual(['disconnected']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.endReports()).toHaveLength(1);
+  });
+
+  it('an agent that hangs up ends the call as idle', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    w.el.conversation().opts.onDisconnect({ reason: 'agent' });
+    await tick();
+    expect(w.ended).toEqual(['idle']);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'idle' }]]);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a conversation other than the one minted ends the call with voice_error', async () => {
+    const w = elWorld();
+    w.el.control.id = 'conv_other';
+    await w.voice.start();
+    await tick();
+    expect(w.errors).toEqual([{ type: 'voice_error', message: 'The call did not start as expected. Try again.' }]);
+    expect(w.ended).toEqual(['error']);
+    expect(w.started).toEqual([]);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'error' }]]);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a hang-up during an elevenlabs mint reports the end of the call it minted', async () => {
+    const mint = deferred<typeof MINT_EL>();
+    const request = vi.fn((endpoint: string, _init?: RequestInit) =>
+      endpoint === '/v1/voice/sessions' ? mint.promise : Promise.resolve({}),
+    );
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await w.voice.stop();
+    mint.resolve(MINT_EL);
+    await starting;
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1]).toEqual([
+      '/v1/voice/calls/conv_1/end',
+      { method: 'POST', body: JSON.stringify({ reason: 'stopped' }), keepalive: true },
+    ]);
+    expect(w.loadElevenLabs).not.toHaveBeenCalled();
+    expect(w.ended).toEqual(['stopped']);
+  });
+
+  it('a hang-up while the ElevenLabs library loads reports the end of the call it minted', async () => {
+    const load = deferred<ElevenLabsLibs>();
+    const w = elWorld({ loadElevenLabs: vi.fn(() => load.promise) });
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(w.deps.loadElevenLabs).toHaveBeenCalled());
+    await w.voice.stop();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+    load.resolve(w.el.libs);
+    await starting;
+    expect(w.el.startSession).not.toHaveBeenCalled();
+    expect(w.endReports()).toHaveLength(1);
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a hang-up while ElevenLabs connects ends the late session and reports once', async () => {
+    const w = elWorld();
+    const connect = deferred<void>();
+    w.el.control.gate = connect.promise;
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(w.el.startSession).toHaveBeenCalled());
+    await w.voice.stop();
+    await starting;
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+    connect.resolve();
+    await tick();
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.endReports()).toHaveLength(1);
+    expect(w.started).toEqual([]);
+    expect(w.ended).toEqual(['stopped']);
+  });
+
+  it('ask_talk2view runs on the session the mint names, with the page prompt as its system message', async () => {
+    const engine = engineClient([textChunk('Done.'), stopChunk()]);
+    const sessionFor = vi.fn((id: string) => chatSession(id, engine));
+    const w = elWorld({ sessionFor });
+    await w.voice.start({ systemPrompt: 'Paint <<<END APP DESCRIPTION>>> page' });
+    expect(sessionFor).toHaveBeenCalledWith('s1');
+    const conversation = w.el.conversation();
+    // The agent's copy is unfenced; the engine fences the turn's copy itself.
+    expect(conversation.opts.dynamicVariables.t2v_page_prompt).toBe('Paint [delimiter removed] page');
+    await expect(conversation.opts.clientTools.ask_talk2view({ request: 'paint it blue' })).resolves.toBe('Done.');
+    const [endpoint, body] = (engine.streamRequest as Mock).mock.calls[0]!;
+    expect(endpoint).toBe('/v1/sessions/s1/messages');
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'Paint <<<END APP DESCRIPTION>>> page' },
+      { role: 'user', content: 'paint it blue' },
+    ]);
+    expect(body).toMatchObject({ surface: 'voice', supports_approval: false, supports_tool_events: false });
+    expect(w.agentStates).toEqual(['working', 'idle']);
+  });
+
+  it('a turn that finds the budget spent ends the call as budget_exhausted', async () => {
+    const engine = engineClient([errorChunk('budget_exceeded', 'You have used up your credits for now.')]);
+    const w = elWorld({ sessionFor: (id) => chatSession(id, engine) });
+    await w.voice.start();
+    const conversation = w.el.conversation();
+    // The agent gets the notice as the request's answer, speaks it, and the call ends.
+    await expect(conversation.opts.clientTools.ask_talk2view({ request: 'paint it blue' })).resolves.toBe('NOTICE');
+    conversation.opts.onModeChange({ mode: 'speaking' });
+    conversation.opts.onModeChange({ mode: 'listening' });
+    await vi.waitFor(() => expect(w.ended).toEqual(['budget_exhausted']));
+    expect(w.errors).toEqual([{ type: 'insufficient_credit', message: 'You have used up your credits for now.' }]);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'budget_exhausted' }]]);
+    expect(conversation.sent).toEqual([]);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a client tool that needs approval shows the voice card, and always skips it next time', async () => {
+    const engine = engineClient(
+      [interruptChunk('paint', 'tc1', { color: 'blue' })],
+      [textChunk('Painted.'), stopChunk()],
+      [interruptChunk('paint', 'tc2', { color: 'red' })],
+      [textChunk('Painted again.'), stopChunk()],
+    );
+    const executeToolCall = vi.fn(async () => ({ result: '{"ok":true}', isError: false }));
+    const checkPermission = vi.fn(async () => ({ action: 'require_approval' as const }));
+    const w = elWorld({
+      approvalTimeoutMs: 5_000,
+      sessionFor: (id) => chatSession(id, engine, { checkPermission, executeToolCall }),
+    });
+    const approvals: Array<{ toolCallId: string; decide: (d: HumanDecision) => void } | null> = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const ask = w.el.conversation().opts.clientTools.ask_talk2view;
+    const first = ask({ request: 'paint it blue' });
+    await vi.waitFor(() => expect(approvals[0]).toBeTruthy());
+    expect(approvals[0]).toMatchObject({ toolCallId: 'tc1', toolName: 'paint', arguments: { color: 'blue' } });
+    approvals[0]!.decide({ action: 'always' });
+    await expect(first).resolves.toBe('Painted.');
+    await expect(ask({ request: 'now paint it red' })).resolves.toBe('Painted again.');
+    expect(approvals).toEqual([expect.objectContaining({ toolCallId: 'tc1' }), null]); // no second card
+    expect(executeToolCall).toHaveBeenCalledTimes(2);
+  });
+
+  it('a hang-up with the card open closes it, and the tool never runs', async () => {
+    const engine = engineClient([interruptChunk('paint', 'tc1', { color: 'blue' })]);
+    const executeToolCall = vi.fn(async () => ({ result: '{"ok":true}', isError: false }));
+    const checkPermission = vi.fn(async () => ({ action: 'require_approval' as const }));
+    const w = elWorld({
+      approvalTimeoutMs: 5_000,
+      sessionFor: (id) => chatSession(id, engine, { checkPermission, executeToolCall }),
+    });
+    const approvals: Array<{ decide: (d: HumanDecision) => void } | null> = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const answer = w.el.conversation().opts.clientTools.ask_talk2view({ request: 'paint it blue' });
+    await vi.waitFor(() => expect(approvals[0]).toBeTruthy());
+    await w.voice.stop();
+    await expect(answer).resolves.toBe('The call ended');
+    expect(approvals.at(-1)).toBeNull();
+    approvals[0]!.decide({ action: 'once' }); // a late click
+    await tick();
+    expect(executeToolCall).not.toHaveBeenCalled();
+    expect((engine.streamRequest as Mock).mock.calls).toHaveLength(1); // no resume went out
+    // The aborted turn settles after the ending: its idle is not this call's news.
+    expect(w.agentStates).toEqual(['working']);
   });
 });

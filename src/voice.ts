@@ -3,20 +3,29 @@
  *
  * Core never imports this module statically: the `T2VVoice` facade
  * (`voice-facade.ts`) loads it with `import()` on the first `start()`, and it
- * in turn loads the Pipecat libraries, so chat-only partners ship neither.
+ * in turn loads the call libraries, so chat-only partners ship none of them.
  *
- * The engine mints a ticket (`POST /v1/voice/sessions`); the Pipecat client
- * libraries are loaded on first `start()` so chat-only partners never ship
- * them; WebRTC audio goes to the voice agent service; client tools the agent
- * calls arrive here over the RTVI data channel and run through the SAME tool
- * registry and permission check as chat, so partners write no new code.
+ * The engine mints the call (`POST /v1/voice/sessions`) on one of the voice
+ * models this SDK runs, and the mint says which. A Gemini Live call gets a
+ * ticket: the Pipecat client libraries, loaded on every `start()` because the
+ * microphone opens through them before the mint, carry its WebRTC audio to
+ * the voice agent service, and the client tools the agent calls arrive here
+ * over the RTVI data channel. An ElevenLabs call gets a conversation token:
+ * it runs in `voice-elevenlabs.ts` on the `@elevenlabs/client` library, both
+ * loaded with `import()` only for such a call, and the agent's requests
+ * become engine turns on the end-user's chat session (`voice-turn.ts`). An
+ * ElevenLabs call that can't connect is tried once more, on Gemini Live.
+ * Either way, client tools run through the SAME tool registry and permission
+ * check as chat, so partners write no new code.
  */
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
+import { VoiceTurnRunner } from './voice-turn.js';
 import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
 import type {
+  ElevenLabsCallInfo,
   HumanDecision,
   VoiceEndReason,
   VoiceError,
@@ -105,6 +114,17 @@ export const loadPipecatLibs: VoiceLibLoader = async () => {
   };
 };
 
+// ── The ElevenLabs call: its module is loaded with `import()`, so only its types are named here ──
+
+/** An ElevenLabs call, as the controller holds it. */
+type ElevenLabsCallHandle = import('./voice-elevenlabs.js').ElevenLabsCall;
+
+/** What an ElevenLabs call needs loaded before it starts: the call itself, and the library it runs on. */
+interface LoadedElevenLabs {
+  ElevenLabsCall: typeof import('./voice-elevenlabs.js').ElevenLabsCall;
+  libs: import('./voice-elevenlabs.js').ElevenLabsLibs;
+}
+
 /**
  * Where a call's start spends its time, in ms since the click. Logged only
  * when `localStorage['t2v:debug'] === '1'`: step names and numbers, nothing
@@ -171,8 +191,11 @@ export interface T2VVoiceDeps {
    * `session_id`: the end-user's one engine session for this partner.
    */
   sessionFor: (sessionId: string) => T2VSession;
-  /** Loads the ElevenLabs client library, only when an ElevenLabs call starts. */
-  loadElevenLabs?: () => Promise<unknown>;
+  /**
+   * Loads the ElevenLabs client library, only when an ElevenLabs call starts.
+   * Default: `loadElevenLabsLibs` (`voice-elevenlabs.ts`).
+   */
+  loadElevenLabs?: import('./voice-elevenlabs.js').ElevenLabsLibLoader;
   /** The browser's language tag, for the call's greeting and language. Default: `navigator.language`. */
   language?: () => string;
 }
@@ -244,6 +267,13 @@ export class T2VVoiceController {
   private readonly emitter = new TypedEventEmitter<VoiceEventMap>();
   private _state: VoiceState = 'idle';
   private client: PipecatClientLike | null = null;
+  /** The ElevenLabs call, from its start until the call ends. It reports its own end. */
+  private elCall: ElevenLabsCallHandle | null = null;
+  /**
+   * The conversation id of an ElevenLabs call the engine minted that no
+   * {@link elCall} has taken over yet: an ending reports its end.
+   */
+  private mintedCall: string | null = null;
   private audio: HTMLAudioElement | null = null;
   private libs: Promise<VoiceLibs> | null = null;
   private pendingApproval: VoicePendingApproval | null = null;
@@ -255,8 +285,8 @@ export class T2VVoiceController {
    * epoch belongs to a call that was hung up, and must not touch this one.
    */
   private epoch = 0;
-  /** Settles the in-flight `start()`'s connect wait when the call is hung up mid-start. */
-  private abortStart: (() => void) | null = null;
+  /** Settles the in-flight `start()`'s waits, with the ending's reason, when the call is hung up mid-start. */
+  private abortStart: ((reason: VoiceEndReason) => void) | null = null;
   /**
    * The hang-up in progress; a concurrent `stop()` joins it. Tagged with the
    * epoch it ended, so a `stop()` for a call started after it (say, from an
@@ -326,7 +356,7 @@ export class T2VVoiceController {
     const epoch = ++this.epoch;
     const stale = (): boolean => epoch !== this.epoch;
     this.setState('connecting');
-    const aborted = new Promise<void>((resolve) => {
+    const aborted = new Promise<VoiceEndReason>((resolve) => {
       this.abortStart = resolve;
     });
     let connecting = false;
@@ -360,63 +390,10 @@ export class T2VVoiceController {
       timings.mark('libs');
       if (stale()) return;
       // The client is built before the mint so the microphone can open while
-      // (or before) the ticket is minted; the ICE servers come with the mint.
-      const transport = new libs.SmallWebRTCTransport({ iceServers: [] });
-      // A refused first offer (503 at capacity, 502) is retried by the transport
-      // for several seconds; the ticket cannot succeed on a retry, so allow none
-      // until connected, then restore the default for mid-call ICE recovery.
-      // `maxReconnectionAttempts` is a public field of the pinned 1.10.8
-      // transport that its typings do not declare.
-      const retry = transport as { maxReconnectionAttempts?: number };
-      const retries = retry.maxReconnectionAttempts;
-      if (typeof retries === 'number') retry.maxReconnectionAttempts = 0;
-      const pipecat = new libs.PipecatClient({
-        transport,
-        enableMic: true,
-        enableCam: false,
-        callbacks: {
-          onConnected: () => {
-            // A call that comes up after it was hung up (see `abandon`) is
-            // closed at once, not left streaming the mic until bot-ready.
-            if (stale()) {
-              pipecat.disconnect().catch(() => undefined);
-              return;
-            }
-            if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
-            this.setState('listening');
-            this.safeEmit('callStarted', { voiceModel: 'gemini-live', greeting: null });
-          },
-          onDisconnected: () => {
-            if (!stale()) void this.finish('disconnected');
-          },
-          onError: (msg) => {
-            if (!stale()) this.emitError('transport_error', msg?.data?.message ?? 'Voice connection error');
-          },
-          onServerMessage: (data) => {
-            if (stale()) return;
-            this.handleServerMessage(data).catch(() => {
-              if (!stale()) this.emitError('voice_error', 'Something went wrong in the voice call');
-            });
-          },
-          onUserTranscript: (d) => {
-            if (!stale()) this.safeEmit('transcript', { role: 'user', text: d.text, final: !!d.final });
-          },
-          onBotTranscript: (d) => {
-            if (!stale()) this.safeEmit('transcript', { role: 'bot', text: d.text, final: true });
-          },
-          onTrackStarted: (track, participant) => {
-            if (stale() || participant?.local || track.kind !== 'audio') return;
-            (this.deps.attachAudio ?? this.attachAudio)(track);
-          },
-          onDeviceError: (error) => {
-            if (stale()) return;
-            // The call is audio-only: a camera error is not ours to report.
-            if (Array.isArray(error?.devices) && !error.devices.includes('mic')) return;
-            // No microphone means a call that listens to nothing: end it and say why.
-            void this.finish('error', MIC_UNAVAILABLE);
-          },
-        },
-      });
+      // (or before) the call is minted; a Gemini Live call's ICE servers come
+      // with the mint.
+      const first = this.buildPipecat(libs, stale);
+      let { pipecat, transport } = first;
       client = pipecat;
       this.client = pipecat;
 
@@ -426,7 +403,7 @@ export class T2VVoiceController {
       // it opens alongside the mint and costs no time.
       const micAllowed = (await (this.deps.micPermission ?? queryMicPermission)()) === 'granted';
       if (stale()) return;
-      const devices = pipecat.initDevices();
+      const devices = first.pipecat.initDevices();
       devices.catch(() => undefined); // awaited below
       // A hang-up must not wait on the prompt: start() returns at once, and
       // the mic the prompt opens later is released as soon as it opens (the
@@ -434,7 +411,7 @@ export class T2VVoiceController {
       const micOpened = async (): Promise<boolean> => {
         await Promise.race([devices, aborted]);
         if (!stale()) return true;
-        devices.then(() => releaseMic(pipecat), () => undefined);
+        devices.then(() => releaseMic(first.pipecat), () => undefined);
         return false;
       };
       if (!micAllowed) {
@@ -444,9 +421,20 @@ export class T2VVoiceController {
       // The access token is fetched alongside the mint, not after it.
       const tokenFetch = this.deps.getValidAccessToken();
       tokenFetch.catch(() => undefined); // awaited below
-      const mint = await this.mintVoice(options, []);
+      let mint = await this.mintVoice(options, []);
       timings.mark('mint');
-      if (stale()) return;
+      const elevenlabs = mint.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
+      if (stale()) {
+        // Hung up during the mint: the engine still hears that the ElevenLabs call it minted has ended.
+        if (elevenlabs) void aborted.then((reason) => this.reportEnd(elevenlabs.conversation_id, reason));
+        return;
+      }
+      // An ElevenLabs call's module and library load while the token and the
+      // microphone are awaited. Until the call takes over, an ending reports
+      // the end of the call the engine minted.
+      const elevenlabsLoad = elevenlabs ? this.loadElevenLabsCall() : null;
+      elevenlabsLoad?.catch(() => undefined); // awaited below
+      if (elevenlabs) this.mintedCall = elevenlabs.conversation_id;
       // The engine's word on the voice model it chose, shown once, at the start.
       if (mint.note) this.safeEmit('note', mint.note);
       const token = await tokenFetch;
@@ -457,20 +445,35 @@ export class T2VVoiceController {
         if (!(await micOpened())) return;
         timings.mark('mic');
       }
-      // A Gemini Live call: the mint carries its ticket, offer URL and ICE servers.
-      transport.iceServers = (mint.ice_servers ?? []).map((s) => ({
-        urls: s.urls,
-        ...(s.username ? { username: s.username } : {}),
-        ...(s.credential ? { credential: s.credential } : {}),
-      }));
-
+      if (elevenlabs && elevenlabsLoad) {
+        // ElevenLabs opens its own microphone: Pipecat's is released first,
+        // once it is open, and that client never connects.
+        releaseMic(first.pipecat);
+        this.client = null;
+        client = null;
+        if (await this.startElevenLabs(elevenlabs, mint.session_id, options, elevenlabsLoad, stale, aborted)) {
+          if (!stale()) timings.done('connected');
+          return;
+        }
+        // It couldn't connect, and nothing has reported its end. The engine
+        // is told (it releases the credit it holds for the call), and the
+        // call is tried once more, on Gemini Live, with a fresh client.
+        if (stale()) {
+          void this.reportEnd(elevenlabs.conversation_id, 'connect_failed');
+          return;
+        }
+        this.mintedCall = null;
+        await this.reportEnd(elevenlabs.conversation_id, 'connect_failed');
+        if (stale()) return;
+        mint = await this.mintVoice(options, ['elevenlabs']);
+        if (stale()) return;
+        this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
+        ({ pipecat, transport } = this.buildPipecat(libs, stale));
+        client = pipecat;
+        this.client = pipecat;
+      }
       connecting = true;
-      connectCall = pipecat.connect({
-        webrtcRequestParams: {
-          endpoint: mint.voice_url!,
-          requestData: { ticket: mint.ticket!, partner_key: this.deps.partnerKey, access_token: token },
-        },
-      });
+      connectCall = this.connectGemini(pipecat, transport, mint, token);
       // connect() waits for the bot; a hang-up mid-connect settles `aborted`.
       await Promise.race([connectCall, aborted]);
       if (stale()) abandon();
@@ -484,7 +487,7 @@ export class T2VVoiceController {
       }
       this.abortStart = null;
       this.epoch += 1; // late callbacks from this failed client are not this call's
-      await this.teardown();
+      await this.teardown('error');
       const error = await describeStartError(err, connecting);
       this.emitError(error.type, error.message);
       this.setState('error');
@@ -494,6 +497,99 @@ export class T2VVoiceController {
     } finally {
       if (!stale()) this.abortStart = null;
     }
+  }
+
+  /**
+   * A Pipecat client for a Gemini Live call, its callbacks bound to the
+   * start that built it (`stale`). They do nothing once the client is no
+   * longer the controller's: an ElevenLabs call took over, or the call
+   * ended. A refused first offer (503 at capacity, 502) is retried by the
+   * transport for several seconds; the ticket cannot succeed on a retry, so
+   * it allows none until connected, then gets its default back for mid-call
+   * ICE recovery.
+   */
+  private buildPipecat(
+    libs: VoiceLibs,
+    stale: () => boolean,
+  ): { pipecat: PipecatClientLike; transport: { iceServers: RTCIceServer[] } } {
+    const transport = new libs.SmallWebRTCTransport({ iceServers: [] });
+    // `maxReconnectionAttempts` is a public field of the pinned 1.10.8
+    // transport that its typings do not declare.
+    const retry = transport as { maxReconnectionAttempts?: number };
+    const retries = retry.maxReconnectionAttempts;
+    if (typeof retries === 'number') retry.maxReconnectionAttempts = 0;
+    const current = (): boolean => !stale() && this.client === pipecat;
+    const pipecat: PipecatClientLike = new libs.PipecatClient({
+      transport,
+      enableMic: true,
+      enableCam: false,
+      callbacks: {
+        onConnected: () => {
+          // A call that comes up after it was hung up (see `abandon`) is
+          // closed at once, not left streaming the mic until bot-ready.
+          if (stale()) {
+            pipecat.disconnect().catch(() => undefined);
+            return;
+          }
+          if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
+          this.setState('listening');
+          this.safeEmit('callStarted', { voiceModel: 'gemini-live', greeting: null });
+        },
+        onDisconnected: () => {
+          if (current()) void this.finish('disconnected');
+        },
+        onError: (msg) => {
+          if (current()) this.emitError('transport_error', msg?.data?.message ?? 'Voice connection error');
+        },
+        onServerMessage: (data) => {
+          if (!current()) return;
+          this.handleServerMessage(data).catch(() => {
+            if (!stale()) this.emitError('voice_error', 'Something went wrong in the voice call');
+          });
+        },
+        onUserTranscript: (d) => {
+          if (current()) this.safeEmit('transcript', { role: 'user', text: d.text, final: !!d.final });
+        },
+        onBotTranscript: (d) => {
+          if (current()) this.safeEmit('transcript', { role: 'bot', text: d.text, final: true });
+        },
+        onTrackStarted: (track, participant) => {
+          if (!current() || participant?.local || track.kind !== 'audio') return;
+          (this.deps.attachAudio ?? this.attachAudio)(track);
+        },
+        onDeviceError: (error) => {
+          if (!current()) return;
+          // The call is audio-only: a camera error is not ours to report.
+          if (Array.isArray(error?.devices) && !error.devices.includes('mic')) return;
+          // No microphone means a call that listens to nothing: end it and say why.
+          void this.finish('error', MIC_UNAVAILABLE);
+        },
+      },
+    });
+    return { pipecat, transport };
+  }
+
+  /**
+   * Connect a Gemini Live call: the mint carries its ticket, offer URL and
+   * ICE servers. Resolves once the bot is ready.
+   */
+  private connectGemini(
+    pipecat: PipecatClientLike,
+    transport: { iceServers: RTCIceServer[] },
+    mint: VoiceSessionResponse,
+    token: string,
+  ): Promise<unknown> {
+    transport.iceServers = (mint.ice_servers ?? []).map((s) => ({
+      urls: s.urls,
+      ...(s.username ? { username: s.username } : {}),
+      ...(s.credential ? { credential: s.credential } : {}),
+    }));
+    return pipecat.connect({
+      webrtcRequestParams: {
+        endpoint: mint.voice_url!,
+        requestData: { ticket: mint.ticket!, partner_key: this.deps.partnerKey, access_token: token },
+      },
+    });
   }
 
   /**
@@ -525,6 +621,113 @@ export class T2VVoiceController {
     }
   }
 
+  /** The ElevenLabs call's module and the library it runs on, both loaded with `import()`. */
+  private async loadElevenLabsCall(): Promise<LoadedElevenLabs> {
+    const { ElevenLabsCall, loadElevenLabsLibs } = await import('./voice-elevenlabs.js');
+    const libs = await (this.deps.loadElevenLabs ?? loadElevenLabsLibs)();
+    return { ElevenLabsCall, libs };
+  }
+
+  /**
+   * Start the ElevenLabs call the engine minted, once its module and library
+   * have loaded. Its requests run as engine turns on the chat session the
+   * mint names, with the page prompt as their system message; the agent gets
+   * the page prompt unfenced (`voice-elevenlabs.ts`). Resolves `true` when
+   * the call started, or the start was hung up (that ending reported the
+   * call's end); `false` when it couldn't connect, and its end is still to
+   * be reported.
+   */
+  private async startElevenLabs(
+    info: ElevenLabsCallInfo,
+    sessionId: string,
+    options: VoiceStartOptions,
+    load: Promise<LoadedElevenLabs>,
+    stale: () => boolean,
+    aborted: Promise<VoiceEndReason>,
+  ): Promise<boolean> {
+    let loaded: LoadedElevenLabs;
+    try {
+      loaded = await load;
+    } catch {
+      // Not loaded: the call can't connect. Hung up meanwhile, the ending reported it.
+      return stale();
+    }
+    if (stale()) return true;
+    const pagePrompt = options.systemPrompt?.trim() || undefined;
+    const turns = new VoiceTurnRunner({
+      session: this.deps.sessionFor(sessionId),
+      pagePrompt,
+      onApproval: async (toolCallId, toolName, args) => {
+        const answer = await this.awaitApproval(toolCallId, toolName, args);
+        // Remembered as on a Gemini Live call, but not once the call has ended.
+        if (!stale() && answer.decision.action === 'always') this.alwaysAllowed.add(toolName);
+        return answer;
+      },
+      isAlwaysAllowed: (toolName) => this.alwaysAllowed.has(toolName),
+      // A turn aborted as the call ended settles after it: its `idle` is not this call's.
+      onState: (state) => {
+        if (!stale()) this.safeEmit('agentState', state);
+      },
+      // Called mid-turn: the goodbye neither throws nor rejects.
+      onBudgetExceeded: () => {
+        if (!stale()) void call.goodbye();
+      },
+    });
+    const call: ElevenLabsCallHandle = new loaded.ElevenLabsCall({
+      libs: loaded.libs,
+      info,
+      pagePrompt,
+      turns,
+      onConnected: () => {
+        if (stale()) return;
+        this.setState('listening');
+        this.safeEmit('callStarted', { voiceModel: 'elevenlabs', greeting: info.greeting });
+      },
+      onTranscript: (transcript) => {
+        if (!stale()) this.safeEmit('transcript', transcript);
+      },
+      onError: (message) => {
+        if (!stale()) this.emitError('voice_error', message);
+      },
+      onEnded: (reason, error) => {
+        if (!stale()) void this.finish(reason, error);
+      },
+      reportEnd: (reason) => this.reportEnd(info.conversation_id, reason),
+    });
+    // From here on the call reports its own end.
+    this.mintedCall = null;
+    this.elCall = call;
+    const starting = call.start();
+    starting.catch(() => undefined); // raced below
+    try {
+      await Promise.race([starting, aborted]);
+      return true;
+    } catch {
+      // It never connected, and reported nothing.
+      if (!stale()) this.elCall = null;
+      return false;
+    }
+  }
+
+  /**
+   * Tell the engine an ElevenLabs call has ended (`POST
+   * /v1/voice/calls/{id}/end`), so it settles the credit it holds for the
+   * call. Sent with `keepalive`, so it outlives the page. A failure is
+   * swallowed: the engine settles a call nobody reported from ElevenLabs'
+   * bill.
+   */
+  private async reportEnd(conversationId: string, reason: string): Promise<void> {
+    try {
+      await this.deps.request(`/v1/voice/calls/${encodeURIComponent(conversationId)}/end`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        keepalive: true,
+      });
+    } catch {
+      // Swallowed, as above.
+    }
+  }
+
   /** Hang up. Safe to call in any state. */
   async stop(): Promise<void> {
     await this.finish('stopped');
@@ -546,7 +749,7 @@ export class T2VVoiceController {
     if (this._state === 'idle' || this._state === 'ended' || this._state === 'error') return Promise.resolve();
     // teardown() nulls the client before disconnecting, so the onDisconnected
     // our own hang-up triggers is not a second, spurious ending.
-    if (reason === 'disconnected' && this.client === null) return Promise.resolve();
+    if (reason === 'disconnected' && this.client === null && this.elCall === null) return Promise.resolve();
     // A transport that fails to connect fires onDisconnected before connect()
     // rejects; start()'s catch reports that failure as an error, not an ending.
     if (reason === 'disconnected' && this._state === 'connecting') return Promise.resolve();
@@ -566,10 +769,10 @@ export class T2VVoiceController {
     this.epoch += 1;
     const abortStart = this.abortStart;
     this.abortStart = null;
-    // Privacy first: the mic is released and the client disconnected before any
+    // Privacy first: the mic is released and the call hung up before any
     // partner listener runs.
-    await this.teardown();
-    abortStart?.();
+    await this.teardown(reason);
+    abortStart?.(reason);
     if (error) {
       this.emitError(error.type, error.message);
     } else if (reason === 'budget_exhausted') {
@@ -581,9 +784,13 @@ export class T2VVoiceController {
     this.safeEmit('ended', reason);
   }
 
-  private async teardown(): Promise<void> {
+  private async teardown(reason: VoiceEndReason): Promise<void> {
     const client = this.client;
     this.client = null;
+    const call = this.elCall;
+    this.elCall = null;
+    const minted = this.mintedCall;
+    this.mintedCall = null;
     this.detachAudio();
     if (client) {
       try {
@@ -594,8 +801,12 @@ export class T2VVoiceController {
       // A client that never connected keeps its mic after disconnect().
       releaseMic(client);
     }
+    // An ElevenLabs call ends its session and reports its own end; the end of
+    // one minted but not started yet is reported here.
+    if (call) await call.stop(reason);
+    else if (minted) await this.reportEnd(minted, reason);
     // Last: closing the card emits `approvalChange(null)`. Nothing is sent for
-    // it, since the client is gone.
+    // it, since the call is gone.
     this.endApproval('The call ended');
   }
 
