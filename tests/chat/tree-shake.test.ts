@@ -18,10 +18,12 @@
  * evidence; the string scan is a second opinion that does not depend on the
  * graph being read correctly.
  *
- * The size assertions are REGRESSION FENCES, not budgets. Each is the measured
- * size plus roughly ten per cent. They exist so that a change which doubles the
- * bundle fails here instead of in a partner's app. When a fence trips, measure
- * first and decide whether the growth is wanted — do not widen it reflexively.
+ * The size assertions are REGRESSION FENCES, not budgets. Each was set at the
+ * measured size plus roughly ten per cent, and what is left of that headroom is
+ * what the code has not grown into (core's is 0.15 KB: see its test). They exist
+ * so that a change which doubles the bundle fails here instead of in a partner's
+ * app. When a fence trips, measure first and decide whether the growth is
+ * wanted — do not widen it reflexively.
  */
 import { build } from 'esbuild';
 import path from 'node:path';
@@ -29,8 +31,9 @@ import { gzipSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 
 // Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only;
-// `core` again on 2026-10-22 for 0.23.0, at 38.0 / 11.85 KB (0.21.4: 37.1 / 11.51;
-// 0.22.0: 11.73 gzip).
+// `core` and `chat` again on 2026-10-22 for 0.23.0, at 38.0 / 11.85 KB and
+// 1199.5 / 373.91 KB (0.21.4: 37.1 / 11.51 and 1197.8 / 373.32; 0.22.0: core
+// 11.73 gzip).
 // These are the numbers the README and docs/chat.md quote; change them together.
 // Previously 11.14 / 40.25 / 372.38 KB gzip (2026-09-24, after the voice agent
 // landed behind a lazy facade), and before that 9.35 / 39.93 / 361.77
@@ -38,7 +41,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 const MEASURED = {
   core: { raw: 38.0, gzip: 11.85 },
   ui: { raw: 124.4, gzip: 40.94 },
-  chat: { raw: 1197.8, gzip: 373.32 },
+  chat: { raw: 1199.5, gzip: 373.91 },
 };
 
 /**
@@ -187,9 +190,12 @@ describe('what a consumer pays for the entry points they use', () => {
       expect(core.lazyModules.has('dist/voice-elevenlabs.js')).toBe(true);
 
       expect(core.rawKB).toBeLessThan(40);
-      // Fence, not a budget: measured + ~10%. 9.35 KB gzip before the voice
-      // agent; the `t2v.voice` facade (~1.6 KB gzip) is now in core. The voice
-      // controller and Pipecat stay lazy chunks (asserted above).
+      // Fence, not a budget: 12 KB gzip against the 11.85 KB measured on
+      // 2026-10-22, which leaves 0.15 KB. The headroom is spent, so the next
+      // change to core trips this: re-base the fence then, with a date, rather
+      // than widening it by reflex. The `t2v.voice` facade (~1.6 KB gzip) is in
+      // core; the voice controller and the voice libraries stay lazy chunks
+      // (asserted above).
       expect(core.gzipKB).toBeLessThan(12);
     },
     120_000,
@@ -232,7 +238,8 @@ describe('what a consumer pays for the entry points they use', () => {
       // The voice agent's WebRTC stack stays lazy here too.
       expect([...chat.packages].filter(isVoiceStack)).toEqual([]);
 
-      // 372.18 KB gzip measured (369.18 before <VoiceButton>), excluding React (a peer) and the host app.
+      // 373.91 KB gzip measured on 2026-10-22 (372.18 earlier, 369.18 before
+      // <VoiceButton>), excluding React (a peer) and the host app.
       // A page containing only the chat and React measures about 429 KB gzip.
       // Fence at 400 KB: loud on a regression, not a budget to shave against.
       expect(chat.gzipKB).toBeLessThan(400);
