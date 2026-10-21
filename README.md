@@ -219,20 +219,22 @@ you set another.
 | `/react`, `/assistant-ui` | The engine only. |
 | `/chat` | The engine only: no fonts, no CDN, no images (an image in a reply becomes a link). Previews of the files an end-user attaches are `blob:` URLs, so a strict `img-src` needs `blob:`. |
 | `/ui` (deprecated) | The engine, the IBM Plex fonts from Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) and the Talk2View logo from `db.talk2view.com`. Code highlighting compiles WebAssembly, which a strict CSP allows with `'wasm-unsafe-eval'`. |
-| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and the hosts of the voice model the call runs on. Gemini Live: Daily's call engine from `https://c.daily.co`, which runs through `Function()`, and audio worklets that load from `blob:` URLs. ElevenLabs: `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` only (with a token the engine mints, the client never contacts `api.elevenlabs.io`), and one audio worklet from a `blob:` URL that the call works without. |
+| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and on every call, whichever the voice model, Daily's call engine from `https://c.daily.co`, which runs through `Function()` and starts an audio worklet. Gemini Live adds nothing. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` only (with a token the engine mints, the client never contacts `api.elevenlabs.io`), and one audio worklet from a `blob:` URL that the call works without. |
 
-So a Gemini Live call needs `https://c.daily.co` in `connect-src`, and
-`'unsafe-eval'` and `blob:` in `script-src`. Without any of them, it does not
-start. If that download fails, Daily's library tries to send an error report to
-Daily's own error tracking (Sentry); you can leave that blocked. An ElevenLabs
-call needs the two ElevenLabs hosts in `connect-src` and nothing in
-`script-src`, though `blob:` keeps a console warning out; one that cannot
-connect is retried on Gemini Live when the app offers it. The libraries each
-voice model runs on come from your own bundle, loaded on the first call that
-uses them, so a chat that never starts a call never loads them, and a Gemini
-Live call never loads ElevenLabs'. The call's audio travels over WebRTC: for
-Gemini Live through the ICE servers the engine hands out for each call, for
-ElevenLabs through its own LiveKit service.
+So every voice call needs `https://c.daily.co` in `connect-src`, and
+`'unsafe-eval'` and `blob:` in `script-src`, an ElevenLabs call included: the
+SDK opens the microphone through Daily's library before the engine has chosen
+the voice model. Without `https://c.daily.co` or `'unsafe-eval'`, no voice call
+starts. If Daily's download fails, its library tries to send an error report to
+Daily's own error tracking (Sentry); you can leave that blocked. A Gemini Live
+call needs nothing more. An ElevenLabs call adds the two ElevenLabs hosts to
+`connect-src`; one that cannot reach them is retried on Gemini Live when the
+app offers it. The voice libraries come from your own bundle, loaded on the
+first call that uses them: a chat that never starts a call never loads them,
+the first voice call loads the Pipecat libraries and Daily's call engine,
+whichever the voice model, and only an ElevenLabs call loads ElevenLabs'. The
+call's audio travels over WebRTC: for Gemini Live through the ICE servers the
+engine hands out for each call, for ElevenLabs through its own LiveKit service.
 [`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)
 has the rest.
 

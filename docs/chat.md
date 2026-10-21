@@ -420,16 +420,18 @@ fonts, no CDN, no stylesheet, no script. A `connect-src` that allows the engine
 is all it needs, plus `blob:` in a strict `img-src` for the previews of files
 the end-user attaches.
 
-Voice needs more, for each voice model your app offers. A Gemini Live call
-downloads Daily's call engine from `https://c.daily.co` and runs it through
-`Function()`, and loads its audio worklets from `blob:` URLs, so it needs
-`https://c.daily.co` in `connect-src` and `'unsafe-eval'` and `blob:` in
-`script-src`, or no call starts. An ElevenLabs call connects to ElevenLabs'
-LiveKit service instead, so it needs `wss://livekit.rtc.elevenlabs.io` and
-`https://livekit.rtc.elevenlabs.io` in `connect-src`; it needs nothing in
-`script-src`, though `blob:` keeps a console warning out. See
-[voice.md](voice.md#browser-requirements) for both. If you would rather allow
-none of it, `features={{ voice: false }}` keeps the microphone off the launcher.
+Voice needs more. The SDK opens the microphone through Daily's library before
+the engine has chosen the voice model, and Daily's library downloads its call
+engine from `https://c.daily.co` and runs it through `Function()`. So every
+voice call, whichever the voice model, needs `https://c.daily.co` in
+`connect-src`, and `'unsafe-eval'` and `blob:` in `script-src`; without
+`https://c.daily.co` or `'unsafe-eval'`, no voice call starts. Gemini Live
+needs nothing more. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and
+`https://livekit.rtc.elevenlabs.io` to `connect-src`, and an ElevenLabs call
+that cannot reach them is retried on Gemini Live when the app offers it. See
+[voice.md](voice.md#browser-requirements) for the table. If you would rather
+allow none of it, `features={{ voice: false }}` keeps the microphone off the
+launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
 cannot — an Office add-in's webpack with no CSS rule, a strict `style-src` that
