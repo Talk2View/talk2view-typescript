@@ -20,8 +20,17 @@ export const ALREADY_WORKING = 'status: already_working (still on the previous r
 /** The answer when a turn ends without any text. */
 export const NO_TEXT = '(the agent returned no text)';
 
-/** The answer when a turn could not be run. */
+/** The answer when a turn could not be run, or ran past its limit. */
 export const TURN_FAILED = 'error: I couldn’t reach the assistant just now.';
+
+/**
+ * How long a turn may run, its resumes and any wait on a card included,
+ * before it is ended with {@link TURN_FAILED}. It is the voice service's
+ * `engine_turn_timeout_s` (`va/engine_bridge.py`), and the agent's
+ * `ask_talk2view` tool stops waiting for an answer at the same 120 seconds
+ * (`response_timeout_secs`).
+ */
+export const TURN_TIMEOUT_MS = 120_000;
 
 /**
  * What the engine is told about a voice turn: the reply is spoken, and the
@@ -62,6 +71,8 @@ export interface VoiceTurnDeps {
   onState: (state: 'working' | 'idle') => void;
   /** A turn found the end-user's budget spent: the call says goodbye. */
   onBudgetExceeded: () => void;
+  /** How long a turn may run before it is ended. Default: {@link TURN_TIMEOUT_MS}. */
+  turnTimeoutMs?: number;
 }
 
 /**
@@ -95,9 +106,9 @@ export class VoiceTurnRunner {
   /**
    * Run `request` as an engine turn. Resolves with the turn's text, trimmed,
    * or {@link NO_TEXT}; `error: <message>` when the engine reports an error;
-   * {@link TURN_FAILED} when the turn could not be run; {@link ALREADY_WORKING}
-   * when the same request is already in flight or queued; once aborted, the
-   * abort reason.
+   * {@link TURN_FAILED} when the turn could not be run or ran past its limit;
+   * {@link ALREADY_WORKING} when the same request is already in flight or
+   * queued; once aborted, the abort reason.
    */
   ask(request: string): Promise<string> {
     if (this.reason !== null) return Promise.resolve(this.reason);
@@ -125,17 +136,31 @@ export class VoiceTurnRunner {
     this.resolveAborted(reason);
   }
 
-  /** One turn, unless the runner was aborted while it waited. */
+  /**
+   * One turn, unless the runner was aborted while it waited. A turn still
+   * running at its limit is aborted and answers {@link TURN_FAILED}, whether
+   * or not its stream has noticed, and the runner moves on: the request
+   * leaves the in-flight set and the next turn starts.
+   */
   private async run(request: string): Promise<string> {
     if (this.reason !== null) return this.reason;
     const controller = new AbortController();
     this.controller = controller;
+    let expire!: (answer: string) => void;
+    const expired = new Promise<string>((resolve) => {
+      expire = resolve;
+    });
+    const timer = setTimeout(() => {
+      controller.abort();
+      expire(TURN_FAILED);
+    }, this.deps.turnTimeoutMs ?? TURN_TIMEOUT_MS);
     try {
       this.deps.onState('working');
-      return await this.turn(request, controller.signal);
+      return await Promise.race([this.turn(request, controller.signal), expired]);
     } catch {
       return TURN_FAILED;
     } finally {
+      clearTimeout(timer);
       this.controller = null;
       this.deps.onState('idle');
     }
@@ -148,6 +173,9 @@ export class VoiceTurnRunner {
     for (;;) {
       let approval: PendingApproval | null = null;
       for await (const event of events) {
+        // Aborted (the call ended, or the turn ran past its limit): the ask has
+        // its answer already, so whatever arrives after that is dropped.
+        if (signal.aborted) return TURN_FAILED;
         if (event.type === 'text') {
           text += event.content;
         } else if (event.type === 'approval_required') {
@@ -163,9 +191,8 @@ export class VoiceTurnRunner {
         }
       }
       if (approval === null) return text.trim() || NO_TEXT;
-      // Aborted while the tool permission was checked, or (below) while the
-      // card was open: the ask has resolved with the reason already, so no
-      // card opens, no tool runs and no resume is sent.
+      // Nor, once aborted, does a card open, a tool run or a resume go out:
+      // checked here, after the tool permission, and below, after the card.
       if (signal.aborted) return TURN_FAILED;
       events = await this.resume(approval, signal);
       if (signal.aborted) return TURN_FAILED;

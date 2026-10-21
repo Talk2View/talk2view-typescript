@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { T2VSession } from '../../src/sessions';
 import type { T2VClient } from '../../src/client';
 import type { T2VTools } from '../../src/tools';
@@ -7,6 +7,7 @@ import {
   ALREADY_WORKING,
   NO_TEXT,
   TURN_FAILED,
+  TURN_TIMEOUT_MS,
   VoiceTurnRunner,
   normaliseRequest,
   type VoiceTurnDeps,
@@ -352,6 +353,90 @@ describe('VoiceTurnRunner', () => {
     expect(ALREADY_WORKING).toBe('status: already_working (still on the previous request)');
     expect(NO_TEXT).toBe('(the agent returned no text)');
     expect(TURN_FAILED).toBe('error: I couldn’t reach the assistant just now.');
+  });
+});
+
+describe('VoiceTurnRunner — the turn limit', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a turn still running at the limit answers TURN_FAILED, and the runner takes the next request', async () => {
+    setup([gated(textChunk('Too late.'), stopChunk()), [textChunk('Done.'), stopChunk()]]);
+    const slow = runner.ask('slow thing'); // its reply never comes
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+    expect(streamRequest.mock.calls[0]![2].aborted).toBe(true);
+    await expect(slow).resolves.toBe(TURN_FAILED);
+    expect(runner.busy).toBe(false);
+    expect(states).toEqual(['working', 'idle']);
+    await expect(runner.ask('something else')).resolves.toBe('Done.');
+    expect(streamRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('the same request asked again after the limit starts a new turn', async () => {
+    setup([gated(textChunk('Too late.'), stopChunk()), [textChunk('Blue now.'), stopChunk()]]);
+    const first = runner.ask('paint it blue');
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+    await expect(runner.ask('Paint it blue!')).resolves.toBe('Blue now.');
+    await expect(first).resolves.toBe(TURN_FAILED);
+    expect(streamRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('a turn that settles in time leaves no timer behind', async () => {
+    setup([[textChunk('Done.'), stopChunk()], [errorChunk('ValidationError', 'Nope.')], failing]);
+    await expect(runner.ask('one')).resolves.toBe('Done.');
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(runner.ask('two')).resolves.toBe('error: Nope.');
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(runner.ask('three')).resolves.toBe(TURN_FAILED);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a request queued behind a turn that runs out of time goes next, its limit counted from its own start', async () => {
+    setup([gated(stopChunk()), gated(stopChunk())]);
+    const slow = runner.ask('slow thing');
+    const queued = runner.ask('another slow thing');
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+    expect(streamRequest).toHaveBeenCalledTimes(2); // the queued request started as the first one ran out of time
+    await expect(slow).resolves.toBe(TURN_FAILED);
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS - 1);
+    expect(streamRequest.mock.calls[1]![2].aborted).toBe(false); // not counted from its ask
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(queued).resolves.toBe(TURN_FAILED);
+    expect(states).toEqual(['working', 'idle', 'working', 'idle']);
+  });
+
+  it('the limit covers the wait on a card, and nothing runs after it', async () => {
+    setupSend({ turnTimeoutMs: 5_000 });
+    const card = deferred<{ decision: HumanDecision; endedBecause?: string }>();
+    onApproval.mockReturnValue(card.promise);
+    const asked = runner.ask('send it');
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(onApproval).toHaveBeenCalledOnce(); // the card is open
+    expect(streamRequest.mock.calls[0]![2].aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(streamRequest.mock.calls[0]![2].aborted).toBe(true);
+    await expect(asked).resolves.toBe(TURN_FAILED);
+    card.resolve({ decision: { action: 'once' } }); // answered after the limit
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tools.executeToolCall).not.toHaveBeenCalled();
+    expect(streamRequest).toHaveBeenCalledTimes(1);
+    expect(states).toEqual(['working', 'idle']);
+  });
+
+  it('what arrives after the limit is dropped', async () => {
+    setup([gated(errorChunk('budget_exceeded', 'Out of credit'))]);
+    const late = runner.ask('x');
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS);
+    expect(streamRequest.mock.calls[0]![2].aborted).toBe(true);
+    await expect(late).resolves.toBe(TURN_FAILED);
+    gate.resolve(); // the engine's reply arrives after the limit
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onBudgetExceeded).not.toHaveBeenCalled();
   });
 });
 
