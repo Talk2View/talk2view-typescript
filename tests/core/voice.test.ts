@@ -1516,6 +1516,57 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     expect(w.client().micStops).toBe(1);
   });
 
+  // In the browser every Pipecat client reads its microphone from Daily's one
+  // call object per page, so a stop through the old client would stop the new
+  // call's track. The fake keeps a track per client: that stop shows as the
+  // old client's `micStops`.
+  it('a late release leaves alone the mic a newer start has asked for since', async () => {
+    const devices = deferred<void>();
+    const mint = deferred<typeof MINT>();
+    const request = vi.fn().mockReturnValueOnce(mint.promise).mockResolvedValue(MINT);
+    const w = world({ micPermission: async () => 'granted', request: request as unknown as T2VVoiceDeps['request'] });
+    FakePipecatClient.deviceGate = devices.promise; // the first start's mic opens slowly
+    const first = w.voice.start();
+    await tick();
+    expect(request).toHaveBeenCalledOnce();
+    await w.voice.stop(); // mid-mint: the mic has not opened, so the hang-up released none
+    FakePipecatClient.deviceGate = null; // the second start's opens at once
+    const second = w.voice.start(); // waits for the first mint, then asks for the mic
+    mint.resolve(MINT);
+    await first;
+    await second;
+    expect(w.voice.state).toBe('listening');
+    devices.resolve(); // the first start's mic opens after the second has asked
+    await tick();
+    const [old, current] = FakePipecatClient.instances;
+    expect(old!.micStops).toBe(0);
+    expect(current!.micOpen).toBe(true);
+    expect(current!.micStops).toBe(0);
+  });
+
+  it('a newer start that ends before it asks for the mic still lets the late release run', async () => {
+    const devices = deferred<void>();
+    const mint = deferred<typeof MINT>();
+    const w = world({
+      micPermission: async () => 'granted',
+      request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'],
+      ensureSession: vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false),
+    });
+    FakePipecatClient.deviceGate = devices.promise;
+    const first = w.voice.start();
+    await tick();
+    await w.voice.stop();
+    const second = w.voice.start(); // signed out meanwhile: it never asks for the mic
+    mint.resolve(MINT);
+    await first;
+    await expect(second).rejects.toMatchObject({ type: 'account_required' });
+    devices.resolve();
+    await tick();
+    expect(FakePipecatClient.instances).toHaveLength(1);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().micStops).toBe(1);
+  });
+
   it('a start that fails after the mic opened releases it', async () => {
     const w = world({ getValidAccessToken: vi.fn(async () => null) });
     await expect(w.voice.start()).rejects.toMatchObject({ type: 'auth_expired' });
@@ -1765,14 +1816,26 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
       expect(w.errors).toEqual([{ type: 'transport_error', message: 'Voice connection error' }]);
       expect(debug).not.toHaveBeenCalled();
       localStorage.setItem('t2v:debug', '1');
-      opts.onError('Microphone permission denied');
+      opts.onError('Client tool execution failed with following error: boom');
       expect(w.errors.map((e) => e.message)).toEqual(['Voice connection error', 'Voice connection error']);
       expect(debug).toHaveBeenCalledOnce();
-      expect(debug.mock.calls[0]).toContain('Microphone permission denied');
+      expect(debug.mock.calls[0]).toContain('Client tool execution failed with following error: boom');
     } finally {
       localStorage.removeItem('t2v:debug');
       debug.mockRestore();
     }
+  });
+
+  it('a library error about the microphone is a mic_unavailable, in the words a Gemini Live call uses', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    opts.onError('Microphone permission denied');
+    opts.onError('Server error: Internal error');
+    expect(w.errors).toEqual([
+      { type: 'mic_unavailable', message: 'Voice needs microphone access. Allow the microphone and try again.' },
+      { type: 'transport_error', message: 'Voice connection error' },
+    ]);
   });
 
   it('test_start_falls_back_after_a_connect_failure', async () => {

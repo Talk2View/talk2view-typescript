@@ -317,6 +317,12 @@ export class T2VVoiceController {
    * epoch belongs to a call that was hung up, and must not touch this one.
    */
   private epoch = 0;
+  /**
+   * Bumped by every start as it asks for the microphone. Daily's call object
+   * is one per page, so every Pipecat client's microphone is the same track,
+   * and it belongs to the latest start that asked for it.
+   */
+  private micOpens = 0;
   /** Settles the in-flight `start()`'s waits when the call is hung up mid-start. */
   private abortStart: (() => void) | null = null;
   /**
@@ -407,7 +413,8 @@ export class T2VVoiceController {
       connectCall.then(() => orphan.disconnect(), () => undefined).catch(() => undefined);
     };
     // Once the microphone is asked for: a start that ends before it opens
-    // releases it as soon as it opens, since the teardown found none to release.
+    // releases it as soon as it opens, since the teardown found none to
+    // release, unless a newer start has asked for it since.
     let releaseMicWhenOpen = (): void => undefined;
     const timings = startTimings();
     try {
@@ -448,10 +455,15 @@ export class T2VVoiceController {
       // it opens alongside the mint and costs no time.
       const micAllowed = (await (this.deps.micPermission ?? queryMicPermission)()) === 'granted';
       if (stale()) return;
+      const micOpen = ++this.micOpens;
       const devices = first.pipecat.initDevices();
       devices.catch(() => undefined); // awaited below
       releaseMicWhenOpen = () => {
-        devices.then(() => releaseMic(first.pipecat), () => undefined);
+        // Not once a newer start has asked: the one track is that start's now.
+        const release = (): void => {
+          if (this.micOpens === micOpen) releaseMic(first.pipecat);
+        };
+        devices.then(release, () => undefined);
       };
       // A hang-up must not wait on the prompt: start() returns at once, and
       // the mic the prompt opens later is released as soon as it opens.
@@ -739,11 +751,15 @@ export class T2VVoiceController {
       onTranscript: (transcript) => {
         if (!stale()) this.safeEmit('transcript', transcript);
       },
-      // The library's own words are for developers: the end-user gets a transport error's copy.
+      // The library's own words are for developers. The end-user gets the
+      // microphone's copy for an error about the microphone (1.29.0 sends none
+      // on a WebRTC call; a later version may), and a transport error's for
+      // any other.
       onError: (message) => {
         if (stale()) return;
         debugLog('voice: the ElevenLabs library reported an error', message);
-        this.emitError('transport_error', VOICE_CONNECTION_ERROR);
+        if (/microphone/i.test(message)) this.emitError(MIC_UNAVAILABLE.type, MIC_UNAVAILABLE.message);
+        else this.emitError('transport_error', VOICE_CONNECTION_ERROR);
       },
       onEnded: (reason, error) => {
         if (!stale()) void this.finish(reason, error);
