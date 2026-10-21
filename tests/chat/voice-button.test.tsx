@@ -49,7 +49,7 @@ vi.mock('../../src/skills', () => ({
   }; }),
 }));
 
-import { Talk2View } from '../../src/index';
+import { Talk2View, VOICE_PREFERENCE_URL } from '../../src/index';
 import { TypedEventEmitter } from '../../src/event-emitter';
 import type { PartnerConfig, VoiceEventMap, VoiceState } from '../../src/types';
 import { T2VVoice } from '../../src/voice-facade';
@@ -87,8 +87,11 @@ afterEach(() => {
   document.documentElement.style.overflow = '';
 });
 
-/** A scripted `t2v.voice`. `listeners()` counts what the button still holds. */
-function fakeClient() {
+/**
+ * A scripted `t2v.voice`. `listeners()` counts what the button still holds.
+ * The end-user is signed in and not an anonymous user, unless `auth` says otherwise.
+ */
+function fakeClient(auth: { isAuthenticated?: () => boolean; isAnonymous?: () => boolean } = {}) {
   const emitter = new TypedEventEmitter<VoiceEventMap>();
   let live = 0;
   const setState = (s: VoiceState) => {
@@ -116,7 +119,10 @@ function fakeClient() {
     },
   };
   return {
-    client: { voice } as unknown as Talk2View,
+    client: {
+      voice,
+      auth: { isAuthenticated: () => true, isAnonymous: () => false, ...auth },
+    } as unknown as Talk2View,
     emitter,
     voice,
     setState,
@@ -125,6 +131,10 @@ function fakeClient() {
 }
 
 const button = () => screen.getByRole('button', { name: 'Talk to Talk2View' });
+
+/** The engine's note on the voice model, as the popover shows it. */
+const NOTE = 'Using Gemini Live — this app doesn’t offer ElevenLabs.';
+const note = () => document.querySelector('.t2v-voice-note');
 
 describe('<VoiceButton>', () => {
   it('fetches the voice code when the pointer reaches it or it takes focus', () => {
@@ -217,6 +227,172 @@ describe('<VoiceButton>', () => {
     act(() => setState('connecting'));
     act(() => setState('listening'));
     expect(screen.getByRole('status').textContent).toBe('Say hello!');
+  });
+
+  it('shows the greeting instead of say hello on an elevenlabs call', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: 'Hi! What can I help you with?' }));
+    expect(screen.getByRole('status').textContent).toBe('Hi! What can I help you with?');
+    // The agent has greeted, but the call is still waiting on the end-user: the same hint.
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(true);
+    // A greeting is any length, in any language: it wraps where "Say hello!" never needs to.
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-greeting')).toBe(true);
+    act(() => emitter.emit('transcript', { role: 'user', text: 'hi', final: false }));
+    expect(screen.getByRole('status').textContent).toBe('Listening');
+    act(() => setState('ended'));
+    act(() => setState('connecting'));
+    act(() => setState('listening'));
+    expect(screen.getByRole('status').textContent).toBe('Say hello!'); // a Gemini Live call greets nothing
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-greeting')).toBe(false);
+  });
+
+  it('still says hello on a Gemini Live call, whose callStarted has no greeting', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
+    expect(screen.getByRole('status').textContent).toBe('Say hello!');
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(true);
+  });
+
+  it('shows the note for the first seconds of a call', () => {
+    vi.useFakeTimers();
+    try {
+      const { client, emitter, setState } = fakeClient();
+      render(<VoiceButton client={client} earcon={false} />);
+      act(() => emitter.emit('note', NOTE));
+      expect(note()?.textContent).toBe(NOTE); // a note alone opens the popover
+      act(() => setState('listening'));
+      expect(note()?.textContent).toBe(NOTE);
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+      expect(note()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the note through a slow connect, and counts its six seconds from when the call is live', () => {
+    vi.useFakeTimers();
+    try {
+      const { client, emitter, setState } = fakeClient();
+      render(<VoiceButton client={client} earcon={false} />);
+      act(() => setState('connecting'));
+      // The engine's note arrives with the mint, before the microphone and the connect.
+      act(() => emitter.emit('note', NOTE));
+      expect(note()?.textContent).toBe(NOTE);
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(note()?.textContent).toBe(NOTE);
+      act(() => setState('listening'));
+      act(() => {
+        vi.advanceTimersByTime(5999);
+      });
+      expect(note()?.textContent).toBe(NOTE);
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(note()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the note of a call that fell back, in place of the one before it', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('connecting'));
+    act(() => emitter.emit('note', NOTE));
+    act(() => emitter.emit('note', 'Using Gemini Live — ElevenLabs couldn’t connect.'));
+    expect(document.querySelectorAll('.t2v-voice-note')).toHaveLength(1);
+    expect(note()?.textContent).toBe('Using Gemini Live — ElevenLabs couldn’t connect.');
+  });
+
+  it('drops the note when an error follows it before the call is up', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('connecting'));
+    // The note fires before the token, the microphone and the connect: a start
+    // that then fails must not go on showing it beside the error.
+    act(() => emitter.emit('note', NOTE));
+    expect(note()?.textContent).toBe(NOTE);
+    act(() => emitter.emit('error', { type: 'transport_error', message: 'HTTP 503' }));
+    expect(note()).toBeNull();
+    act(() => setState('error'));
+    expect(note()).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('The call couldn’t connect');
+  });
+
+  it('drops the note when the call is hung up before it connects', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('connecting'));
+    act(() => emitter.emit('note', NOTE));
+    expect(note()?.textContent).toBe(NOTE);
+    act(() => {
+      setState('ended');
+      emitter.emit('ended', 'stopped');
+    });
+    expect(note()).toBeNull();
+  });
+
+  it('announces the note with the status, and does not read it out twice', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('connecting'));
+    act(() => emitter.emit('note', NOTE));
+    expect(screen.getByRole('status').textContent).toBe(`Connecting… ${NOTE}`);
+    // The visible copy is hidden from screen readers, as the status pill is.
+    expect(note()?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('change voice link only for signed-in non-guests', () => {
+    const signedIn = fakeClient();
+    const view = render(<VoiceButton client={signedIn.client} earcon={false} />);
+    act(() => signedIn.setState('listening'));
+    const link = screen.getByRole('link', { name: 'Change voice' }) as HTMLAnchorElement;
+    expect(link.href).toBe(VOICE_PREFERENCE_URL);
+    expect(link.target).toBe('_blank');
+    expect(link.rel).toBe('noopener noreferrer');
+    view.unmount();
+
+    // An anonymous user has an account to make first, and a signed-out visitor has none.
+    for (const auth of [{ isAnonymous: () => true }, { isAuthenticated: () => false }]) {
+      const { client, setState } = fakeClient(auth);
+      const other = render(<VoiceButton client={client} earcon={false} />);
+      act(() => setState('listening'));
+      expect(screen.queryByRole('link')).toBeNull();
+      other.unmount();
+    }
+    // A client without an auth object (a partner's own stand-in) shows no link either.
+    const bare = fakeClient();
+    (bare.client as unknown as { auth?: unknown }).auth = undefined;
+    render(<VoiceButton client={bare.client} earcon={false} />);
+    act(() => bare.setState('listening'));
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('shows Change voice for the length of the call, and not before or after it', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    expect(screen.queryByRole('link')).toBeNull();
+    act(() => setState('connecting'));
+    expect(screen.queryByRole('link', { name: 'Change voice' })).not.toBeNull();
+    act(() => setState('listening'));
+    expect(screen.queryByRole('link', { name: 'Change voice' })).not.toBeNull();
+    // The popover is still up after a dropped call, saying so: the call is over,
+    // and so is the chance to change its voice.
+    act(() => {
+      setState('ended');
+      emitter.emit('ended', 'disconnected');
+    });
+    expect(screen.getByRole('status').textContent).toBe('The call dropped.');
+    expect(document.querySelector('.t2v-voice-popover')).not.toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('shows the agent working', () => {
@@ -413,6 +589,12 @@ describe('voiceErrorMessage', () => {
   it('tells the end-user to allow the microphone when it is unavailable', () => {
     expect(voiceErrorMessage({ type: 'mic_unavailable', message: 'raw' })).toBe(
       'Voice needs microphone access. Allow the microphone and try again.',
+    );
+  });
+
+  it('names the no-voice case', () => {
+    expect(voiceErrorMessage({ type: 'voice_model_unavailable', message: 'x' })).toBe(
+      'Voice isn’t available right now.',
     );
   });
 });

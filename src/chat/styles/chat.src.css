@@ -430,7 +430,8 @@
   }
 }
 
-/* What the call is doing, any error, and an approval, stacked above the tile. */
+/* What the call is doing, any error, an approval and the engine's note on the
+   voice model, stacked above the tile. */
 .t2v-voice-popover {
   position: absolute;
   inset-block-end: calc(100% + 0.75rem);
@@ -445,7 +446,9 @@
   line-height: 1.4;
 }
 .t2v-voice-status,
-.t2v-voice-error {
+.t2v-voice-error,
+.t2v-voice-note,
+.t2v-voice-change {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background-color: var(--popover);
@@ -456,6 +459,31 @@
   padding: 0.375rem 0.75rem;
   font-weight: 500;
   white-space: nowrap;
+}
+/* The agent's greeting is a sentence in the call's language, and some run past
+   the popover's width: it wraps where the short statuses never do. */
+.t2v-voice-status[data-greeting] {
+  white-space: normal;
+}
+/* The engine's note on the voice model ("Using Gemini Live — …"), for the first
+   seconds of a call. */
+.t2v-voice-note {
+  padding: 0.375rem 0.75rem;
+}
+/* "Change voice": a quiet link to the end-user's Profile, under the status. */
+.t2v-voice-change {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.t2v-voice-change:hover {
+  color: var(--popover-foreground);
+}
+.t2v-voice-change:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 /* "Say hello!": the call is live and waiting on the end-user. The brand colour
    and a gentle nudge draw the eye; with reduced motion it stays still. */

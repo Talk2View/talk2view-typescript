@@ -420,12 +420,14 @@ fonts, no CDN, no stylesheet, no script. A `connect-src` that allows the engine
 is all it needs, plus `blob:` in a strict `img-src` for the previews of files
 the end-user attaches.
 
-Voice needs more. A call downloads Daily's call engine from
-`https://c.daily.co` and runs it through `Function()`, so it needs
-`https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`, or no
-call starts — see [voice.md](voice.md#browser-requirements). If you would rather
-allow neither, `features={{ voice: false }}` keeps the microphone off the
-launcher.
+Voice needs more, for each voice model your app offers. A Gemini Live call
+downloads Daily's call engine from `https://c.daily.co` and runs it through
+`Function()`, so it needs `https://c.daily.co` in `connect-src` and
+`'unsafe-eval'` in `script-src`, or no call starts. An ElevenLabs call connects
+to ElevenLabs' LiveKit hosts instead, and needs `blob:` and `data:` in
+`script-src`; see [voice.md](voice.md#browser-requirements) for both. If you
+would rather allow none of it, `features={{ voice: false }}` keeps the microphone
+off the launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
 cannot — an Office add-in's webpack with no CSS rule, a strict `style-src` that

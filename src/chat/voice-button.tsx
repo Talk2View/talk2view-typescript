@@ -24,6 +24,7 @@ import type {
   VoicePendingApproval,
   VoiceState,
 } from '../types.js';
+import { VOICE_PREFERENCE_URL } from '../constants.js';
 import { ApprovalCard } from '../ui/components/ApprovalCard.js';
 import { BrandWaveform } from './composer-extras.js';
 import { cn } from './lib/cn.js';
@@ -95,6 +96,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   insufficient_credit: 'You’re out of credits. Upgrade your plan to keep going.',
   credit_check_unavailable: 'Couldn’t check your credit just now. Try again shortly.',
   service_unconfigured: 'Voice isn’t available right now.',
+  // No voice model this app allows can take the call (the engine's rule).
+  voice_model_unavailable: 'Voice isn’t available right now.',
   service_unavailable: 'Voice isn’t available right now. Try again shortly.',
   voice_at_capacity: 'Voice is busy right now. Try again shortly.',
   voice_ticket_invalid: 'The call took too long to connect. Try again.',
@@ -120,6 +123,8 @@ const ENDED_MESSAGES: Partial<Record<VoiceEndReason, string>> = {
 };
 /** How long the "call ended" note stays up. An error stays until it is dismissed or a new call starts. */
 const ENDED_NOTE_MS = 4000;
+/** How long the engine's note on the voice model stays up once the call is live. */
+const NOTE_MS = 6000;
 
 export const VoiceButton: FC<VoiceButtonProps> = (props) => {
   const ctx = useOptionalChatContext();
@@ -150,9 +155,15 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   const [approval, setApproval] = useState<VoicePendingApproval | null>(null);
   const [working, setWorking] = useState(false);
   const [endedNote, setEndedNote] = useState<string | null>(null);
+  // The engine's note on the voice model the call runs on ("Using Gemini Live —
+  // …"), shown at the start of the call.
+  const [note, setNote] = useState<string | null>(null);
+  // What an ElevenLabs agent opens the call with; null on a Gemini Live call.
+  const [greeting, setGreeting] = useState<string | null>(null);
   // Whether the end-user has spoken on this call. Until they do, the popover
-  // says "Say hello!": the bot does not greet, so a first-time user otherwise sits
-  // in silence not knowing the call is waiting on them.
+  // says "Say hello!" (or shows the agent's greeting): a Gemini Live bot does
+  // not greet, so a first-time user otherwise sits in silence not knowing the
+  // call is waiting on them.
   const [heard, setHeard] = useState(false);
   // Read by the listeners, so changing the prop does not re-subscribe.
   const earconRef = useRef(earcon);
@@ -169,10 +180,21 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           setError(null);
           setEndedNote(null);
         }
-        if (next === 'connecting') setHeard(false);
+        if (next === 'connecting') {
+          setHeard(false);
+          setGreeting(null);
+        }
+        if (next === 'ended' || next === 'error') setNote(null);
         if (next === 'listening' && earconRef.current) playListeningEarcon();
       }),
-      voice.on('error', setError),
+      voice.on('error', (failure) => {
+        setError(failure);
+        // The note is sent before the token, the microphone and the connect, so
+        // a start that then fails must not go on showing it beside the error.
+        setNote(null);
+      }),
+      voice.on('note', setNote),
+      voice.on('callStarted', (call) => setGreeting(call.greeting)),
       voice.on('approvalChange', setApproval),
       voice.on('agentState', (agent) => {
         setWorking(agent === 'working');
@@ -201,7 +223,21 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
     return () => clearTimeout(timer);
   }, [endedNote]);
 
+  // The note is for the start of the call. It stays up through connecting (the
+  // microphone prompt and the connection can be slow), then goes NOTE_MS after
+  // the call is live.
+  useEffect(() => {
+    if (!note || state !== 'listening') return;
+    const timer = setTimeout(() => setNote(null), NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [note, state]);
+
   const on = state === 'connecting' || state === 'listening';
+  // While a voice call is on: an anonymous user has an account to make first,
+  // and a signed-out visitor has none, so only a signed-in end-user is sent to
+  // their Profile to change the voice.
+  const showChangeVoice =
+    on && client.auth?.isAuthenticated?.() === true && client.auth?.isAnonymous?.() !== true;
 
   const toggle = useCallback(() => {
     if (voice.state === 'connecting' || voice.state === 'listening') {
@@ -216,6 +252,8 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
 
   const preload = useCallback(() => voice.preload(), [voice]);
 
+  // The call is live and waiting on the end-user to speak first.
+  const waiting = state === 'listening' && !working && !heard;
   const status =
     state === 'connecting'
       ? 'Connecting…'
@@ -224,7 +262,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           ? 'Working…'
           : heard
             ? 'Listening'
-            : 'Say hello!'
+            : greeting || 'Say hello!'
         : state === 'ended' && !error
           ? endedNote
           : null;
@@ -242,7 +280,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
 
   return (
     <div className={cn('t2v-voice', standalone && 't2v-chat', className)} data-on={on ? '' : undefined}>
-      {error || approval || status ? (
+      {error || approval || status || note ? (
         <div className="t2v-voice-popover">
           {error ? (
             <div role="alert" className="t2v-voice-error">
@@ -272,21 +310,40 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
               />
             </div>
           ) : null}
+          {note ? (
+            // Hidden from screen readers, like the status: the live region below reads it out.
+            <div aria-hidden="true" className="t2v-voice-note">
+              {note}
+            </div>
+          ) : null}
           {status && !error ? (
             <div
               aria-hidden="true"
               className="t2v-voice-status"
-              data-hint={status === 'Say hello!' ? '' : undefined}
+              data-hint={waiting ? '' : undefined}
+              // A greeting is any length in any language, so unlike the short
+              // statuses it may wrap.
+              data-greeting={waiting && greeting ? '' : undefined}
             >
               {status}
             </div>
+          ) : null}
+          {showChangeVoice ? (
+            <a
+              className="t2v-voice-change"
+              href={VOICE_PREFERENCE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Change voice
+            </a>
           ) : null}
         </div>
       ) : null}
       {/* Always in the DOM, so a screen reader hears each change: a live region
           that appears together with its text is often not announced. */}
       <span role="status" className="t2v-voice-sr">
-        {error ? '' : (status ?? '')}
+        {error ? '' : [status, note].filter(Boolean).join(' ')}
       </span>
       <button
         type="button"

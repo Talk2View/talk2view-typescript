@@ -1,10 +1,11 @@
 'use client';
 
 /**
- * The Settings view: which AI model answers, which voice model transcribes
- * dictation, and which language it should expect. Choices are stored with the
- * SDK's own preferences, so they carry between a partner's own UI and this chat,
- * and across visits.
+ * The Settings view: which AI model answers, which dictation model transcribes
+ * what the end-user says, and which language it should expect. (A voice call's
+ * voice model, Gemini Live or ElevenLabs, is not chosen here: the end-user sets
+ * it on their Profile page.) Choices are stored with the SDK's own preferences,
+ * so they carry between a partner's own UI and this chat, and across visits.
  */
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import type { AudioModel, Model, PartnerConfig } from '../../types.js';
@@ -21,11 +22,11 @@ import {
 
 type Load<T> = { state: 'loading' } | { state: 'ready'; items: T } | { state: 'error' };
 
-/* Offered when the voice model does not restrict its languages (the API sends
-   no `supported_languages`). */
+/* Offered when the dictation model does not restrict its languages (the API
+   sends no `supported_languages`). */
 const COMMON_LANGUAGES = ['en', 'vi', 'zh', 'ja', 'ko', 'fr', 'de', 'es'];
 
-/* The engine's fallback voice model — DEFAULT_DICTATION_MODEL in the SDK. */
+/* The engine's fallback dictation model — DEFAULT_DICTATION_MODEL in the SDK. */
 const FALLBACK_STT_MODEL = 'faster-whisper-base';
 
 const languageNames =
@@ -42,7 +43,7 @@ const languageName = (code: string) => {
   }
 };
 
-/** The languages to offer for a voice model, A–Z by name. */
+/** The languages to offer for a dictation model, A–Z by name. */
 const languagesFor = (model: AudioModel | undefined) =>
   [...new Set(model?.supported_languages?.length ? model.supported_languages : COMMON_LANGUAGES)]
     .map((code) => [code, languageName(code)] as const)
@@ -79,15 +80,16 @@ export function SettingsView() {
     };
   }, [client]);
 
-  // The voice model actually in use: the visitor's choice, else the partner's
-  // default, else the engine's. Its languages are the ones worth offering.
+  // The dictation model actually in use: the visitor's choice, else the
+  // partner's default, else the engine's. Its languages are the ones worth
+  // offering.
   const voiceItems = voices.state === 'ready' ? voices.items : [];
   const defaultSttId = partnerConfig?.default_stt_model || FALLBACK_STT_MODEL;
   const activeVoice = voiceItems.find((m) => m.id === (preferences.sttModel || defaultSttId));
   const languages = languagesFor(activeVoice);
   const language = preferences.sttLanguage ?? '';
   const languageOrphan = language !== '' && !languages.some(([code]) => code === language);
-  const voiceName = activeVoice ? label(activeVoice) : 'the voice model';
+  const voiceName = activeVoice ? label(activeVoice) : 'the dictation model';
 
   return (
     <div className="t2v-chat-settings aui-modal-settings bg-popover absolute inset-0 flex flex-col gap-6 overflow-y-auto p-4 text-sm">
@@ -100,7 +102,7 @@ export function SettingsView() {
         defaultId={partnerConfig?.default_llm_model}
       />
       <Picker
-        title="Voice model"
+        title="Dictation model"
         help="Transcribes what you say when you use the mic."
         value={preferences.sttModel ?? ''}
         onChange={(sttModel) => {
@@ -122,7 +124,7 @@ export function SettingsView() {
             ? languages.length === 1
               ? `${voiceName} transcribes ${languages[0]![1]} only.`
               : `The ${languages.length} languages ${voiceName} can transcribe.`
-            : 'A hint for the voice model.'
+            : 'A hint for the dictation model.'
         }
       >
         {(id) => (

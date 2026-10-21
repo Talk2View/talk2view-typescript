@@ -52,6 +52,7 @@ vi.mock('../../src/skills', () => ({
 
 import { Talk2View } from '../../src/index';
 import { Talk2ViewChat } from '../../src/chat/chat';
+import { setUserPreferences } from '../../src/storage';
 import { ChatProvider } from '../../src/chat/provider';
 import { ASSISTANT_UI_KEY } from '../../src/chat/lib/guard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../src/chat/ui/tooltip';
@@ -310,6 +311,30 @@ describe('<Talk2ViewChat>', () => {
     });
     expect(document.querySelector('.t2v-chat-settings')).toBeTruthy();
     expect(thread.inert).toBe(true);
+  });
+
+  it('settings picker reads dictation model', async () => {
+    // "Voice model" means Gemini Live or ElevenLabs. This picker chooses what
+    // transcribes dictation.
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    const settings = await screen.findByRole('button', { name: 'Settings' });
+    await act(async () => {
+      fireEvent.click(settings);
+    });
+    expect(screen.getByText('Dictation model')).toBeTruthy();
+    expect(screen.queryByText('Voice model')).toBeNull();
+    expect(screen.getByText('A hint for the dictation model.')).toBeTruthy();
+  });
+
+  it('settings calls the dictation model by that name when it cannot transcribe a saved language', async () => {
+    // Before the model list loads, the one named is "the dictation model".
+    setUserPreferences(JSON.stringify({ sttLanguage: 'pt' }));
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    const settings = await screen.findByRole('button', { name: 'Settings' });
+    await act(async () => {
+      fireEvent.click(settings);
+    });
+    expect(screen.getByText('Portuguese (not supported by the dictation model)')).toBeTruthy();
   });
 
   it('offers the voice button only when dictation is on', async () => {
