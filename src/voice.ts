@@ -287,9 +287,16 @@ export class T2VVoiceController {
    */
   private mintedCall: string | null = null;
   /**
-   * ElevenLabs end reports the engine has not answered yet. The next start
-   * waits for them before it mints, since the engine releases a call's
-   * credit when it hears of the end. Never rejects.
+   * The mint in flight, until the start that sent it reads the answer. It
+   * may yet return an ElevenLabs call, so an ending meanwhile reports that
+   * call's end once it returns.
+   */
+  private mintInFlight: Promise<VoiceSessionResponse> | null = null;
+  /**
+   * ElevenLabs end reports the engine has not answered yet, and mints an
+   * ending came during. The next start waits for them before it mints, since
+   * the engine releases a call's credit when it hears of the end. Never
+   * rejects.
    */
   private pendingEndReports: Promise<void> | null = null;
   private audio: HTMLAudioElement | null = null;
@@ -303,8 +310,8 @@ export class T2VVoiceController {
    * epoch belongs to a call that was hung up, and must not touch this one.
    */
   private epoch = 0;
-  /** Settles the in-flight `start()`'s waits, with the ending's reason, when the call is hung up mid-start. */
-  private abortStart: ((reason: VoiceEndReason) => void) | null = null;
+  /** Settles the in-flight `start()`'s waits when the call is hung up mid-start. */
+  private abortStart: (() => void) | null = null;
   /**
    * The hang-up in progress; a concurrent `stop()` joins it. Tagged with the
    * epoch it ended, so a `stop()` for a call started after it (say, from an
@@ -374,7 +381,7 @@ export class T2VVoiceController {
     const epoch = ++this.epoch;
     const stale = (): boolean => epoch !== this.epoch;
     this.setState('connecting');
-    const aborted = new Promise<VoiceEndReason>((resolve) => {
+    const aborted = new Promise<void>((resolve) => {
       this.abortStart = resolve;
     });
     let connecting = false;
@@ -394,10 +401,11 @@ export class T2VVoiceController {
     };
     const timings = startTimings();
     try {
-      // An ElevenLabs call's end report the engine has not answered yet: it
-      // releases that call's credit as it hears, and this call's mint must
-      // find it released. A slow engine holds back this start, which shows
-      // `connecting`, never the last call's `ended`.
+      // An ElevenLabs call's end report the engine has not answered yet, or a
+      // mint hung up in flight that may yet return such a call: the engine
+      // releases that call's credit as it hears of the end, and this call's
+      // mint must find it released. A slow engine holds back this start,
+      // which shows `connecting`, never the last call's `ended`.
       const endReports = this.pendingEndReports;
       if (endReports) {
         await Promise.race([endReports, aborted]);
@@ -448,14 +456,21 @@ export class T2VVoiceController {
       // The access token is fetched alongside the mint, not after it.
       const tokenFetch = this.deps.getValidAccessToken();
       tokenFetch.catch(() => undefined); // awaited below
-      let mint = await this.mintVoice(options, []);
+      // An ending while the mint is in flight takes it over: once the mint
+      // returns, that ending reports the end of the ElevenLabs call it made.
+      const minting = this.mintVoice(options, []);
+      this.mintInFlight = minting;
+      let mint: VoiceSessionResponse;
+      try {
+        mint = await minting;
+      } finally {
+        // In the same step as the check below: no ending falls between them.
+        if (this.mintInFlight === minting) this.mintInFlight = null;
+      }
       timings.mark('mint');
       const elevenlabs = mint.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
-      if (stale()) {
-        // Hung up during the mint: the engine still hears that the ElevenLabs call it minted has ended.
-        if (elevenlabs) void aborted.then((reason) => this.keepEndReport(this.reportEnd(elevenlabs.conversation_id, reason)));
-        return;
-      }
+      // Hung up during the mint: the ending took the mint over, and reports its end.
+      if (stale()) return;
       // An ElevenLabs call's module and library load while the token and the
       // microphone are awaited. Until the call takes over, an ending reports
       // the end of the call the engine minted.
@@ -656,7 +671,7 @@ export class T2VVoiceController {
     options: VoiceStartOptions,
     load: Promise<LoadedElevenLabs>,
     stale: () => boolean,
-    aborted: Promise<VoiceEndReason>,
+    aborted: Promise<void>,
   ): Promise<boolean> {
     let loaded: LoadedElevenLabs;
     try {
@@ -761,6 +776,18 @@ export class T2VVoiceController {
   }
 
   /**
+   * The end report for a mint that was in flight as the call ended. Once the
+   * mint returns, the end of the ElevenLabs call it made is reported, with
+   * the ending's reason. Settles once the engine answers that report, or as
+   * soon as the mint fails or returns a Gemini Live call. Never rejects.
+   */
+  private async reportEndAfterMint(minting: Promise<VoiceSessionResponse>, reason: VoiceEndReason): Promise<void> {
+    const mint = await minting.catch(() => null);
+    const elevenlabs = mint?.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
+    if (elevenlabs) await this.reportEnd(elevenlabs.conversation_id, reason);
+  }
+
+  /**
    * Tell the engine an ElevenLabs call has ended (`POST
    * /v1/voice/calls/{id}/end`), so it settles the credit it holds for the
    * call. Sent with `keepalive`, so it outlives the page. A failure is
@@ -823,7 +850,7 @@ export class T2VVoiceController {
     // Privacy first: the mic is released and the call hung up before any
     // partner listener runs.
     await this.teardown(reason);
-    abortStart?.(reason);
+    abortStart?.();
     if (error) {
       this.emitError(error.type, error.message);
     } else if (reason === 'budget_exhausted') {
@@ -842,6 +869,8 @@ export class T2VVoiceController {
     this.elCall = null;
     const minted = this.mintedCall;
     this.mintedCall = null;
+    const minting = this.mintInFlight;
+    this.mintInFlight = null;
     this.detachAudio();
     if (client) {
       try {
@@ -853,13 +882,16 @@ export class T2VVoiceController {
       releaseMic(client);
     }
     // An ElevenLabs call ends its session and reports its own end; the end of
-    // one minted but not started yet is reported here. Neither waits for the
-    // engine's answer: the next start does.
+    // one minted but not started yet is reported here, and so is the end of
+    // one the mint in flight may yet return. None waits for the engine's
+    // answer: the next start does.
     if (call) {
       await call.stop(reason);
       this.keepEndReport(call.reported());
     } else if (minted) {
       this.keepEndReport(this.reportEnd(minted, reason));
+    } else if (minting) {
+      this.keepEndReport(this.reportEndAfterMint(minting, reason));
     }
     // Last: closing the card emits `approvalChange(null)`. Nothing is sent for
     // it, since the call is gone.

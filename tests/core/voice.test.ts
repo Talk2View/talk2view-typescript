@@ -1834,6 +1834,67 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.voice.state).toBe('listening');
   });
 
+  it('a start straight after a hang-up during an elevenlabs mint mints once that mint has returned and its end is reported', async () => {
+    const firstMint = deferred<typeof MINT_EL>();
+    const answer = deferred<void>();
+    let mints = 0;
+    const request = vi.fn((endpoint: string, _init?: RequestInit): Promise<unknown> => {
+      if (endpoint !== '/v1/voice/sessions') return answer.promise; // an end report
+      mints += 1;
+      return mints === 1 ? firstMint.promise : Promise.resolve(MINT_EL);
+    });
+    const endReports = () =>
+      request.mock.calls
+        .filter(([endpoint]) => endpoint !== '/v1/voice/sessions')
+        .map(([endpoint, init]) => [endpoint, bodyOf(init)]);
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(mints).toBe(1));
+    await w.voice.stop(); // while the mint is in flight
+    expect(w.ended).toEqual(['stopped']);
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints).toBe(1); // held back while that mint is in flight
+    firstMint.resolve(MINT_EL);
+    await first;
+    await vi.waitFor(() => expect(endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]));
+    await tick();
+    expect(mints).toBe(1); // and still, until the engine answers the end of the call it minted
+    answer.resolve();
+    await restarting;
+    expect(mints).toBe(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a mint that fails after a hang-up holds back the next start only until it fails', async () => {
+    let failFirstMint!: (err: Error) => void;
+    const firstMint = new Promise<never>((_resolve, reject) => {
+      failFirstMint = reject;
+    });
+    let mints = 0;
+    const request = vi.fn((endpoint: string, _init?: RequestInit): Promise<unknown> => {
+      if (endpoint !== '/v1/voice/sessions') return Promise.resolve({});
+      mints += 1;
+      return mints === 1 ? firstMint : Promise.resolve(MINT_EL);
+    });
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(mints).toBe(1));
+    await w.voice.stop(); // while the mint is in flight
+    const restarting = w.voice.start();
+    await tick();
+    expect(mints).toBe(1);
+    failFirstMint(new Error('the engine is down'));
+    await first; // hung up, so it resolves quietly
+    await restarting;
+    expect(mints).toBe(2);
+    expect(w.voice.state).toBe('listening');
+    expect(w.errors).toEqual([]);
+    // A mint that failed made no call: there is no end to report.
+    expect(request.mock.calls.map(([endpoint]) => endpoint)).toEqual(['/v1/voice/sessions', '/v1/voice/sessions']);
+  });
+
   it('the page going away ends the call, its end report sent with keepalive at once', async () => {
     const w = elWorld();
     await w.voice.start();
