@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-24
+
+### Added
+
+- **ElevenLabs is a second voice model.** A voice call now runs on Gemini Live or on ElevenLabs, whichever the engine picks for it: the end-user's preferred voice model where the app offers it, the app's default voice model otherwise. The SDK asks for both in `POST /v1/voice/sessions` (`voice_models: ['gemini-live', 'elevenlabs']`), with the browser's language as `language`, sent only when it is at most 35 characters, the most the engine takes. It runs the voice model that comes back. An ElevenLabs call runs on `@elevenlabs/client` over WebRTC. The agent's requests run as engine turns on the end-user's session, one at a time, through the same client tools, tool permissions and approvals as the chat. When the end-user's budget runs out, the agent says so and the call ends as `budget_exhausted`; a call that reaches the 15-minute cap ends as `session_cap`, as a Gemini Live call does. Both voice models end a call with the same `ended` reasons and report the same `error` types. See `docs/voice.md`.
+- **`note` and `callStarted` events on `t2v.voice`.** `note` is the engine's word, a string to show as it comes, on a call that is not running on the voice model the end-user wanted: "Using Gemini Live — this app doesn’t offer ElevenLabs." It arrives as the call starts. `callStarted` is `{ voiceModel, greeting }` and fires once the call is up. `greeting` is what an ElevenLabs agent opens the call with, and `null` for Gemini Live.
+- **`<VoiceButton>` shows the note, the greeting and "Change voice".** The note stays up until six seconds after the call is live. On an ElevenLabs call, the greeting shows in place of "Say hello!". An end-user who has signed in (an anonymous user has not) also sees a "Change voice" link, which opens their Profile page in a new tab. `VOICE_PREFERENCE_URL` (`https://dashboard.talk2view.com/enduser/profile#voice`) is exported for a partner's own voice UI.
+- **ElevenLabs falls back to Gemini Live.** When an ElevenLabs call cannot connect (a Content-Security-Policy that blocks its hosts, a network that blocks WebRTC), the SDK tells the engine, so the call's credit hold is released, and asks for the call again without ElevenLabs. It retries once. The call then runs on Gemini Live, with the note "Using Gemini Live — ElevenLabs couldn’t connect." When the app offers no other voice model, `start()` rejects with the new `voice_model_unavailable` error, and `<VoiceButton>` says "Voice isn’t available right now."
+- **`TurnOptions` on `T2VSession`.** `sendMessage`, `resumeToolCall` and `respondToApproval` take `surface` (`'keyboard'`, `'app'` or `'voice'`), `supportsApproval` and `supportsToolEvents`, which the engine reads as `surface`, `supports_approval` and `supports_tool_events`. Each is sent only when given, on the request and on every resume of the turn. `TurnOptions` is exported as a type. The packaged chat gives none, so its requests are unchanged.
+
+### Changed
+
+- **`ticket`, `voice_url` and `ice_servers` are optional on `VoiceSessionResponse`.** The exported type now describes both voice models: a Gemini Live call carries those three, and an ElevenLabs call carries `elevenlabs` instead. Code that reads them as always present needs a check. The type also gains `voice_model`, `note` and `elevenlabs`.
+- **The chat settings' "Voice model" picker is "Dictation model".** It chooses what transcribes dictation, and "voice model" now means Gemini Live or ElevenLabs only. The hint under "Spoken language" says "dictation model" too.
+- **The Content-Security-Policy guidance gives what every voice call needs, and what ElevenLabs adds.** The SDK opens the microphone through Daily's library before the engine has chosen the voice model, so every voice call, an ElevenLabs call included, needs `https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`, and no voice call starts without them. The docs now list `blob:` in `script-src` for every voice call too; they said only `'unsafe-eval'`. An ElevenLabs call adds `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` to `connect-src`: it makes plain HTTPS requests to the second when a connection fails, and when the browser reports it has gone offline or come back online. It never contacts `api.elevenlabs.io`, and a call that cannot reach those hosts is retried on Gemini Live where the app offers it. It loads one audio worklet from a `blob:` URL, and the call works without it. The README, `docs/chat.md` and `docs/voice.md` give the table.
+
+### Fixed
+
+- **A voice call that ends while it is being set up no longer leaves the microphone on.** Where the browser already allows the microphone, the SDK opens it while the engine sets up the call. If the end-user hung up then, or the engine refused the call, and the microphone finished opening afterwards, nothing released it: it stayed on, with the browser's recording indicator, and no call. It is now released as soon as it opens.
+
+### Dependencies
+
+- **`@elevenlabs/client` 1.29.0**, pinned exactly, with its LiveKit dependency. It loads with `import()` on the first ElevenLabs call only, so none of it is in the up-front bundles. The bundle fence now keeps `@elevenlabs/client` and `livekit-client` out of the core, `/ui` and `/chat` entry chunks; core stays under its 12 KB gzip limit, at 11.85 KB.
+
 ## [0.22.0] - 2026-10-21
 
 ### Added

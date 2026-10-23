@@ -24,7 +24,7 @@ export interface T2VVoiceOptions extends T2VVoiceDeps {
 const loadVoiceController: VoiceControllerLoader = async () => (await import('./voice.js')).T2VVoiceController;
 
 /** Every event the controller emits; the facade forwards each one. */
-const FORWARDED = ['transcript', 'toolCall', 'agentState', 'approvalChange', 'error', 'ended'] as const;
+const FORWARDED = ['transcript', 'toolCall', 'agentState', 'approvalChange', 'error', 'ended', 'note', 'callStarted'] as const;
 
 export class T2VVoice {
   private readonly emitter = new TypedEventEmitter<VoiceEventMap>();

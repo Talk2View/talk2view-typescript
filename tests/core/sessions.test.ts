@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { T2VSession } from '../../src/sessions';
+import { describe, expect, it, vi, type Mock } from 'vitest';
+import { T2VSession, type TurnOptions } from '../../src/sessions';
 import type { T2VClient } from '../../src/client';
 import type { T2VTools } from '../../src/tools';
 import type { ChatCompletionChunk, ChatEvent, PendingApproval } from '../../src/types';
@@ -97,6 +97,11 @@ function makeApproval(overrides: Partial<PendingApproval> = {}): PendingApproval
     description: 'Send an email',
     ...overrides,
   };
+}
+
+/** The body of the client's `i`-th stream request. */
+function body(client: T2VClient, i: number): Record<string, unknown> {
+  return (client.streamRequest as Mock).mock.calls[i]![1];
 }
 
 describe('T2VSession — todos (planning)', () => {
@@ -419,5 +424,60 @@ describe('T2VSession — chunks without `choices`', () => {
       ' and the rest.',
     ]);
     expect(events.at(-1)).toEqual({ type: 'done', threadId: 'thread_1' });
+  });
+});
+
+describe('T2VSession — turn options', () => {
+  it('sends surface and supports flags only when given', async () => {
+    const client = createMockClient([[textChunk('ok'), stopChunk()]]);
+    await collectEvents(
+      createSession(client, createMockTools()).sendMessage('hi', {
+        systemPrompt: 'Page',
+        surface: 'voice',
+        supportsApproval: false,
+        supportsToolEvents: false,
+      }),
+    );
+    expect(body(client, 0)).toEqual({
+      messages: [{ role: 'system', content: 'Page' }, { role: 'user', content: 'hi' }],
+      stream: true,
+      model: undefined,
+      surface: 'voice',
+      supports_approval: false,
+      supports_tool_events: false,
+    });
+  });
+
+  it('resume carries the surface', async () => {
+    // An allow with a handler: the session resumes itself.
+    const tools = createMockTools({ hasHandler: vi.fn().mockReturnValue(true) });
+    const client = createMockClient([[interruptChunk('paint', 'c1', { x: 1 })], [stopChunk()]]);
+    await collectEvents(createSession(client, tools).sendMessage('go', { surface: 'voice', supportsApproval: false }));
+    expect(body(client, 1)).toEqual({ tool_call_id: 'c1', result: 'ok', is_error: false, surface: 'voice', supports_approval: false });
+
+    // respondToApproval and a direct resumeToolCall carry `turn` the same way.
+    const turn: TurnOptions = { surface: 'voice', supportsApproval: false };
+    const approved = createMockClient([[stopChunk()]]);
+    await collectEvents(
+      createSession(approved, createMockTools()).respondToApproval(makeApproval({ toolCallId: 'c2' }), { action: 'once' }, undefined, turn),
+    );
+    expect(body(approved, 0)).toEqual({ tool_call_id: 'c2', result: 'ok', is_error: false, surface: 'voice', supports_approval: false });
+
+    const direct = createMockClient([[stopChunk()]]);
+    await collectEvents(createSession(direct, createMockTools()).resumeToolCall('c3', 'done', false, undefined, turn));
+    expect(body(direct, 0)).toEqual({ tool_call_id: 'c3', result: 'done', is_error: false, surface: 'voice', supports_approval: false });
+  });
+
+  it('a permission denial resumes with the surface too', async () => {
+    const tools = createMockTools({ checkPermission: vi.fn().mockResolvedValue({ action: 'deny', message: 'Not here' }) });
+    const client = createMockClient([[interruptChunk('paint', 'c4', {})], [stopChunk()]]);
+    await collectEvents(createSession(client, tools).sendMessage('go', { surface: 'voice' }));
+    expect(body(client, 1)).toEqual({ tool_call_id: 'c4', result: 'Permission denied: Not here', is_error: true, surface: 'voice' });
+  });
+
+  it('chat sendMessage sends no surface', async () => {
+    const client = createMockClient([[stopChunk()]]);
+    await collectEvents(createSession(client, createMockTools()).sendMessage('hi'));
+    expect(Object.keys(body(client, 0))).toEqual(['messages', 'stream', 'model']);
   });
 });

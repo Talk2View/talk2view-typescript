@@ -36,8 +36,8 @@ the partner key in `src/App.tsx`.
   `.t2v-chat`, so the host page's theme and the chat's are separate things.
 - **The launcher.** A mark in the corner on a desktop, a full-screen sheet on a
   phone. Narrow the window past 640 px to see it change.
-- **Settings.** Model, voice model and spoken language, plus the launcher colour
-  when `visitorColourway` is on.
+- **Settings.** Model, dictation model and spoken language, plus the launcher
+  colour when `visitorColourway` is on.
 - **A tool.** Ask it to "highlight the nodule". The agent asks first — the
   approval card is part of the packaged chat — and the handler in `src/App.tsx`
   runs in this app and paints the passage in the report behind the chat. The

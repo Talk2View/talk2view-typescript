@@ -1,8 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
-import { T2VVoiceController as T2VVoice, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
-import type { PermissionCheckResult, VoiceState } from '../../src/types.js';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { T2VVoiceController as T2VVoice, couldNotConnectNote, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
+import { T2VSession } from '../../src/sessions.js';
+import type { T2VClient } from '../../src/client.js';
+import type { T2VTools } from '../../src/tools.js';
+import type { ElevenLabsLibs } from '../../src/voice-elevenlabs.js';
+import type {
+  ChatCompletionChunk,
+  ElevenLabsCallInfo,
+  HumanDecision,
+  PermissionCheckResult,
+  VoiceState,
+} from '../../src/types.js';
 
 type Callbacks = Record<string, (...args: any[]) => void>;
 
@@ -102,12 +112,36 @@ class FakePipecatClient {
 }
 
 const MINT = {
+  voice_model: 'gemini-live',
+  note: null,
   ticket: 't'.repeat(43),
   voice_url: 'https://engine.test/v1/voice/offer',
   session_id: 's1',
   ice_servers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:t.test'], username: 'u', credential: 'c' }],
   expires_in: 60,
   model: 'gemini-3.8-live',
+  elevenlabs: null,
+};
+
+const EL: ElevenLabsCallInfo = {
+  token: 'tok',
+  conversation_id: 'conv_1',
+  agent_id: 'ag',
+  time_limit_seconds: 60,
+  capabilities: [{ name: 'paint', description: 'Paints' }],
+  budget_notice: 'NOTICE',
+  greeting: 'Hi! What can I help you with?',
+  language: 'fr',
+};
+
+/** The engine picked ElevenLabs: the mint carries a conversation token, no ticket. */
+const MINT_EL = {
+  ...MINT,
+  voice_model: 'elevenlabs',
+  ticket: undefined,
+  voice_url: undefined,
+  ice_servers: undefined,
+  elevenlabs: EL,
 };
 
 function world(overrides: Partial<T2VVoiceDeps> = {}) {
@@ -135,6 +169,9 @@ function world(overrides: Partial<T2VVoiceDeps> = {}) {
     loadLibs: async () => libs,
     attachAudio: vi.fn(),
     approvalTimeoutMs: 30,
+    // jsdom has a navigator.language: the mint sends a language only when a test gives one.
+    language: () => '',
+    sessionFor: vi.fn() as unknown as T2VVoiceDeps['sessionFor'],
     ...overrides,
   };
   const voice = new T2VVoice(deps);
@@ -149,21 +186,27 @@ describe('T2VVoice.start', () => {
     await w.voice.start({ systemPrompt: 'Update the study list table.' });
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ system_prompt: 'Update the study list table.' }),
+      body: JSON.stringify({ system_prompt: 'Update the study list table.', voice_models: ['gemini-live', 'elevenlabs'] }),
     });
   });
 
-  it('sends no body without a system prompt, or with a blank one', async () => {
+  it('sends no system prompt without one, or with a blank one', async () => {
     const w = world();
     await w.voice.start({ systemPrompt: '   ' });
-    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
   });
 
   it('mints, lazy-loads, connects with the ticket and credentials, and listens', async () => {
     const w = world();
     await w.voice.start();
     expect(w.deps.ensureSession).toHaveBeenCalledOnce();
-    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', { method: 'POST' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
     const c = w.client();
     expect((c.opts.transport as FakeTransport).iceServers).toEqual([
       { urls: ['stun:stun.test:3478'] },
@@ -240,6 +283,105 @@ describe('T2VVoice.start', () => {
   });
 });
 
+describe('T2VVoice.start: the voice model', () => {
+  it('mint sends both voice models and the browser language', async () => {
+    const w = world({ language: () => 'fr-CA' });
+    await w.voice.start({ systemPrompt: 'Page' });
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ system_prompt: 'Page', voice_models: ['gemini-live', 'elevenlabs'], language: 'fr-CA' }),
+    });
+  });
+
+  it("leaves out a language longer than the engine's 35 characters, so the mint is not refused", async () => {
+    const w = world({ language: () => 'x'.repeat(36) });
+    await w.voice.start();
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'] }),
+    });
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('sends a language of exactly 35 characters as is', async () => {
+    const language = 'x'.repeat(35);
+    const w = world({ language: () => language });
+    await w.voice.start();
+    expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs'], language }),
+    });
+  });
+
+  it('gemini live path is unchanged when the engine picks it', async () => {
+    const loadElevenLabs = vi.fn();
+    const w = world({ loadElevenLabs });
+    const started: unknown[] = [];
+    w.voice.on('callStarted', (c) => started.push(c));
+    await w.voice.start();
+    expect(w.client().connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(loadElevenLabs).not.toHaveBeenCalled();
+    expect(started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+  });
+
+  it("an old engine's mint (no voice_model, note or elevenlabs) still connects to Gemini Live", async () => {
+    // What the engine answered before voice models: the deploy-order and rollback case.
+    const oldMint = {
+      ticket: MINT.ticket,
+      voice_url: MINT.voice_url,
+      session_id: MINT.session_id,
+      ice_servers: MINT.ice_servers,
+      expires_in: MINT.expires_in,
+      model: MINT.model,
+    };
+    const w = world({ request: vi.fn(async () => oldMint) as unknown as T2VVoiceDeps['request'] });
+    const notes: unknown[] = [];
+    const started: unknown[] = [];
+    w.voice.on('note', (n) => notes.push(n));
+    w.voice.on('callStarted', (c) => started.push(c));
+    await w.voice.start();
+    expect((w.client().opts.transport as FakeTransport).iceServers).toEqual(MINT.ice_servers);
+    expect(w.client().connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(w.states).toEqual(['connecting', 'listening']);
+    expect(notes).toEqual([]);
+    expect(started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+  });
+
+  it('note is emitted once at the start', async () => {
+    const note = 'Using Gemini Live — this app doesn’t offer ElevenLabs.';
+    const w = world({ request: vi.fn(async () => ({ ...MINT, note })) as unknown as T2VVoiceDeps['request'] });
+    const log: unknown[] = [];
+    w.voice.on('note', (n) => log.push(['note', n]));
+    w.voice.on('stateChange', (s) => log.push(['state', s]));
+    await w.voice.start();
+    expect(log).toEqual([['state', 'connecting'], ['note', note], ['state', 'listening']]);
+  });
+
+  it('voice_model_unavailable shows the no-voice message', async () => {
+    const err = Object.assign(new Error('HTTP 403'), { type: 'voice_model_unavailable', status: 403 });
+    const w = world({ request: vi.fn(async () => { throw err; }) as unknown as T2VVoiceDeps['request'] });
+    const errors: unknown[] = [];
+    w.voice.on('error', (e) => errors.push(e));
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'voice_model_unavailable' });
+    expect(errors).toEqual([{ type: 'voice_model_unavailable', message: 'Voice isn’t available right now.' }]);
+    expect(w.voice.state).toBe('error');
+  });
+
+  it("names both voice models in the could-not-connect note, in the engine's words", () => {
+    expect(couldNotConnectNote('gemini-live', 'elevenlabs')).toBe('Using Gemini Live — ElevenLabs couldn’t connect.');
+  });
+});
+
 describe('T2VVoice.stop and endings', () => {
   it('stop disconnects and ends with "stopped"', async () => {
     const w = world();
@@ -288,6 +430,21 @@ describe('bundle boundary', () => {
     expect(source).not.toMatch(/^import .* from '@pipecat-ai/m);
     expect(source).toMatch(/import\('@pipecat-ai\/client-js'\)/);
     expect(source).toMatch(/import\('@pipecat-ai\/small-webrtc-transport'\)/);
+  });
+
+  it('imports the ElevenLabs client library only through import(), and its module only on an ElevenLabs call', () => {
+    // Relative paths: read from the working directory, the repo root, as above.
+    const call = readFileSync('src/voice-elevenlabs.ts', 'utf8');
+    expect(call).not.toMatch(/from '@elevenlabs\/client'/);
+    expect(call).toMatch(/import\('@elevenlabs\/client'\)/);
+    const controller = readFileSync('src/voice.ts', 'utf8');
+    expect(controller).not.toMatch(/from '\.\/voice-elevenlabs\.js'/);
+    expect(controller).toMatch(/import\('\.\/voice-elevenlabs\.js'\)/);
+    // The module itself, not only its types: the call is loaded with an awaited import().
+    expect(controller).toMatch(/await import\('\.\/voice-elevenlabs\.js'\)/);
+    // The voice turn runner comes with that module: a Gemini Live call never loads it.
+    const turnImports: string[] = controller.match(/^(?:import|export)\b[^;]*from '\.\/voice-turn\.js'/gm) ?? [];
+    expect(turnImports.filter((statement) => !statement.startsWith('import type '))).toEqual([]);
   });
 });
 
@@ -1308,6 +1465,108 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     expect(w.client().connectParams).toBeUndefined();
   });
 
+  it.each(['the mint answers', 'the mint fails', 'the token arrives'] as const)(
+    'an allowed mic still opening at a hang-up mid-start is released once it opens (%s after the hang-up)',
+    async (after) => {
+      const devices = deferred<void>();
+      let answerMint!: (mint: typeof MINT) => void;
+      let failMint!: (err: Error) => void;
+      const mint = new Promise<typeof MINT>((resolve, reject) => {
+        answerMint = resolve;
+        failMint = reject;
+      });
+      const token = deferred<string | null>();
+      const w = world({
+        micPermission: async () => 'granted',
+        request: vi.fn(() => (after === 'the token arrives' ? Promise.resolve(MINT) : mint)) as unknown as T2VVoiceDeps['request'],
+        getValidAccessToken: vi.fn(() => (after === 'the token arrives' ? token.promise : Promise.resolve('jwt-1'))),
+      });
+      FakePipecatClient.deviceGate = devices.promise; // the mic opens alongside the mint, slowly
+      const starting = w.voice.start();
+      await tick();
+      expect(w.deps.request).toHaveBeenCalledOnce();
+      await w.voice.stop(); // the mic has not opened yet: the hang-up finds none to release
+      if (after === 'the mint answers') answerMint(MINT);
+      else if (after === 'the mint fails') failMint(new Error('the engine is down'));
+      else token.resolve('jwt-1');
+      await starting;
+      devices.resolve(); // it opens after all
+      await tick();
+      expect(w.client().micOpen).toBe(false);
+      expect(w.client().micStops).toBe(1);
+      expect(w.client().connectParams).toBeUndefined();
+    },
+  );
+
+  it('a refused mint releases an allowed mic still opening, once it opens', async () => {
+    const devices = deferred<void>();
+    const err = Object.assign(new Error('You have used up your credits for now.'), { type: 'insufficient_credit' });
+    const w = world({
+      micPermission: async () => 'granted',
+      request: vi.fn(async () => {
+        throw err;
+      }) as unknown as T2VVoiceDeps['request'],
+    });
+    FakePipecatClient.deviceGate = devices.promise; // the refusal comes before the mic has opened
+    await expect(w.voice.start()).rejects.toBe(err);
+    expect(w.voice.state).toBe('error');
+    devices.resolve();
+    await tick();
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().micStops).toBe(1);
+  });
+
+  // In the browser every Pipecat client reads its microphone from Daily's one
+  // call object per page, so a stop through the old client would stop the new
+  // call's track. The fake keeps a track per client: that stop shows as the
+  // old client's `micStops`.
+  it('a late release leaves alone the mic a newer start has asked for since', async () => {
+    const devices = deferred<void>();
+    const mint = deferred<typeof MINT>();
+    const request = vi.fn().mockReturnValueOnce(mint.promise).mockResolvedValue(MINT);
+    const w = world({ micPermission: async () => 'granted', request: request as unknown as T2VVoiceDeps['request'] });
+    FakePipecatClient.deviceGate = devices.promise; // the first start's mic opens slowly
+    const first = w.voice.start();
+    await tick();
+    expect(request).toHaveBeenCalledOnce();
+    await w.voice.stop(); // mid-mint: the mic has not opened, so the hang-up released none
+    FakePipecatClient.deviceGate = null; // the second start's opens at once
+    const second = w.voice.start(); // waits for the first mint, then asks for the mic
+    mint.resolve(MINT);
+    await first;
+    await second;
+    expect(w.voice.state).toBe('listening');
+    devices.resolve(); // the first start's mic opens after the second has asked
+    await tick();
+    const [old, current] = FakePipecatClient.instances;
+    expect(old!.micStops).toBe(0);
+    expect(current!.micOpen).toBe(true);
+    expect(current!.micStops).toBe(0);
+  });
+
+  it('a newer start that ends before it asks for the mic still lets the late release run', async () => {
+    const devices = deferred<void>();
+    const mint = deferred<typeof MINT>();
+    const w = world({
+      micPermission: async () => 'granted',
+      request: vi.fn(() => mint.promise) as unknown as T2VVoiceDeps['request'],
+      ensureSession: vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false),
+    });
+    FakePipecatClient.deviceGate = devices.promise;
+    const first = w.voice.start();
+    await tick();
+    await w.voice.stop();
+    const second = w.voice.start(); // signed out meanwhile: it never asks for the mic
+    mint.resolve(MINT);
+    await first;
+    await expect(second).rejects.toMatchObject({ type: 'account_required' });
+    devices.resolve();
+    await tick();
+    expect(FakePipecatClient.instances).toHaveLength(1);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().micStops).toBe(1);
+  });
+
   it('a start that fails after the mic opened releases it', async () => {
     const w = world({ getValidAccessToken: vi.fn(async () => null) });
     await expect(w.voice.start()).rejects.toMatchObject({ type: 'auth_expired' });
@@ -1320,5 +1579,671 @@ describe('T2VVoice.start: the microphone and the ticket', () => {
     const w = world({ micPermission: async () => 'granted' });
     await w.voice.start();
     expect((w.client().opts.transport as FakeTransport).iceServers).toHaveLength(2);
+  });
+
+  it('ICE servers the mint garbles fail the start before it connects, as voice_error', async () => {
+    const w = world({ request: vi.fn(async () => ({ ...MINT, ice_servers: [null] })) as unknown as T2VVoiceDeps['request'] });
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'voice_error' });
+    expect(w.client().connectParams).toBeUndefined();
+  });
+});
+
+// ── ElevenLabs calls ──
+
+/** Helper: an SSE chunk with text content, as `tests/core/sessions.test.ts` builds it. */
+function textChunk(content: string): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    thread_id: 'thread_1',
+  };
+}
+
+/** Helper: a stop chunk. */
+function stopChunk(): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+    thread_id: 'thread_1',
+  };
+}
+
+/** Helper: a client tool call's interrupt. */
+function interruptChunk(toolName: string, toolCallId: string, args: Record<string, unknown>): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+    thread_id: 'thread_1',
+    interrupt: { type: 'tool_call', tool_name: toolName, tool_call_id: toolCallId, arguments: args },
+  };
+}
+
+/** Helper: the engine's error chunk, its message mirrored into the text as the engine sends it. */
+function errorChunk(type: string, message: string): ChatCompletionChunk {
+  return {
+    id: 'test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test',
+    choices: [{ index: 0, delta: { content: message }, finish_reason: 'stop' }],
+    thread_id: 'thread_1',
+    error: { type, message },
+  };
+}
+
+/** A fake engine client: each stream request takes the next reply. */
+function engineClient(...replies: ChatCompletionChunk[][]): T2VClient {
+  return {
+    streamRequest: vi.fn().mockImplementation(async function* () {
+      for (const chunk of replies.shift() ?? []) yield chunk;
+    }),
+  } as unknown as T2VClient;
+}
+
+/** The end-user's chat session the mint names, over a fake engine. */
+function chatSession(id: string, engine: T2VClient, tools: Partial<T2VTools> = {}): T2VSession {
+  return new T2VSession({ session_id: id, thread_id: '', model: '' }, engine, {
+    hasHandler: () => true,
+    checkPermission: vi.fn(async () => ({ action: 'allow' })),
+    getDescription: () => '',
+    executeToolCall: vi.fn(async () => ({ result: '{"ok":true}', isError: false })),
+    ...tools,
+  } as unknown as T2VTools);
+}
+
+/** A request's JSON body. */
+function bodyOf(init?: RequestInit): Record<string, any> {
+  return JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+}
+
+/** The ElevenLabs library's conversation, as the controller's call drives it. */
+class FakeElevenLabsConversation {
+  sent: string[] = [];
+  ended = 0;
+  constructor(
+    public opts: Record<string, any>,
+    private readonly id: string,
+  ) {}
+  getId(): string {
+    return this.id;
+  }
+  sendUserMessage(text: string): void {
+    this.sent.push(text);
+  }
+  async endSession(): Promise<void> {
+    this.ended += 1;
+    this.opts.onDisconnect?.({ reason: 'user' });
+  }
+}
+
+/**
+ * A fake `@elevenlabs/client`. `startSession` waits on `control.gate`,
+ * rejects with `control.failWith`, or connects to `control.id`, firing
+ * `onConnect` before it resolves, as the library does. It notes whether a
+ * Pipecat microphone was still open as it started.
+ */
+function fakeElevenLabs() {
+  const control = {
+    failWith: null as Error | null,
+    gate: null as Promise<void> | null,
+    id: EL.conversation_id,
+    micOpenAtStart: [] as boolean[],
+  };
+  const conversations: FakeElevenLabsConversation[] = [];
+  const startSession = vi.fn(async (opts: Record<string, any>) => {
+    control.micOpenAtStart.push(FakePipecatClient.instances.some((c) => c.micOpen));
+    if (control.gate) await control.gate;
+    if (control.failWith) throw control.failWith;
+    const conversation = new FakeElevenLabsConversation(opts, control.id);
+    conversations.push(conversation);
+    opts.onConnect?.({ conversationId: control.id });
+    return conversation;
+  });
+  const libs: ElevenLabsLibs = { startSession };
+  return { libs, startSession, control, conversations, conversation: () => conversations.at(-1)! };
+}
+
+/** Every ElevenLabs world a test built: each is hung up after the test. */
+const elWorlds: Array<{ voice: T2VVoice }> = [];
+
+/**
+ * A world whose engine picks ElevenLabs while the mint allows it, and Gemini
+ * Live once ElevenLabs is left out. `engine.elevenlabs` changes the mint's
+ * ElevenLabs half. An end report answers `engine.endReport()`, or `{}`.
+ */
+function elWorld(
+  overrides: Partial<T2VVoiceDeps> = {},
+  engine: { elevenlabs?: Partial<ElevenLabsCallInfo>; endReport?: () => Promise<unknown> } = {},
+) {
+  const el = fakeElevenLabs();
+  const mintEl = { ...MINT_EL, elevenlabs: { ...EL, ...engine.elevenlabs } };
+  const request = vi.fn(async (endpoint: string, init?: RequestInit): Promise<unknown> => {
+    if (endpoint !== '/v1/voice/sessions') return engine.endReport ? engine.endReport() : {};
+    return bodyOf(init).voice_models?.includes('elevenlabs') ? mintEl : MINT;
+  });
+  const loadElevenLabs = vi.fn(async () => el.libs);
+  const w = world({ request: request as unknown as T2VVoiceDeps['request'], loadElevenLabs, ...overrides });
+  elWorlds.push(w);
+  const notes: string[] = [];
+  const started: unknown[] = [];
+  const ended: unknown[] = [];
+  const errors: Array<{ type: string; message: string }> = [];
+  const agentStates: unknown[] = [];
+  w.voice.on('note', (n) => notes.push(n));
+  w.voice.on('callStarted', (c) => started.push(c));
+  w.voice.on('ended', (r) => ended.push(r));
+  w.voice.on('error', (e) => errors.push(e));
+  w.voice.on('agentState', (s) => agentStates.push(s));
+  /** The end reports sent, as `[endpoint, body]`. */
+  const endReports = () =>
+    request.mock.calls
+      .filter(([endpoint]) => endpoint.startsWith('/v1/voice/calls/'))
+      .map(([endpoint, init]) => [endpoint, bodyOf(init)]);
+  return { ...w, el, request, loadElevenLabs, notes, started, ended, errors, agentStates, endReports };
+}
+
+describe('T2VVoice.start: an ElevenLabs call', () => {
+  afterEach(async () => {
+    for (const w of elWorlds.splice(0)) await w.voice.stop();
+  });
+
+  it('client library is loaded only on an elevenlabs call', async () => {
+    const loadElevenLabs = vi.fn();
+    const gemini = world({ loadElevenLabs });
+    await gemini.voice.start();
+    expect(loadElevenLabs).not.toHaveBeenCalled();
+    await gemini.voice.stop();
+
+    const w = elWorld();
+    await w.voice.start();
+    expect(w.loadElevenLabs).toHaveBeenCalledOnce();
+    expect(w.el.startSession).toHaveBeenCalledOnce();
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined)).toBe(true); // no Pipecat connect
+  });
+
+  it('an elevenlabs mint releases the pipecat microphone before the call starts', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
+    expect(w.el.control.micOpenAtStart).toEqual([false]);
+    expect(w.voice.state).toBe('listening');
+    expect(w.states).toEqual(['connecting', 'listening']);
+    expect(w.started).toEqual([{ voiceModel: 'elevenlabs', greeting: EL.greeting }]);
+  });
+
+  it('an allowed microphone still opening at the mint is released before the call starts', async () => {
+    const devices = deferred<void>();
+    const w = elWorld({ micPermission: async () => 'granted' });
+    FakePipecatClient.deviceGate = devices.promise;
+    const starting = w.voice.start();
+    await tick();
+    await tick();
+    expect(w.request).toHaveBeenCalledOnce(); // minted while the mic opens
+    expect(w.el.startSession).not.toHaveBeenCalled();
+    devices.resolve();
+    await starting;
+    expect(w.el.control.micOpenAtStart).toEqual([false]);
+    expect(w.client().micOpen).toBe(false);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('relays the transcript; a library error is a transport_error, its text only in the debug log', async () => {
+    const w = elWorld();
+    const transcripts: unknown[] = [];
+    w.voice.on('transcript', (t) => transcripts.push(t));
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await w.voice.start();
+      const { opts } = w.el.conversation();
+      opts.onMessage({ message: 'hello', role: 'user' });
+      opts.onMessage({ message: 'Hi there.', role: 'agent' });
+      opts.onError('Server error: Internal error');
+      expect(transcripts).toEqual([
+        { role: 'user', text: 'hello', final: true },
+        { role: 'bot', text: 'Hi there.', final: true },
+      ]);
+      // The fixed message a Gemini Live transport error falls back to: the button shows its own copy.
+      expect(w.errors).toEqual([{ type: 'transport_error', message: 'Voice connection error' }]);
+      expect(debug).not.toHaveBeenCalled();
+      localStorage.setItem('t2v:debug', '1');
+      opts.onError('Client tool execution failed with following error: boom');
+      expect(w.errors.map((e) => e.message)).toEqual(['Voice connection error', 'Voice connection error']);
+      expect(debug).toHaveBeenCalledOnce();
+      expect(debug.mock.calls[0]).toContain('Client tool execution failed with following error: boom');
+    } finally {
+      localStorage.removeItem('t2v:debug');
+      debug.mockRestore();
+    }
+  });
+
+  it('a library error about the microphone ends the call with mic_unavailable, as on Gemini Live', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    opts.onError('Server error: Internal error'); // any other error: the call goes on
+    await tick();
+    expect(w.voice.state).toBe('listening');
+    opts.onError('Microphone permission denied');
+    await tick();
+    expect(w.errors).toEqual([
+      { type: 'transport_error', message: 'Voice connection error' },
+      { type: 'mic_unavailable', message: 'Voice needs microphone access. Allow the microphone and try again.' },
+    ]);
+    expect(w.ended).toEqual(['error']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.el.conversation().ended).toBe(1); // the session ends, and its microphone with it
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'error' }]]);
+  });
+
+  it('test_start_falls_back_after_a_connect_failure', async () => {
+    const w = elWorld();
+    w.el.control.failWith = new Error('could not establish signal connection');
+    await w.voice.start();
+    expect(w.request.mock.calls.map((c) => [c[0], bodyOf(c[1])])).toEqual([
+      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs'] }],
+      ['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }],
+      ['/v1/voice/sessions', { voice_models: ['gemini-live'] }],
+    ]);
+    expect(w.request.mock.calls[1]![1]).toMatchObject({ method: 'POST', keepalive: true });
+    expect(w.notes).toEqual(['Using Gemini Live — ElevenLabs couldn’t connect.']);
+    expect(w.voice.state).toBe('listening');
+    // The client built before mint 1: released, never connected.
+    expect(w.client().micOpen).toBe(false);
+    expect(w.client().connectParams).toBeUndefined();
+    // The retry is a Gemini Live call on a fresh client.
+    expect(FakePipecatClient.instances).toHaveLength(2);
+    expect(FakePipecatClient.instances.at(-1)!.connectParams).toEqual({
+      webrtcRequestParams: {
+        endpoint: MINT.voice_url,
+        requestData: { ticket: MINT.ticket, partner_key: 'pk_test_x', access_token: 'jwt-1' },
+      },
+    });
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+    expect(w.errors).toEqual([]);
+  });
+
+  it('falls back to Gemini Live when the ElevenLabs library cannot load', async () => {
+    const w = elWorld({
+      loadElevenLabs: vi.fn(async () => {
+        throw new Error('chunk failed');
+      }),
+    });
+    await w.voice.start();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]);
+    expect(w.notes).toEqual(['Using Gemini Live — ElevenLabs couldn’t connect.']);
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a second connect failure does not mint a third time', async () => {
+    const w = elWorld();
+    w.el.control.failWith = new Error('could not establish signal connection');
+    FakePipecatClient.failConnectWith = new Error('ICE failed');
+    await expect(w.voice.start()).rejects.toMatchObject({ type: 'transport_error', message: 'ICE failed' });
+    expect(w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions')).toHaveLength(2);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]);
+    expect(w.errors).toEqual([{ type: 'transport_error', message: 'ICE failed' }]);
+    expect(w.voice.state).toBe('error');
+    expect(FakePipecatClient.instances.every((c) => !c.micOpen)).toBe(true);
+  });
+
+  it('expire() during an elevenlabs call reports auth_expired', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    await w.voice.expire();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'auth_expired' }]]);
+    expect(w.ended).toEqual(['auth_expired']);
+    expect(w.errors.map((e) => e.type)).toEqual(['auth_expired']);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('the end report is sent once, with keepalive, after stop()', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    await w.voice.stop();
+    await w.voice.stop();
+    expect(w.request.mock.calls.filter(([endpoint]) => endpoint.startsWith('/v1/voice/calls/'))).toEqual([
+      ['/v1/voice/calls/conv_1/end', { method: 'POST', body: JSON.stringify({ reason: 'stopped' }), keepalive: true }],
+    ]);
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a hang-up whose end report is never answered still ends the call', async () => {
+    const w = elWorld({}, { endReport: () => new Promise<never>(() => {}) });
+    await w.voice.start();
+    await w.voice.stop();
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.el.conversation().ended).toBe(1); // the session, and its microphone, ended first
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+  });
+
+  it('a start straight after a hang-up mints once the last call’s end report is answered', async () => {
+    const answer = deferred<void>();
+    const w = elWorld({}, { endReport: () => answer.promise });
+    const mints = () => w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions');
+    await w.voice.start();
+    await w.voice.stop();
+    expect(w.ended).toEqual(['stopped']);
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints()).toHaveLength(1); // the engine hears of the last call's end before this one's mint
+    answer.resolve();
+    await restarting;
+    expect(mints()).toHaveLength(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a start straight after a hang-up mid-fallback mints once the connect_failed report is answered', async () => {
+    const answer = deferred<void>();
+    const w = elWorld({}, { endReport: () => answer.promise });
+    w.el.control.failWith = new Error('could not establish signal connection');
+    const mints = () => w.request.mock.calls.filter(([endpoint]) => endpoint === '/v1/voice/sessions');
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }]]));
+    await w.voice.stop(); // before the engine answers that report
+    expect(w.ended).toEqual(['stopped']);
+    w.el.control.failWith = null;
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints()).toHaveLength(1);
+    answer.resolve();
+    await Promise.all([first, restarting]);
+    expect(mints()).toHaveLength(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a start straight after a hang-up during an elevenlabs mint mints once that mint has returned and its end is reported', async () => {
+    const firstMint = deferred<typeof MINT_EL>();
+    const answer = deferred<void>();
+    let mints = 0;
+    const request = vi.fn((endpoint: string, _init?: RequestInit): Promise<unknown> => {
+      if (endpoint !== '/v1/voice/sessions') return answer.promise; // an end report
+      mints += 1;
+      return mints === 1 ? firstMint.promise : Promise.resolve(MINT_EL);
+    });
+    const endReports = () =>
+      request.mock.calls
+        .filter(([endpoint]) => endpoint !== '/v1/voice/sessions')
+        .map(([endpoint, init]) => [endpoint, bodyOf(init)]);
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(mints).toBe(1));
+    await w.voice.stop(); // while the mint is in flight
+    expect(w.ended).toEqual(['stopped']);
+    const restarting = w.voice.start();
+    await tick();
+    expect(w.voice.state).toBe('connecting');
+    expect(mints).toBe(1); // held back while that mint is in flight
+    firstMint.resolve(MINT_EL);
+    await first;
+    await vi.waitFor(() => expect(endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]));
+    await tick();
+    expect(mints).toBe(1); // and still, until the engine answers the end of the call it minted
+    answer.resolve();
+    await restarting;
+    expect(mints).toBe(2);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('a mint that fails after a hang-up holds back the next start only until it fails', async () => {
+    let failFirstMint!: (err: Error) => void;
+    const firstMint = new Promise<never>((_resolve, reject) => {
+      failFirstMint = reject;
+    });
+    let mints = 0;
+    const request = vi.fn((endpoint: string, _init?: RequestInit): Promise<unknown> => {
+      if (endpoint !== '/v1/voice/sessions') return Promise.resolve({});
+      mints += 1;
+      return mints === 1 ? firstMint : Promise.resolve(MINT_EL);
+    });
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const first = w.voice.start();
+    await vi.waitFor(() => expect(mints).toBe(1));
+    await w.voice.stop(); // while the mint is in flight
+    const restarting = w.voice.start();
+    await tick();
+    expect(mints).toBe(1);
+    failFirstMint(new Error('the engine is down'));
+    await first; // hung up, so it resolves quietly
+    await restarting;
+    expect(mints).toBe(2);
+    expect(w.voice.state).toBe('listening');
+    expect(w.errors).toEqual([]);
+    // A mint that failed made no call: there is no end to report.
+    expect(request.mock.calls.map(([endpoint]) => endpoint)).toEqual(['/v1/voice/sessions', '/v1/voice/sessions']);
+  });
+
+  it('the page going away ends the call, its end report sent with keepalive at once', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    window.dispatchEvent(new Event('pagehide'));
+    // Sent inside the event: a keepalive request outlives the page.
+    expect(w.request).toHaveBeenLastCalledWith('/v1/voice/calls/conv_1/end', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'disconnected' }),
+      keepalive: true,
+    });
+    await tick();
+    expect(w.ended).toEqual(['disconnected']);
+    expect(w.voice.state).toBe('ended');
+    expect(w.endReports()).toHaveLength(1);
+  });
+
+  it('an agent that hangs up ends the call as idle', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    w.el.conversation().opts.onDisconnect({ reason: 'agent' });
+    await tick();
+    expect(w.ended).toEqual(['idle']);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'idle' }]]);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a conversation other than the one minted ends the call with voice_error', async () => {
+    const w = elWorld();
+    w.el.control.id = 'conv_other';
+    await w.voice.start();
+    await tick();
+    expect(w.errors).toEqual([{ type: 'voice_error', message: 'The call did not start as expected. Try again.' }]);
+    expect(w.ended).toEqual(['error']);
+    expect(w.started).toEqual([]);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'error' }]]);
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a hang-up during an elevenlabs mint reports the end of the call it minted', async () => {
+    const mint = deferred<typeof MINT_EL>();
+    const request = vi.fn((endpoint: string, _init?: RequestInit) =>
+      endpoint === '/v1/voice/sessions' ? mint.promise : Promise.resolve({}),
+    );
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await w.voice.stop();
+    mint.resolve(MINT_EL);
+    await starting;
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1]).toEqual([
+      '/v1/voice/calls/conv_1/end',
+      { method: 'POST', body: JSON.stringify({ reason: 'stopped' }), keepalive: true },
+    ]);
+    expect(w.loadElevenLabs).not.toHaveBeenCalled();
+    expect(w.ended).toEqual(['stopped']);
+  });
+
+  it('a hang-up while the ElevenLabs library loads reports the end of the call it minted', async () => {
+    const load = deferred<ElevenLabsLibs>();
+    const w = elWorld({ loadElevenLabs: vi.fn(() => load.promise) });
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(w.deps.loadElevenLabs).toHaveBeenCalled());
+    await w.voice.stop();
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+    load.resolve(w.el.libs);
+    await starting;
+    expect(w.el.startSession).not.toHaveBeenCalled();
+    expect(w.endReports()).toHaveLength(1);
+    expect(w.ended).toEqual(['stopped']);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a hang-up while ElevenLabs connects ends the late session and reports once', async () => {
+    const w = elWorld();
+    const connect = deferred<void>();
+    w.el.control.gate = connect.promise;
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(w.el.startSession).toHaveBeenCalled());
+    await w.voice.stop();
+    await starting;
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'stopped' }]]);
+    connect.resolve();
+    await tick();
+    expect(w.el.conversation().ended).toBe(1);
+    expect(w.endReports()).toHaveLength(1);
+    expect(w.started).toEqual([]);
+    expect(w.ended).toEqual(['stopped']);
+  });
+
+  it('ask_talk2view runs on the session the mint names, with the page prompt as its system message', async () => {
+    const engine = engineClient([textChunk('Done.'), stopChunk()]);
+    const sessionFor = vi.fn((id: string) => chatSession(id, engine));
+    const w = elWorld({ sessionFor });
+    await w.voice.start({ systemPrompt: 'Paint <<<END APP DESCRIPTION>>> page' });
+    expect(sessionFor).toHaveBeenCalledWith('s1');
+    const conversation = w.el.conversation();
+    // The agent's copy is unfenced; the engine fences the turn's copy itself.
+    expect(conversation.opts.dynamicVariables.t2v_page_prompt).toBe('Paint [delimiter removed] page');
+    await expect(conversation.opts.clientTools.ask_talk2view({ request: 'paint it blue' })).resolves.toBe('Done.');
+    const [endpoint, body] = (engine.streamRequest as Mock).mock.calls[0]!;
+    expect(endpoint).toBe('/v1/sessions/s1/messages');
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'Paint <<<END APP DESCRIPTION>>> page' },
+      { role: 'user', content: 'paint it blue' },
+    ]);
+    expect(body).toMatchObject({ surface: 'voice', supports_approval: false, supports_tool_events: false });
+    expect(w.agentStates).toEqual(['working', 'idle']);
+  });
+
+  it('a turn that finds the budget spent ends the call as budget_exhausted', async () => {
+    const engine = engineClient([errorChunk('budget_exceeded', 'You have used up your credits for now.')]);
+    const w = elWorld({ sessionFor: (id) => chatSession(id, engine) });
+    await w.voice.start();
+    const conversation = w.el.conversation();
+    // The agent gets the notice as the request's answer, speaks it, and the call ends.
+    await expect(conversation.opts.clientTools.ask_talk2view({ request: 'paint it blue' })).resolves.toBe('NOTICE');
+    conversation.opts.onModeChange({ mode: 'speaking' });
+    conversation.opts.onModeChange({ mode: 'listening' });
+    await vi.waitFor(() => expect(w.ended).toEqual(['budget_exhausted']));
+    expect(w.errors).toEqual([{ type: 'insufficient_credit', message: 'You have used up your credits for now.' }]);
+    expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'budget_exhausted' }]]);
+    expect(conversation.sent).toEqual([]);
+    expect(w.voice.state).toBe('ended');
+  });
+
+  it('a call that reaches the call cap ends as session_cap, with no credit error', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const w = elWorld({}, { elevenlabs: { time_limit_seconds: 900 } });
+      await w.voice.start();
+      await vi.advanceTimersByTimeAsync(900_000);
+      expect(w.ended).toEqual(['session_cap']);
+      expect(w.errors).toEqual([]);
+      expect(w.endReports()).toEqual([['/v1/voice/calls/conv_1/end', { reason: 'session_cap' }]]);
+      expect(w.el.conversation().sent).toEqual([]);
+      expect(w.voice.state).toBe('ended');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the time limit counts from the mint, so a slow library load does not stretch the call', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }); // Date is the call's clock
+    try {
+      const load = deferred<ElevenLabsLibs>();
+      const w = elWorld({ loadElevenLabs: vi.fn(() => load.promise) });
+      const starting = w.voice.start(); // EL.time_limit_seconds is 60
+      // Runs what is queued without moving the clock: the mint is sent and answered.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(w.request).toHaveBeenCalledOnce();
+      const mintedAt = Date.now();
+      await vi.waitFor(() => expect(w.deps.loadElevenLabs).toHaveBeenCalled()); // moves the clock as it polls
+      await vi.advanceTimersByTimeAsync(5_000); // the first ElevenLabs call of the page: a slow load
+      load.resolve(w.el.libs);
+      await starting;
+      expect(w.voice.state).toBe('listening');
+      await vi.advanceTimersByTimeAsync(mintedAt + 59_999 - Date.now());
+      expect(w.el.conversation().sent).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(w.el.conversation().sent).toEqual(['NOTICE']); // 60 s after the mint, not after the load
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a client tool that needs approval shows the voice card, and always skips it next time', async () => {
+    const engine = engineClient(
+      [interruptChunk('paint', 'tc1', { color: 'blue' })],
+      [textChunk('Painted.'), stopChunk()],
+      [interruptChunk('paint', 'tc2', { color: 'red' })],
+      [textChunk('Painted again.'), stopChunk()],
+    );
+    const executeToolCall = vi.fn(async () => ({ result: '{"ok":true}', isError: false }));
+    const checkPermission = vi.fn(async () => ({ action: 'require_approval' as const }));
+    const w = elWorld({
+      approvalTimeoutMs: 5_000,
+      sessionFor: (id) => chatSession(id, engine, { checkPermission, executeToolCall }),
+    });
+    const approvals: Array<{ toolCallId: string; decide: (d: HumanDecision) => void } | null> = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const ask = w.el.conversation().opts.clientTools.ask_talk2view;
+    const first = ask({ request: 'paint it blue' });
+    await vi.waitFor(() => expect(approvals[0]).toBeTruthy());
+    expect(approvals[0]).toMatchObject({ toolCallId: 'tc1', toolName: 'paint', arguments: { color: 'blue' } });
+    approvals[0]!.decide({ action: 'always' });
+    await expect(first).resolves.toBe('Painted.');
+    await expect(ask({ request: 'now paint it red' })).resolves.toBe('Painted again.');
+    expect(approvals).toEqual([expect.objectContaining({ toolCallId: 'tc1' }), null]); // no second card
+    expect(executeToolCall).toHaveBeenCalledTimes(2);
+  });
+
+  it('a hang-up with the card open closes it, and the tool never runs', async () => {
+    const engine = engineClient([interruptChunk('paint', 'tc1', { color: 'blue' })]);
+    const executeToolCall = vi.fn(async () => ({ result: '{"ok":true}', isError: false }));
+    const checkPermission = vi.fn(async () => ({ action: 'require_approval' as const }));
+    const w = elWorld({
+      approvalTimeoutMs: 5_000,
+      sessionFor: (id) => chatSession(id, engine, { checkPermission, executeToolCall }),
+    });
+    const approvals: Array<{ decide: (d: HumanDecision) => void } | null> = [];
+    w.voice.on('approvalChange', (a) => approvals.push(a));
+    await w.voice.start();
+    const answer = w.el.conversation().opts.clientTools.ask_talk2view({ request: 'paint it blue' });
+    await vi.waitFor(() => expect(approvals[0]).toBeTruthy());
+    await w.voice.stop();
+    await expect(answer).resolves.toBe('The call ended');
+    expect(approvals.at(-1)).toBeNull();
+    approvals[0]!.decide({ action: 'once' }); // a late click
+    await tick();
+    expect(executeToolCall).not.toHaveBeenCalled();
+    expect((engine.streamRequest as Mock).mock.calls).toHaveLength(1); // no resume went out
+    // The aborted turn settles after the ending: its idle is not this call's news.
+    expect(w.agentStates).toEqual(['working']);
   });
 });

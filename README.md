@@ -62,15 +62,16 @@ your Talk2View engine — no fonts, no CDN — and uses your page's font unless 
 pass `fontFamily`. Voice is the exception; see
 [What loads at runtime](#what-loads-at-runtime).
 
-**It is large: 373.3 KB gzip, excluding React.** A consumer who never imports
+**It is large: 373.9 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
 
 **Voice.** For partners with the realtime voice agent enabled, the launcher
 shows a microphone beside the mark: press to talk, press again to hang up. The
-agent uses the same tools, permissions and approval card as the chat. Standalone
-it is `<VoiceButton client={t2v} />`; without a UI it is `t2v.voice`. A call
-downloads Daily's call engine from `https://c.daily.co`, so a Content Security
-Policy has to allow it. See
+agent uses the same tools, permissions and approval card as the chat. A voice
+call runs on the voice model the end-user and the partner chose, Gemini Live or
+ElevenLabs. Standalone it is `<VoiceButton client={t2v} />`; without a UI it is
+`t2v.voice`. Each voice model reaches its own hosts, so a Content Security Policy
+has to allow the ones you offer. See
 **[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
 
 Everything else — the full prop table, theming tokens, the launcher in a hostile
@@ -125,7 +126,7 @@ function App() {
 
 That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
 
-> `/ui` is smaller than the packaged chat (40.9 KB gzip against 373.3, plus
+> `/ui` is smaller than the packaged chat (40.9 KB gzip against 373.9, plus
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
@@ -218,15 +219,22 @@ you set another.
 | `/react`, `/assistant-ui` | The engine only. |
 | `/chat` | The engine only: no fonts, no CDN, no images (an image in a reply becomes a link). Previews of the files an end-user attaches are `blob:` URLs, so a strict `img-src` needs `blob:`. |
 | `/ui` (deprecated) | The engine, the IBM Plex fonts from Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) and the Talk2View logo from `db.talk2view.com`. Code highlighting compiles WebAssembly, which a strict CSP allows with `'wasm-unsafe-eval'`. |
-| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and Daily's call engine from `https://c.daily.co`, which runs through `Function()`. |
+| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and on every call, whichever the voice model, Daily's call engine from `https://c.daily.co`, which runs through `Function()` and starts an audio worklet. Gemini Live adds nothing. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` only (with a token the engine mints, the client never contacts `api.elevenlabs.io`), and one audio worklet from a `blob:` URL that the call works without. |
 
-So voice needs `https://c.daily.co` in `connect-src` and `'unsafe-eval'` in
-`script-src`. Without either, no call starts. If that download fails, Daily's
-library tries to send an error report to Daily's own error tracking (Sentry);
-you can leave that blocked. The Pipecat libraries voice runs on come from your
-own bundle, loaded on the first press, so a chat that never starts a call never
-loads them. The call's audio travels over WebRTC, through the ICE servers the
-engine hands out for each call.
+So every voice call needs `https://c.daily.co` in `connect-src`, and
+`'unsafe-eval'` and `blob:` in `script-src`, an ElevenLabs call included: the
+SDK opens the microphone through Daily's library before the engine has chosen
+the voice model. Without `https://c.daily.co` or `'unsafe-eval'`, no voice call
+starts. If Daily's download fails, its library tries to send an error report to
+Daily's own error tracking (Sentry); you can leave that blocked. A Gemini Live
+call needs nothing more. An ElevenLabs call adds the two ElevenLabs hosts to
+`connect-src`; one that cannot reach them is retried on Gemini Live when the
+app offers it. The voice libraries come from your own bundle, loaded on the
+first call that uses them: a chat that never starts a call never loads them,
+the first voice call loads the Pipecat libraries and Daily's call engine,
+whichever the voice model, and only an ElevenLabs call loads ElevenLabs'. The
+call's audio travels over WebRTC: for Gemini Live through the ICE servers the
+engine hands out for each call, for ElevenLabs through its own LiveKit service.
 [`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)
 has the rest.
 
@@ -276,7 +284,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 There are four React entry points, and they do different jobs:
 
 - **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
-- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 373.3, and no assistant-ui.
+- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 373.9, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
 

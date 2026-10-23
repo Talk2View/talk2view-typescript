@@ -420,11 +420,17 @@ fonts, no CDN, no stylesheet, no script. A `connect-src` that allows the engine
 is all it needs, plus `blob:` in a strict `img-src` for the previews of files
 the end-user attaches.
 
-Voice needs more. A call downloads Daily's call engine from
-`https://c.daily.co` and runs it through `Function()`, so it needs
-`https://c.daily.co` in `connect-src` and `'unsafe-eval'` in `script-src`, or no
-call starts — see [voice.md](voice.md#browser-requirements). If you would rather
-allow neither, `features={{ voice: false }}` keeps the microphone off the
+Voice needs more. The SDK opens the microphone through Daily's library before
+the engine has chosen the voice model, and Daily's library downloads its call
+engine from `https://c.daily.co` and runs it through `Function()`. So every
+voice call, whichever the voice model, needs `https://c.daily.co` in
+`connect-src`, and `'unsafe-eval'` and `blob:` in `script-src`; without
+`https://c.daily.co` or `'unsafe-eval'`, no voice call starts. Gemini Live
+needs nothing more. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and
+`https://livekit.rtc.elevenlabs.io` to `connect-src`, and an ElevenLabs call
+that cannot reach them is retried on Gemini Live when the app offers it. See
+[voice.md](voice.md#browser-requirements) for the table. If you would rather
+allow none of it, `features={{ voice: false }}` keeps the microphone off the
 launcher.
 
 `import '@talk2view/sdk/chat.css'` needs a build that can import CSS. Some hosts
@@ -474,9 +480,9 @@ Stated plainly, because it is large.
 
 | | gzip |
 |---|---|
-| `@talk2view/sdk` (the core client) | 11.5 KB |
+| `@talk2view/sdk` (the core client) | 11.8 KB |
 | `@talk2view/sdk/ui` (the previous chat panel) | 40.9 KB |
-| **`@talk2view/sdk/chat`** | **373.3 KB** |
+| **`@talk2view/sdk/chat`** | **373.9 KB** |
 | A whole page containing the chat and React | ~437 KB |
 
 The first three exclude React and React DOM, which your app already has. The
