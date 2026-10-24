@@ -134,7 +134,7 @@ take directly.
 | `systemPrompt` | none | Your own instructions, sent with every message. Changing it does not restart the conversation. |
 | `welcome` | `{}` | `heading` and `suggestions` on the empty chat. Clicking a suggestion sends it. |
 | `allowAnonymous` | `true` | Logged-out visitors chat as guests where your key allows it. `false` shows sign-in first — **see the [notes below](#guest-sessions-need-guest-access-on-your-key)**. |
-| `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled — see [voice.md](voice.md). |
+| `features` | all on | `{ dictation, attachments, settings, account, threadList, skills, voice, callCaptions }`. `voice` is the realtime voice button beside the launcher, shown only for partners with voice enabled, and `callCaptions` its call captions — see [voice.md](voice.md). |
 | `fontFamily` | inherit | Your own font stack. Default: whatever the page uses. |
 | `resetPasswordUrl` | none | Where "Forgot it?" goes. Without it the link is not shown. |
 | `termsUrl` | `'https://talk2view.com/legal/terms-of-use'` | Where the consent line's "Terms of Use" link goes: Talk2View's own terms, or another copy of them. Not yours — the line names Talk2View's, and yours go in `footer`. An empty string means the default. |

@@ -52,6 +52,11 @@ export interface Talk2ViewChatFeatures {
    * when the partner has voice enabled (`/v1/config` → `voice_agent_enabled`).
    */
   voice?: boolean;
+  /**
+   * Call captions: what the end-user and the agent say, shown in the voice
+   * panel while a call runs and never stored (default true).
+   */
+  callCaptions?: boolean;
 }
 
 export interface Talk2ViewChatProps extends Omit<T2VConfig, 'partnerKey'> {
@@ -193,6 +198,7 @@ const FEATURE_DEFAULTS: Required<Talk2ViewChatFeatures> = {
   threadList: true,
   skills: true,
   voice: true,
+  callCaptions: true,
 };
 
 const NO_WELCOME: Talk2ViewChatWelcome = {};

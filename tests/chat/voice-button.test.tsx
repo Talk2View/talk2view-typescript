@@ -136,6 +136,13 @@ const button = () => screen.getByRole('button', { name: 'Talk to Talk2View' });
 const NOTE = 'Using Gemini Live — this app doesn’t offer ElevenLabs.';
 const note = () => document.querySelector('.t2v-voice-note');
 
+/** What an ElevenLabs agent opens the call with (`callStarted.greeting`). */
+const GREETING = 'Hi! What can I help you with?';
+/** The call captions' box, and its lines as [role, text], oldest first. */
+const captionsBox = () => document.querySelector('.t2v-voice-captions');
+const captionLines = () =>
+  [...document.querySelectorAll('.t2v-voice-caption')].map((el) => [el.getAttribute('data-role'), el.textContent]);
+
 /**
  * The button's live regions, in the DOM's order: the status ("Connecting…",
  * "Say hello!"), then the note. A screen reader reads a live region out whole
@@ -239,9 +246,9 @@ describe('<VoiceButton>', () => {
     expect(statusText()).toBe('Say hello!');
   });
 
-  it('shows the greeting instead of say hello on an elevenlabs call', () => {
+  it('with captions off, shows the greeting instead of say hello on an elevenlabs call', () => {
     const { client, emitter, setState } = fakeClient();
-    render(<VoiceButton client={client} earcon={false} />);
+    render(<VoiceButton client={client} earcon={false} callCaptions={false} />);
     act(() => setState('listening'));
     act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: 'Hi! What can I help you with?' }));
     expect(statusText()).toBe('Hi! What can I help you with?');
@@ -258,13 +265,166 @@ describe('<VoiceButton>', () => {
     expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-greeting')).toBe(false);
   });
 
-  it('still says hello on a Gemini Live call, whose callStarted has no greeting', () => {
+  it('a Gemini Live call still says hello until the end-user speaks', () => {
     const { client, emitter, setState } = fakeClient();
     render(<VoiceButton client={client} earcon={false} />);
     act(() => setState('listening'));
     act(() => emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
     expect(statusText()).toBe('Say hello!');
     expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(true);
+    // Its callStarted has no greeting: nothing is captioned until someone speaks.
+    expect(captionsBox()).toBeNull();
+    act(() => emitter.emit('transcript', { role: 'user', text: 'hel', final: false }));
+    expect(statusText()).toBe('Listening');
+    expect(captionLines()).toEqual([['user', 'hel']]);
+  });
+
+  it('shows what both sides say, newest last, and the greeting once', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    // The greeting is the first caption, so the status says the call is
+    // listening rather than repeat it, with no hint styling.
+    expect(captionLines()).toEqual([['bot', GREETING]]);
+    expect(statusText()).toBe('Listening');
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(false);
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-greeting')).toBe(false);
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Sure.', final: true }));
+    expect(captionLines()).toEqual([['bot', GREETING], ['user', 'open pricing'], ['bot', 'Sure.']]);
+    expect(statusText()).toBe('Listening');
+    expect(document.querySelector('.t2v-voice-status')?.hasAttribute('data-hint')).toBe(false);
+  });
+
+  it('rewrites the greeting when the end-user talks over it', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    // Cut short: the caption keeps only the words the agent said.
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Hi! What', final: true, replaces: true }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    expect(captionLines()).toEqual([['bot', 'Hi! What'], ['user', 'open pricing']]);
+  });
+
+  it('takes only the agent’s first line for the greeting again', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Hello!', final: true }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'what can you do?', final: true }));
+    // Said later in the call, the same words are a line of the call.
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    expect(captionLines()).toEqual([
+      ['bot', `${GREETING} Hello!`],
+      ['user', 'what can you do?'],
+      ['bot', GREETING],
+    ]);
+  });
+
+  it('clears the captions when the call ends, and starts the next call with none', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Sure.', final: true }));
+    expect(captionLines()).toHaveLength(2);
+    act(() => {
+      setState('ended');
+      emitter.emit('ended', 'stopped');
+    });
+    expect(captionsBox()).toBeNull();
+    act(() => setState('connecting'));
+    act(() => setState('listening'));
+    expect(captionsBox()).toBeNull();
+    act(() => emitter.emit('transcript', { role: 'user', text: 'hello again', final: true }));
+    expect(captionLines()).toEqual([['user', 'hello again']]);
+    // A call that fails, or a reset to idle, takes its captions with it too.
+    act(() => setState('error'));
+    expect(captionsBox()).toBeNull();
+    act(() => setState('listening'));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'one more', final: true }));
+    act(() => setState('idle'));
+    expect(captionsBox()).toBeNull();
+  });
+
+  it('does not carry a greeting over into the next call', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    // Hung up before the agent said a word.
+    act(() => {
+      setState('ended');
+      emitter.emit('ended', 'stopped');
+    });
+    act(() => setState('connecting'));
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    expect(captionLines()).toEqual([['bot', GREETING]]);
+  });
+
+  it('shows no captions when turned off by the prop', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} callCaptions={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    expect(captionsBox()).toBeNull();
+    // The status still works.
+    expect(statusText()).toBe('Listening');
+  });
+
+  it('takes the captions down at once when they are turned off mid-call', () => {
+    const { client, emitter, setState } = fakeClient();
+    const view = render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    expect(captionLines()).toEqual([['user', 'open pricing']]);
+    view.rerender(<VoiceButton client={client} earcon={false} callCaptions={false} />);
+    expect(captionsBox()).toBeNull();
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Sure.', final: true }));
+    expect(captionsBox()).toBeNull();
+    // Nothing said while they were off is kept for later.
+    view.rerender(<VoiceButton client={client} earcon={false} />);
+    expect(captionLines().flat()).not.toContain('Sure.');
+  });
+
+  it('keeps errors and approvals above the captions, and announces no caption', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'delete the old files', final: true }));
+    act(() => {
+      emitter.emit('approvalChange', {
+        toolCallId: 'c1',
+        toolName: 'delete_files',
+        arguments: { count: 3 },
+        description: 'Deletes files',
+        decide: vi.fn(),
+      });
+    });
+    const follows = (first: Element, second: Element) =>
+      (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const captions = captionsBox()!;
+    expect(follows(screen.getByRole('region', { name: /delete_files/ }), captions)).toBe(true);
+    // Under the status, above "Change voice".
+    expect(follows(document.querySelector('.t2v-voice-status')!, captions)).toBe(true);
+    expect(follows(captions, screen.getByRole('link', { name: 'Change voice' }))).toBe(true);
+    // The call speaks each line, so none is sent to a screen reader as it
+    // comes, but the lines are not hidden from one either.
+    expect(captions.hasAttribute('aria-live')).toBe(false);
+    expect(captions.hasAttribute('aria-hidden')).toBe(false);
+    for (const region of liveRegions()) expect(region.textContent).not.toContain('delete the old files');
+    act(() => emitter.emit('error', { type: 'transport_error', message: 'HTTP 503' }));
+    expect(follows(screen.getByRole('alert'), captionsBox()!)).toBe(true);
+    for (const region of liveRegions()) expect(region.textContent).not.toContain('delete the old files');
   });
 
   it('shows the note for the first seconds of a call', () => {

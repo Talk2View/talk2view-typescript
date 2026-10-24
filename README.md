@@ -69,7 +69,11 @@ pass `fontFamily`. Voice is the exception; see
 shows a microphone beside the mark: press to talk, press again to hang up. The
 agent uses the same tools, permissions and approval card as the chat. A voice
 call runs on the voice model the end-user and the partner chose, Gemini Live or
-ElevenLabs. Standalone it is `<VoiceButton client={t2v} />`; without a UI it is
+ElevenLabs. While it runs,
+[call captions](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md#call-captions)
+show what both sides say above the button, stored nowhere and cleared when the
+call ends; `features={{ callCaptions: false }}` turns them off. Standalone it is
+`<VoiceButton client={t2v} />`; without a UI it is
 `t2v.voice`. Each voice model reaches its own hosts, so a Content Security Policy
 has to allow the ones you offer. See
 **[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
