@@ -67,12 +67,43 @@ describe('tone cues', () => {
     expect(stripToneCues('Bonjour ! Comment puis-je vous aider ?')).toBe('Bonjour ! Comment puis-je vous aider ?');
   });
 
-  it('closes up the line where a cue was, and nowhere else', () => {
-    expect(stripToneCues('[sad][sighs] Hello')).toBe('Hello'); // adjacent cues
-    expect(stripToneCues('Done [laughs].')).toBe('Done.');
-    expect(stripToneCues('Well [sighs] ... okay')).toBe('Well... okay');
+  it('closes up the line where a cue was: a cue and the spaces around it are one space', () => {
+    expect(stripToneCues('[sad][sighs] Hello')).toBe('Hello'); // adjacent cues at the start
+    expect(stripToneCues('a [sad] [sighs] b')).toBe('a b'); // a run of cues mid-line is one
+    expect(stripToneCues('Hello[sad]there')).toBe('Hello there'); // no space to start with: one is put there
     expect(stripToneCues('See [Figure 2] [sad] now')).toBe('See [Figure 2] now'); // another bracket stays
-    expect(stripToneCues('  [Excited]   Great  news  ')).toBe('Great news'); // letter case is free; spaces are closed up
+    expect(stripToneCues('The end [sad]')).toBe('The end'); // at the end
+    expect(stripToneCues('  [Excited]   Great news  ')).toBe('Great news'); // letter case is free; the ends are trimmed
+  });
+
+  it('puts nothing where a cue sat in front of punctuation', () => {
+    expect(stripToneCues('Done [laughs].')).toBe('Done.');
+    expect(stripToneCues('sorry [sad].')).toBe('sorry.'); // a cue before a full stop at the end
+    expect(stripToneCues('Well [sighs] ... okay')).toBe('Well... okay');
+    for (const mark of [',', '.', ';', ':', '!', '?']) expect(stripToneCues(`Yes [sad] ${mark} no`)).toBe(`Yes${mark} no`);
+    // The space in front of the cue goes too, which French would have kept: one space is lost at the cue's site.
+    expect(stripToneCues('Merci [laughs] !')).toBe('Merci!');
+  });
+
+  it('cleans up only where a cue was: every other space stays exactly as it was', () => {
+    // No cue, no change at all: not trimmed, not collapsed, not closed up against punctuation.
+    expect(stripToneCues('  Bonjour !  Ça va ?  ')).toBe('  Bonjour !  Ça va ?  ');
+    // French sets a space before ! ? ; and : and the clean-up does not touch those away from a cue.
+    expect(stripToneCues('[excited] Bonjour ! Ça va ?')).toBe('Bonjour ! Ça va ?');
+    expect(stripToneCues('Oui , merci [sad] . Non ;')).toBe('Oui , merci. Non ;');
+    expect(stripToneCues('a  b [sad] c   d')).toBe('a  b c   d'); // runs of spaces elsewhere are not collapsed
+    expect(stripToneCues('  [Excited]   Great  news  ')).toBe('Great  news'); // only the cue's own spaces are absorbed; the ends are trimmed
+  });
+
+  it('stays fast on a very long run of spaces', () => {
+    // A pattern that looks for the spaces before a cue from every position inside a run of spaces is quadratic:
+    // 100 000 spaces would take seconds. The pattern is anchored on the character before the run to avoid that.
+    const spaces = ' '.repeat(100_000);
+    const start = performance.now();
+    expect(stripToneCues(`${spaces}x`)).toBe(`${spaces}x`);
+    expect(stripToneCues(`${spaces}x[sad]`)).toBe(`${spaces}x`.trim());
+    expect(stripToneCues(`Hi${spaces}[sad]${spaces}there`)).toBe('Hi there');
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 
   it('takes one to three words of letters, joined by a space or a hyphen', () => {

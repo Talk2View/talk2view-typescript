@@ -59,24 +59,42 @@ export function formatCapabilities(capabilities: VoiceCapability[]): string {
  * bracket stays: `[Figure 2]`, `[1]`, `[see talk2view.com/pricing]`.
  *
  * It has the `g` flag, so its `lastIndex` is shared by everyone who holds it:
- * use it through `String.prototype.replace` (which resets it), as
- * {@link stripToneCues} does, never `test()` or `exec()`.
+ * use it through `String.prototype.replace` (which resets it), never `test()`
+ * or `exec()`. {@link stripToneCues} builds its own pattern from its `source`.
  */
 export const TONE_CUE = /\[[A-Za-z]+(?:[ -][A-Za-z]+){0,2}\]/g;
 
 /**
- * `text` without its tone cues ({@link TONE_CUE}). Where a cue was, the line
- * is closed up: runs of spaces become one, a space before `, . ; : ! ?` goes,
- * and the ends are trimmed, so `Hello [sad], there` reads `Hello, there`. A
- * line that was only a cue comes back empty.
+ * A cue, or a run of adjacent cues, with the whitespace around it. Group 1 is
+ * the character before the run, or empty at the start of the line. Anchoring on
+ * it keeps the engine from trying the whitespace in front of a cue from every
+ * position inside a long run of spaces, which takes quadratic time (100 000
+ * spaces take seconds). Global, so used only through `replace`, as
+ * {@link TONE_CUE} is.
+ */
+const CUE_RUN = new RegExp(`(^|\\S)\\s*(?:${TONE_CUE.source}\\s*)+`, 'g');
+
+/** The marks a cue's site is closed up against: `Merci [laughs] !` reads `Merci!`. */
+const PUNCTUATION = /[,.;:!?]/;
+
+/**
+ * `text` without its tone cues ({@link TONE_CUE}), cleaned up only where a cue
+ * was: a cue, or a run of adjacent cues, and the spaces around it become one
+ * space, or nothing at either end of the line and in front of `, . ; : ! ?`.
+ * So `Hello [sad], there` reads `Hello, there` and `Merci [laughs] !` reads
+ * `Merci!` (one space is lost at the cue's site), while every other space in
+ * the line stays exactly as it was. A line that was only a cue comes back empty.
  *
- * Text with no cue comes back exactly as it was, even where the clean-up would
- * change it: French sets a space before `!` and `?` ("Bonjour ! Comment
- * puis-je vous aider ?"), and a line with nothing to remove must still equal
- * the engine's greeting word for word.
+ * Text with no cue comes back as the same string: French sets a space before
+ * `!` and `?` ("Bonjour ! Comment puis-je vous aider ?"), and a line with
+ * nothing to remove must still equal the engine's greeting word for word. That
+ * spacing survives elsewhere in a line that did hold a cue too.
  */
 export function stripToneCues(text: string): string {
-  const stripped = text.replace(TONE_CUE, ' ');
-  if (stripped === text) return text; // a cue is three characters or more and becomes one, so equal means none
-  return stripped.replace(/ {2,}/g, ' ').replace(/ ([,.;:!?])/g, '$1').trim();
+  const stripped = text.replace(CUE_RUN, (run: string, before: string, offset: number) => {
+    // A space, or nothing in front of punctuation. At the ends of the line the space goes with the trim below.
+    return before + (PUNCTUATION.test(text.charAt(offset + run.length)) ? '' : ' ');
+  });
+  // A cue is three characters or more and what replaces it is shorter, so equal means there was none.
+  return stripped === text ? text : stripped.trim();
 }

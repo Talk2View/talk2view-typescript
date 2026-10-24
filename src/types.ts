@@ -658,7 +658,8 @@ export interface VoiceTranscript {
   final: boolean;
   /**
    * This line replaces the same side's previous line: an ElevenLabs agent line
-   * cut short by the end-user, with only the words the agent said.
+   * cut short by the end-user, with only the words the agent said. Its text is
+   * empty when the agent was cut off before its first word.
    */
   replaces?: boolean;
 }

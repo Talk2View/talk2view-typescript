@@ -365,7 +365,10 @@ export class T2VVoiceController {
    * models' lines go through, so a partner's own display and the packaged
    * chat's captions read the same whichever model spoke. The agent's lines
    * lose their tone cues first (`[sad]`, `[sighs]`), and one left with no
-   * words is not emitted. The end-user's words are left as they were said.
+   * words is not emitted, unless it replaces the agent's previous line: then
+   * the empty text is the news, that the agent was cut off before its first
+   * word and the line it was to say was never said. The end-user's words are
+   * left as they were said.
    */
   private emitTranscript(t: VoiceTranscript): void {
     if (t.role !== 'bot') {
@@ -373,7 +376,7 @@ export class T2VVoiceController {
       return;
     }
     const text = stripToneCues(t.text);
-    if (!text) return;
+    if (!text && !t.replaces) return;
     this.safeEmit('transcript', { ...t, text });
   }
 

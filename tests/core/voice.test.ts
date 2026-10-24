@@ -1884,6 +1884,29 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(lines).toHaveLength(2);
   });
 
+  it('a line cut off before its first word reaches the listeners as an empty replacing line; any other empty agent line does not', async () => {
+    const w = elWorld();
+    const lines: unknown[] = [];
+    w.voice.on('transcript', (t) => lines.push(t));
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    // Cut off before a word was said: the replacing line is empty, so a listener can drop the line the agent never said.
+    opts.onMessage({ message: 'I can help with pricing and plans', role: 'agent' });
+    opts.onAgentResponseCorrection({ original_agent_response: 'I can help with pricing and plans', corrected_agent_response: '', event_id: 7 });
+    // Only a cue was said: empty once the cue is gone, and still a replacement.
+    opts.onMessage({ message: 'Sure.', role: 'agent' });
+    opts.onAgentResponseCorrection({ original_agent_response: 'Sure.', corrected_agent_response: '[sad]', event_id: 8 });
+    // A line that replaces nothing and is left empty is not emitted: there is nothing to show or to drop.
+    opts.onMessage({ message: '[sighs]', role: 'agent' });
+    opts.onMessage({ message: '', role: 'agent' });
+    expect(lines).toEqual([
+      { role: 'bot', text: 'I can help with pricing and plans', final: true },
+      { role: 'bot', text: '', final: true, replaces: true },
+      { role: 'bot', text: 'Sure.', final: true },
+      { role: 'bot', text: '', final: true, replaces: true },
+    ]);
+  });
+
   it('a library error about the microphone ends the call with mic_unavailable, as on Gemini Live', async () => {
     const w = elWorld();
     await w.voice.start();
