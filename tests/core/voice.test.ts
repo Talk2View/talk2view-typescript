@@ -1907,6 +1907,22 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     ]);
   });
 
+  it('takes a line whose text is not a string as empty: not emitted, and nothing thrown inside the library', async () => {
+    // Gemini Live: Pipecat's callbacks are typed with a string, which a malformed one breaks.
+    const w = world();
+    const lines: unknown[] = [];
+    w.voice.on('transcript', (t) => lines.push(t));
+    await w.voice.start();
+    const { onBotTranscript, onUserTranscript } = w.client().callbacks;
+    expect(() => onBotTranscript!({ text: undefined as unknown as string })).not.toThrow();
+    expect(() => onBotTranscript!({ text: 42 as unknown as string })).not.toThrow();
+    expect(() => onUserTranscript!({ text: null as unknown as string, final: true })).not.toThrow();
+    onBotTranscript!({ text: 'Still here.' });
+    expect(lines).toEqual([{ role: 'bot', text: 'Still here.', final: true }]);
+    expect(w.voice.state).toBe('listening');
+    await w.voice.stop();
+  });
+
   it('a library error about the microphone ends the call with mic_unavailable, as on Gemini Live', async () => {
     const w = elWorld();
     await w.voice.start();

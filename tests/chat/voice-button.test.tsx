@@ -326,6 +326,17 @@ describe('<VoiceButton>', () => {
     ]);
   });
 
+  it('trims the greeting once, so the agent saying it again is still the greeting', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: `  ${GREETING}  ` }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Ask me anything.', final: true }));
+    // Shown once, and the next line joins it with one space, not the greeting's own.
+    expect(captionLines()).toEqual([['bot', `${GREETING} Ask me anything.`]]);
+  });
+
   it('clears the captions when the call ends, and starts the next call with none', () => {
     const { client, emitter, setState } = fakeClient();
     render(<VoiceButton client={client} earcon={false} />);
@@ -394,6 +405,56 @@ describe('<VoiceButton>', () => {
     // Nothing said while they were off is kept for later.
     view.rerender(<VoiceButton client={client} earcon={false} />);
     expect(captionLines().flat()).not.toContain('Sure.');
+  });
+
+  it('starts afresh when captions are turned on again mid-call', () => {
+    const { client, emitter, setState } = fakeClient();
+    const view = render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    expect(captionLines()).toEqual([['bot', GREETING], ['user', 'open pricing']]);
+    view.rerender(<VoiceButton client={client} earcon={false} callCaptions={false} />);
+    act(() => emitter.emit('transcript', { role: 'bot', text: 'Sure.', final: true }));
+    view.rerender(<VoiceButton client={client} earcon={false} />);
+    // None of the lines from before, which would show with a hole where the
+    // ones said while captions were off would be.
+    expect(captionsBox()).toBeNull();
+    // The greeting went with them: the agent saying its words is a line of the call.
+    act(() => emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    act(() => emitter.emit('transcript', { role: 'user', text: 'and the plans?', final: true }));
+    expect(captionLines()).toEqual([['bot', GREETING], ['user', 'and the plans?']]);
+  });
+
+  it('takes the old call’s captions down when it is given another client', () => {
+    const first = fakeClient();
+    const view = render(<VoiceButton client={first.client} earcon={false} />);
+    act(() => first.setState('listening'));
+    act(() => first.emitter.emit('transcript', { role: 'user', text: 'open pricing', final: true }));
+    act(() => first.emitter.emit('transcript', { role: 'bot', text: 'Sure.', final: true }));
+    expect(captionLines()).toHaveLength(2);
+    const second = fakeClient();
+    view.rerender(<VoiceButton client={second.client} earcon={false} />);
+    // The new client has no call: none of the old call's lines beside its idle button.
+    expect(button().getAttribute('data-state')).toBe('idle');
+    expect(captionsBox()).toBeNull();
+  });
+
+  it('does not take the old call’s greeting into a call the new client is connecting', () => {
+    const first = fakeClient();
+    const view = render(<VoiceButton client={first.client} earcon={false} />);
+    act(() => first.setState('listening'));
+    act(() => first.emitter.emit('callStarted', { voiceModel: 'elevenlabs', greeting: GREETING }));
+    expect(captionLines()).toEqual([['bot', GREETING]]);
+    const second = fakeClient();
+    second.voice.state = 'connecting';
+    view.rerender(<VoiceButton client={second.client} earcon={false} />);
+    expect(captionsBox()).toBeNull();
+    act(() => second.setState('listening'));
+    act(() => second.emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
+    // The new call's first line is its own, though it says the old greeting's words.
+    act(() => second.emitter.emit('transcript', { role: 'bot', text: GREETING, final: true }));
+    expect(captionLines()).toEqual([['bot', GREETING]]);
   });
 
   it('keeps errors and approvals above the captions, and announces no caption', () => {

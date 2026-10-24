@@ -177,7 +177,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   // silence not knowing the call is waiting on them.
   const [heard, setHeard] = useState(false);
   // The call's captions, oldest first. React state only, emptied whenever the
-  // call is not live: captions are stored nowhere.
+  // call is not live or captions are off: captions are stored nowhere.
   const [captions, setCaptions] = useState<Caption[]>(NO_CAPTIONS);
   // The greeting, seeded as the first caption, until the agent's first line:
   // that line is skipped when it repeats the greeting, so it shows once.
@@ -192,6 +192,12 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   useEffect(() => {
     // A remount mid-call (StrictMode, a re-keyed parent) picks up where it is.
     setState(voice.state);
+    // A client with no live call has no captions: given one, the old call's
+    // lines and greeting go.
+    if (voice.state !== 'listening') {
+      setCaptions(NO_CAPTIONS);
+      greetingEcho.current = null;
+    }
     const offs = [
       voice.on('stateChange', (next) => {
         setState(next);
@@ -221,9 +227,11 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
       voice.on('note', setNote),
       voice.on('callStarted', (call) => {
         setGreeting(call.greeting);
-        if (captionsOnRef.current && call.greeting) {
-          greetingEcho.current = call.greeting;
-          setCaptions([{ role: 'bot', settled: call.greeting, live: '' }]);
+        // Trimmed once, so the caption and the echo check below hold the same words.
+        const greeting = call.greeting?.trim();
+        if (captionsOnRef.current && greeting) {
+          greetingEcho.current = greeting;
+          setCaptions([{ role: 'bot', settled: greeting, live: '' }]);
         }
       }),
       voice.on('approvalChange', setApproval),
@@ -237,7 +245,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
         if (!captionsOnRef.current) return;
         // The agent's first line with words: skipped when it is the greeting again.
         if (t.role === 'bot' && words && greetingEcho.current !== null) {
-          const echo = words === greetingEcho.current.trim();
+          const echo = words === greetingEcho.current;
           greetingEcho.current = null;
           if (echo) return;
         }
@@ -271,6 +279,14 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
     const timer = setTimeout(() => setNote(null), NOTE_MS);
     return () => clearTimeout(timer);
   }, [note, state]);
+
+  // Turned off mid-call, captions let go of what they held, so turned on again
+  // they start afresh rather than show the lines from before with a hole.
+  useEffect(() => {
+    if (captionsOn) return;
+    setCaptions(NO_CAPTIONS);
+    greetingEcho.current = null;
+  }, [captionsOn]);
 
   // The newest caption in view.
   useEffect(() => {
