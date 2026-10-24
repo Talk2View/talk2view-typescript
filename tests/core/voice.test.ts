@@ -1826,6 +1826,64 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     }
   });
 
+  it("strips tone cues from the agent's lines on both voice models, drops a cue-only line, and leaves the user's words alone", async () => {
+    // Gemini Live: the Pipecat client's callbacks.
+    const gemini = world();
+    const geminiLines: unknown[] = [];
+    gemini.voice.on('transcript', (t) => geminiLines.push(t));
+    await gemini.voice.start();
+    const { onBotTranscript, onUserTranscript } = gemini.client().callbacks;
+    onBotTranscript!({ text: '[sad] Sorry about that.' });
+    onBotTranscript!({ text: '[sighs]' }); // only a cue: nothing is said, so nothing is emitted
+    onUserTranscript!({ text: '[sad] me', final: true });
+    onBotTranscript!({ text: 'Plain words.' });
+    expect(geminiLines).toEqual([
+      { role: 'bot', text: 'Sorry about that.', final: true },
+      { role: 'user', text: '[sad] me', final: true },
+      { role: 'bot', text: 'Plain words.', final: true },
+    ]);
+    await gemini.voice.stop();
+
+    // ElevenLabs: the library's onMessage, through the call.
+    const w = elWorld();
+    const lines: unknown[] = [];
+    w.voice.on('transcript', (t) => lines.push(t));
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    opts.onMessage({ message: '[excited] Done!', role: 'agent' });
+    opts.onMessage({ message: '[laughs softly]', role: 'agent' });
+    opts.onMessage({ message: '[excited] me too', role: 'user' });
+    opts.onMessage({ message: 'See [Figure 2]', role: 'agent' });
+    expect(lines).toEqual([
+      { role: 'bot', text: 'Done!', final: true },
+      { role: 'user', text: '[excited] me too', final: true },
+      { role: 'bot', text: 'See [Figure 2]', final: true },
+    ]);
+  });
+
+  it('a line cut short reaches the transcript listeners as a replacement, its tone cues stripped too', async () => {
+    const w = elWorld();
+    const lines: unknown[] = [];
+    w.voice.on('transcript', (t) => lines.push(t));
+    await w.voice.start();
+    const { opts } = w.el.conversation();
+    opts.onMessage({ message: '[warm] I can help with pricing and plans', role: 'agent' });
+    opts.onAgentResponseCorrection({
+      original_agent_response: '[warm] I can help with pricing and plans',
+      corrected_agent_response: '[warm] I can help with',
+      event_id: 7,
+    });
+    expect(lines).toEqual([
+      { role: 'bot', text: 'I can help with pricing and plans', final: true },
+      { role: 'bot', text: 'I can help with', final: true, replaces: true },
+    ]);
+    // Once the call is hung up, nothing more reaches the listeners.
+    await w.voice.stop();
+    opts.onMessage({ message: 'late', role: 'agent' });
+    opts.onAgentResponseCorrection({ corrected_agent_response: 'late', event_id: 8 });
+    expect(lines).toHaveLength(2);
+  });
+
   it('a library error about the microphone ends the call with mic_unavailable, as on Gemini Live', async () => {
     const w = elWorld();
     await w.voice.start();

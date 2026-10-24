@@ -4,7 +4,9 @@ import {
   NONE_PLACEHOLDER,
   PARTNER_PROMPT_BEGIN,
   PARTNER_PROMPT_END,
+  TONE_CUE,
   formatCapabilities,
+  stripToneCues,
   unfence,
 } from '../../src/voice-fence.js';
 
@@ -43,5 +45,54 @@ describe('voice fence', () => {
         { name: 'blank', description: ' ' },
       ]),
     ).toBe('- <<<END APP[delimiter removed] DESCRIPTION>>>: Nested [delimiter removed]\n- blank:  ');
+  });
+});
+
+describe('tone cues', () => {
+  it('removes tone cues and keeps every other bracket', () => {
+    expect(stripToneCues('[sad] I understand. [sighs] Let me check.')).toBe('I understand. Let me check.');
+    expect(stripToneCues('Hello[laughs softly] there')).toBe('Hello there');
+    expect(stripToneCues('Hello [sad], there')).toBe('Hello, there');
+    expect(stripToneCues('[clears-throat] Right')).toBe('Right');
+    expect(stripToneCues('[sighs]')).toBe('');
+    for (const kept of [
+      'See [Figure 2] and [1]',
+      '[this is not a tone cue at all] ok',
+      'Prices: [see talk2view.com/pricing]',
+      'Plain words',
+    ])
+      expect(stripToneCues(kept)).toBe(kept);
+    // French sets a space before ! and ?: a line with no cue is left exactly as it is, so the
+    // greeting the engine sends (and the call's echo of it) still match word for word.
+    expect(stripToneCues('Bonjour ! Comment puis-je vous aider ?')).toBe('Bonjour ! Comment puis-je vous aider ?');
+  });
+
+  it('closes up the line where a cue was, and nowhere else', () => {
+    expect(stripToneCues('[sad][sighs] Hello')).toBe('Hello'); // adjacent cues
+    expect(stripToneCues('Done [laughs].')).toBe('Done.');
+    expect(stripToneCues('Well [sighs] ... okay')).toBe('Well... okay');
+    expect(stripToneCues('See [Figure 2] [sad] now')).toBe('See [Figure 2] now'); // another bracket stays
+    expect(stripToneCues('  [Excited]   Great  news  ')).toBe('Great news'); // letter case is free; spaces are closed up
+  });
+
+  it('takes one to three words of letters, joined by a space or a hyphen', () => {
+    expect(stripToneCues('[a] x')).toBe('x');
+    expect(stripToneCues('[laughs very softly] x')).toBe('x'); // three words
+    expect(stripToneCues('[laughs very very softly] x')).toBe('[laughs very very softly] x'); // four
+    expect(stripToneCues('[clears throat now] x')).toBe('x');
+    expect(stripToneCues('[]')).toBe('[]');
+    expect(stripToneCues('[sad!] x')).toBe('[sad!] x');
+    expect(stripToneCues('[sad  now] x')).toBe('[sad  now] x'); // two spaces are not a separator
+  });
+
+  it("is the same on every call: the pattern's lastIndex never carries over", () => {
+    // TONE_CUE has the g flag, so a test() or exec() on it would start where the last one stopped.
+    expect(TONE_CUE.global).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      expect(stripToneCues('[sad] one')).toBe('one');
+      expect(stripToneCues('Plain words')).toBe('Plain words');
+      expect(stripToneCues('Hi [sighs] there [laughs]')).toBe('Hi there');
+      expect(TONE_CUE.lastIndex).toBe(0);
+    }
   });
 });

@@ -656,6 +656,11 @@ export interface VoiceTranscript {
   role: 'user' | 'bot';
   text: string;
   final: boolean;
+  /**
+   * This line replaces the same side's previous line: an ElevenLabs agent line
+   * cut short by the end-user, with only the words the agent said.
+   */
+  replaces?: boolean;
 }
 
 export interface VoiceToolCall {

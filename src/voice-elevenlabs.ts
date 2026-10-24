@@ -269,6 +269,7 @@ export class ElevenLabsCall {
       onDisconnect: (details?: { reason?: unknown }) => this.disconnected(details?.reason),
       onModeChange: (change?: { mode?: unknown }) => this.modeChanged(change?.mode),
       onMessage: (payload?: { message?: unknown; role?: unknown }) => this.message(payload),
+      onAgentResponseCorrection: (e?: { corrected_agent_response?: unknown }) => this.corrected(e),
       onError: (message?: unknown) => {
         if (!this.verified || this.closed) return;
         this.deps.onError(typeof message === 'string' && message ? message : 'Voice connection error');
@@ -287,10 +288,33 @@ export class ElevenLabsCall {
     this.deps.onConnected();
   }
 
-  /** A line of the transcript; `agent` is the SDK's `bot`. Held back until the conversation is verified. */
+  /**
+   * A line of the transcript; `agent` is the SDK's `bot`. Held back until the
+   * conversation is verified. Only what was said is a line of the call (§6.3),
+   * so the SDK's own words are dropped: the budget notice it sends the agent
+   * as a user message comes back from the library as a user line. With no
+   * notice to match (the mint left it out, or it is empty) nothing is dropped.
+   */
   private message(payload?: { message?: unknown; role?: unknown }): void {
     if (this.closed || typeof payload?.message !== 'string') return;
-    const transcript: VoiceTranscript = { role: payload.role === 'agent' ? 'bot' : 'user', text: payload.message, final: true };
+    const role = payload.role === 'agent' ? 'bot' : 'user';
+    const notice = typeof this.deps.info.budget_notice === 'string' ? this.deps.info.budget_notice.trim() : '';
+    if (role === 'user' && notice && payload.message.trim() === notice) return;
+    this.relay({ role, text: payload.message, final: true });
+  }
+
+  /**
+   * The end-user cut an agent line short: `corrected_agent_response` is only
+   * the words the agent said. It goes out as a line that replaces the agent's
+   * previous one, held back like any message until the conversation is verified.
+   */
+  private corrected(correction?: { corrected_agent_response?: unknown }): void {
+    if (this.closed || typeof correction?.corrected_agent_response !== 'string') return;
+    this.relay({ role: 'bot', text: correction.corrected_agent_response, final: true, replaces: true });
+  }
+
+  /** Deliver a line, or hold it back until the conversation is verified. */
+  private relay(transcript: VoiceTranscript): void {
     if (this.verified) this.deps.onTranscript(transcript);
     else this.early.push(transcript);
   }

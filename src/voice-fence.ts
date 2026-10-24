@@ -11,6 +11,9 @@
  * one difference: `formatCapabilities([])` gives `(none)` where the engine's
  * `format_capabilities` gives `""`, because the dynamic variable needs a
  * value and the agent's placeholder is `(none)`.
+ *
+ * It also holds {@link stripToneCues}, which cleans the agent's lines on
+ * either voice model before the SDK emits them.
  */
 
 import type { VoiceCapability } from './types.js';
@@ -46,4 +49,34 @@ export function formatCapabilities(capabilities: VoiceCapability[]): string {
       description ? `- ${unfence(name)}: ${unfence(description)}` : `- ${unfence(name)}`,
     )
     .join('\n');
+}
+
+/**
+ * A tone cue: a bracketed word or short phrase of letters (one to three words,
+ * joined by a space or a hyphen), such as `[sad]`, `[sighs]`, `[excited]`,
+ * `[laughs softly]` or `[clears-throat]`. Eleven Realtime's agent writes them
+ * into its lines to steer how it speaks; they are not words to show. Any other
+ * bracket stays: `[Figure 2]`, `[1]`, `[see talk2view.com/pricing]`.
+ *
+ * It has the `g` flag, so its `lastIndex` is shared by everyone who holds it:
+ * use it through `String.prototype.replace` (which resets it), as
+ * {@link stripToneCues} does, never `test()` or `exec()`.
+ */
+export const TONE_CUE = /\[[A-Za-z]+(?:[ -][A-Za-z]+){0,2}\]/g;
+
+/**
+ * `text` without its tone cues ({@link TONE_CUE}). Where a cue was, the line
+ * is closed up: runs of spaces become one, a space before `, . ; : ! ?` goes,
+ * and the ends are trimmed, so `Hello [sad], there` reads `Hello, there`. A
+ * line that was only a cue comes back empty.
+ *
+ * Text with no cue comes back exactly as it was, even where the clean-up would
+ * change it: French sets a space before `!` and `?` ("Bonjour ! Comment
+ * puis-je vous aider ?"), and a line with nothing to remove must still equal
+ * the engine's greeting word for word.
+ */
+export function stripToneCues(text: string): string {
+  const stripped = text.replace(TONE_CUE, ' ');
+  if (stripped === text) return text; // a cue is three characters or more and becomes one, so equal means none
+  return stripped.replace(/ {2,}/g, ' ').replace(/ ([,.;:!?])/g, '$1').trim();
 }
