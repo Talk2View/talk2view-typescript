@@ -84,10 +84,7 @@ older ones scroll away, and the panel stays clear of the button.
 - **Screen readers** are not sent each line as it arrives, since the call
   already speaks it. The lines stay in the panel to read.
 - **Languages.** Each line shows in the language it is spoken in. An
-  ElevenLabs call switches language when the end-user speaks another of the 15
-  languages a call can start in, but only once the engine lists those
-  languages on the app's agent. Until then the call stays in the language it
-  started in.
+  ElevenLabs call switches among the 15 languages a call can start in.
 
 They are on by default. To turn them off in the packaged chat or the launcher:
 
