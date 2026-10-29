@@ -12,7 +12,7 @@
 
 ### Changed
 
-- **The agent's `transcript` lines carry no tone cue.** Eleven Realtime writes cues such as `[sad]` or `[laughs softly]` into the agent's words to steer its voice. The SDK now removes them from the agent's lines on both voice models before emitting them, and a line that was only a cue is not emitted. Other bracketed text, such as `[Figure 2]`, stays, and the end-user's lines are left as they were said.
+- **The agent's `transcript` lines carry no tone cue.** ElevenLabs writes cues such as `[sad]` or `[laughs softly]` into the agent's words to steer its voice. The SDK now removes them from the agent's lines on both voice models before emitting them, and a line that was only a cue is not emitted. Other bracketed text, such as `[Figure 2]`, stays, and the end-user's lines are left as they were said.
 - **The SDK's own out-of-credit notice is never a `transcript` line.** When the end-user's budget runs out on an ElevenLabs call, the SDK sends the agent the engine's notice as a message so that it says goodbye, and the ElevenLabs client handed that message back as a line from the end-user.
 
 ## [0.23.0] - 2026-10-24

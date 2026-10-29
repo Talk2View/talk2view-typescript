@@ -54,7 +54,7 @@ export function formatCapabilities(capabilities: VoiceCapability[]): string {
 /**
  * A tone cue: a bracketed word or short phrase of letters (one to three words,
  * joined by a space or a hyphen), such as `[sad]`, `[sighs]`, `[excited]`,
- * `[laughs softly]` or `[clears-throat]`. Eleven Realtime's agent writes them
+ * `[laughs softly]` or `[clears-throat]`. ElevenLabs' agent writes them
  * into its lines to steer how it speaks; they are not words to show. Any other
  * bracket stays: `[Figure 2]`, `[1]`, `[see talk2view.com/pricing]`.
  *
