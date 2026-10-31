@@ -62,14 +62,18 @@ your Talk2View engine — no fonts, no CDN — and uses your page's font unless 
 pass `fontFamily`. Voice is the exception; see
 [What loads at runtime](#what-loads-at-runtime).
 
-**It is large: 373.9 KB gzip, excluding React.** A consumer who never imports
+**It is large: 374.5 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
 
 **Voice.** For partners with the realtime voice agent enabled, the launcher
 shows a microphone beside the mark: press to talk, press again to hang up. The
 agent uses the same tools, permissions and approval card as the chat. A voice
 call runs on the voice model the end-user and the partner chose, Gemini Live or
-ElevenLabs. Standalone it is `<VoiceButton client={t2v} />`; without a UI it is
+ElevenLabs. While it runs,
+[call captions](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md#call-captions)
+show what both sides say above the button, stored nowhere and cleared when the
+call ends; `features={{ callCaptions: false }}` turns them off. Standalone it is
+`<VoiceButton client={t2v} />`; without a UI it is
 `t2v.voice`. Each voice model reaches its own hosts, so a Content Security Policy
 has to allow the ones you offer. See
 **[`docs/voice.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md)**.
@@ -126,7 +130,7 @@ function App() {
 
 That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
 
-> `/ui` is smaller than the packaged chat (40.9 KB gzip against 373.9, plus
+> `/ui` is smaller than the packaged chat (40.9 KB gzip against 374.5, plus
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
@@ -284,7 +288,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 There are four React entry points, and they do different jobs:
 
 - **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
-- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 373.9, and no assistant-ui.
+- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 374.5, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
 

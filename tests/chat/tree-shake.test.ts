@@ -31,9 +31,10 @@ import { gzipSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 
 // Measured on 2026-10-09 for 0.21.4, with code splitting, up-front chunks only;
-// `core` and `chat` again on 2026-10-22 for 0.23.0, at 38.0 / 11.85 KB and
-// 1199.5 / 373.91 KB (0.21.4: 37.1 / 11.51 and 1197.8 / 373.32; 0.22.0: core
-// 11.73 gzip).
+// `core` again on 2026-10-22 for 0.23.0, at 38.0 / 11.85 KB, and `chat` on
+// 2026-10-25 for 0.24.0, with call captions, at 1201.1 / 374.53 KB (0.21.4:
+// 37.1 / 11.51 and 1197.8 / 373.32; 0.22.0: core 11.73 gzip; 0.23.0: chat
+// 1199.5 / 373.91).
 // These are the numbers the README and docs/chat.md quote; change them together.
 // Previously 11.14 / 40.25 / 372.38 KB gzip (2026-09-24, after the voice agent
 // landed behind a lazy facade), and before that 9.35 / 39.93 / 361.77
@@ -41,7 +42,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 const MEASURED = {
   core: { raw: 38.0, gzip: 11.85 },
   ui: { raw: 124.4, gzip: 40.94 },
-  chat: { raw: 1199.5, gzip: 373.91 },
+  chat: { raw: 1201.1, gzip: 374.53 },
 };
 
 /**
@@ -238,8 +239,9 @@ describe('what a consumer pays for the entry points they use', () => {
       // The voice agent's WebRTC stack stays lazy here too.
       expect([...chat.packages].filter(isVoiceStack)).toEqual([]);
 
-      // 373.91 KB gzip measured on 2026-10-22 (372.18 earlier, 369.18 before
-      // <VoiceButton>), excluding React (a peer) and the host app.
+      // 374.53 KB gzip measured on 2026-10-25, with call captions (373.91 on
+      // 2026-10-22, 372.18 earlier, 369.18 before <VoiceButton>), excluding
+      // React (a peer) and the host app.
       // A page containing only the chat and React measures about 429 KB gzip.
       // Fence at 400 KB: loud on a regression, not a budget to shave against.
       expect(chat.gzipKB).toBeLessThan(400);

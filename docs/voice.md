@@ -25,11 +25,22 @@ even when voice is enabled:
 
 Above the button, a small note shows what the call is doing: connecting,
 listening, working, or why it ended. Until the end-user speaks it says "Say
-hello!", or, on an ElevenLabs call, shows the greeting the agent opens with.
-Errors are written for the end-user, not the developer. For example, when every
-voice slot is taken, the note reads "Voice is busy right now. Try again
-shortly." When a tool call needs the end-user's go-ahead or approval, its card
-appears in the same place.
+hello!", unless the agent opens the call with a greeting, as an ElevenLabs
+agent does. The greeting is then the first call caption, or, with captions
+off, the note shows it. Errors are written for the end-user, not the developer.
+For example, when every voice slot is taken, the note reads "Voice is busy
+right now. Try again shortly." When a tool call needs the end-user's go-ahead
+or approval, its card appears in the same place.
+
+While the call runs, call captions show what the end-user and the agent say,
+under the note and newest at the bottom, on both voice models. They are on by
+default and are cleared when the call ends. To turn them off:
+
+```tsx
+<Talk2ViewChatLauncher partnerKey="pk_live_…" features={{ callCaptions: false }} />
+```
+
+See [Call captions](#call-captions).
 
 When the call runs on a different voice model from the one the end-user wanted,
 the engine's note says so for the first few seconds. An end-user who has signed
@@ -50,16 +61,51 @@ import '@talk2view/sdk/chat.css';
 | `client` | the chat's | Required outside `<Talk2ViewChat>` / the launcher. |
 | `label` | `"Talk to Talk2View"` | The button's accessible name. |
 | `earcon` | `true` | A short, locally generated sound when the microphone goes live. |
+| `callCaptions` | `true` | Show call captions above the button while a call runs. |
 | `className` | none | Put `dark` here for the dark palette. |
 
 A standalone `<VoiceButton>` does not check `voice_agent_enabled` itself.
 Render it only when `(await t2v.getConfig()).voice_agent_enabled` is true.
 
+## Call captions
+
+Call captions are the words of a voice call, from both sides, shown in the
+panel above the voice button while the call runs: the agent's, and the
+end-user's in a quieter colour, newest at the bottom. Past a few lines the
+older ones scroll away, and the panel stays clear of the button.
+
+- **Both voice models.** On a Gemini Live call the end-user's words show as
+  they speak them. On an ElevenLabs call they show a line at a time, and the
+  agent's greeting is the first caption, so the note above says "Listening"
+  instead of repeating it. When the end-user cuts an ElevenLabs agent short,
+  its caption keeps only the words the agent said.
+- **Cleared when the call ends, and kept nowhere.** Captions are not added to
+  the chat's history, saved in the browser's storage or sent to any server.
+- **Screen readers** are not sent each line as it arrives, since the call
+  already speaks it. The lines stay in the panel to read.
+- **Languages.** Each line shows in the language it is spoken in. An
+  ElevenLabs call switches among the 15 languages a call can start in.
+
+They are on by default. To turn them off in the packaged chat or the launcher:
+
+```tsx
+<Talk2ViewChatLauncher partnerKey="pk_live_…" features={{ callCaptions: false }} />
+```
+
+and on a standalone button:
+
+```tsx
+<VoiceButton client={t2v} callCaptions={false} />
+```
+
+A `<VoiceButton>` inside `<Talk2ViewChat>` follows the chat's
+`features.callCaptions`; its own `callCaptions` prop wins when both are given.
+
 ## Without a UI: `t2v.voice`
 
 ```ts
 await t2v.voice.start(); // resolves once the microphone is live
-t2v.voice.on('transcript', ({ role, text, final }) => { /* … */ });
+t2v.voice.on('transcript', ({ role, text, final, replaces }) => { /* … */ });
 t2v.voice.on('toolCall', ({ toolName, arguments: args }) => { /* … */ });
 t2v.voice.on('approvalChange', (pending) => pending?.decide({ action: 'once' }));
 t2v.voice.on('error', ({ type, message }) => { /* … */ });
@@ -68,6 +114,14 @@ t2v.voice.on('note', (text) => { /* "Using Gemini Live — …" */ });
 t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* … */ });
 await t2v.voice.stop(); // hangs up and releases the microphone
 ```
+
+Each `transcript` is a line of the call, from the end-user (`user`) or the
+agent (`bot`). On a Gemini Live call the end-user's words arrive while they
+speak, with `final: false`, and then as a final line. The agent's lines carry
+no tone cue such as `[sad]`. A line with `replaces: true` rewrites the agent's
+last line. It comes when the end-user cuts an ElevenLabs agent short and holds
+only the words the agent said, and its text is empty when the agent was cut
+off before its first word.
 
 `on()` returns an unsubscribe function. Other events are `stateChange`
 (`idle | connecting | listening | ended | error`) and `agentState`

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-01
+
+### Added
+
+- **Call captions.** While a voice call runs, `<VoiceButton>`, and so the launcher's voice button, shows what the end-user and the agent say in its panel above the button, newest at the bottom, on both voice models: a Gemini Live call's words as they are spoken, an ElevenLabs call's a line at a time. The greeting an ElevenLabs agent opens with is the first caption, and the status above says "Listening" instead of repeating it. Errors and approvals stay above the captions. Captions are cleared when the call ends and stored nowhere: not in the chat's history, not in the browser's storage, not on a server. Screen readers are not sent each line, since the call speaks it. See `docs/voice.md`.
+- **`features.callCaptions` and the `callCaptions` prop.** Captions are on by default. `features={{ callCaptions: false }}` turns them off in `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, and `<VoiceButton callCaptions={false} />` on a standalone button; the prop wins when both are given. With captions off, the panel works as in 0.23.0, the greeting included.
+- **`replaces` on `transcript`.** A line with `replaces: true` rewrites the agent's last line. It comes when the end-user cuts an ElevenLabs agent short, and holds only the words the agent said, with no tone cue. Its text is empty when the agent was cut off before its first word. A display that ignores the field shows it as one more line.
+
+### Changed
+
+- **The agent's `transcript` lines carry no tone cue.** ElevenLabs writes cues such as `[sad]` or `[laughs softly]` into the agent's words to steer its voice. The SDK now removes them from the agent's lines on both voice models before emitting them, and a line that was only a cue is not emitted. Other bracketed text, such as `[Figure 2]`, stays, and the end-user's lines are left as they were said.
+- **The SDK's own out-of-credit notice is never a `transcript` line.** When the end-user's budget runs out on an ElevenLabs call, the SDK sends the agent the engine's notice as a message so that it says goodbye, and the ElevenLabs client handed that message back as a line from the end-user.
+
 ## [0.23.0] - 2026-10-24
 
 ### Added

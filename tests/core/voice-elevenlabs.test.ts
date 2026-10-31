@@ -310,6 +310,115 @@ describe('ElevenLabsCall', () => {
     expect(onEnded).toHaveBeenCalledWith('error', { type: 'voice_error', message: MISMATCH_MESSAGE });
   });
 
+  // What the call relays as the transcript: never the SDK's own words, and a line
+  // cut short as a replacement of the line it cuts.
+
+  it("a user line that is the SDK's own budget notice is never a transcript", async () => {
+    await call.start();
+    conv().opts.onMessage({ message: 'NOTICE', role: 'user' });
+    expect(onTranscript).not.toHaveBeenCalled();
+    conv().opts.onMessage({ message: ' NOTICE ', role: 'user' }); // the library may pad what it echoes
+    expect(onTranscript).not.toHaveBeenCalled();
+    conv().opts.onMessage({ message: 'hello', role: 'user' });
+    expect(onTranscript).toHaveBeenCalledOnce();
+    expect(onTranscript).toHaveBeenCalledWith({ role: 'user', text: 'hello', final: true });
+  });
+
+  it("the notice the goodbye sends does not come back as the end-user's line", async () => {
+    await call.start();
+    FakeConversation.onSend = (c) => {
+      // The agent receives the notice as a user message, which the library reports as one.
+      c.opts.onMessage({ message: c.sent.at(-1), role: 'user' });
+      void Promise.resolve().then(() => {
+        c.opts.onModeChange({ mode: 'speaking' });
+        c.opts.onModeChange({ mode: 'listening' });
+      });
+    };
+    await call.goodbye();
+    expect(conv().sent).toEqual(['NOTICE']);
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(onEnded).toHaveBeenCalledWith('budget_exhausted');
+  });
+
+  it("the agent saying the notice is a line of the call: only a user line is the SDK's own", async () => {
+    await call.start();
+    conv().opts.onMessage({ message: 'NOTICE', role: 'agent' });
+    expect(onTranscript).toHaveBeenCalledOnce();
+    expect(onTranscript).toHaveBeenCalledWith({ role: 'bot', text: 'NOTICE', final: true });
+  });
+
+  it('drops nothing, and does not throw, when the mint has no budget notice', async () => {
+    for (const budget_notice of ['', undefined as unknown as string]) {
+      call = build({ ...EL, budget_notice });
+      await call.start();
+      onTranscript.mockClear();
+      expect(() => {
+        conv().opts.onMessage({ message: 'hello', role: 'user' });
+        conv().opts.onMessage({ message: '  ', role: 'user' }); // blank is not "the notice" when there is none
+        conv().opts.onMessage({ message: 'Hi there.', role: 'agent' });
+      }).not.toThrow();
+      expect(onTranscript.mock.calls.map(([t]) => t)).toEqual([
+        { role: 'user', text: 'hello', final: true },
+        { role: 'user', text: '  ', final: true },
+        { role: 'bot', text: 'Hi there.', final: true },
+      ]);
+      await call.stop();
+    }
+  });
+
+  it('an agent line cut short replaces the line with what was said', async () => {
+    await call.start();
+    expect(typeof conv().opts.onAgentResponseCorrection).toBe('function');
+    conv().opts.onMessage({ message: 'I can help with pricing and plans', role: 'agent' });
+    conv().opts.onAgentResponseCorrection({
+      original_agent_response: 'I can help with pricing and plans',
+      corrected_agent_response: 'I can help with',
+      event_id: 7,
+    });
+    expect(onTranscript.mock.calls.map(([t]) => t)).toEqual([
+      { role: 'bot', text: 'I can help with pricing and plans', final: true },
+      { role: 'bot', text: 'I can help with', final: true, replaces: true },
+    ]);
+  });
+
+  it('a correction that arrives as the session connects is held back like a message, and delivered in order', async () => {
+    let seen = -1;
+    onCreate = (c) =>
+      queueMicrotask(() => {
+        c.opts.onMessage({ message: 'I can help with pricing and plans', role: 'agent' });
+        c.opts.onAgentResponseCorrection({ corrected_agent_response: 'I can help with', event_id: 7 });
+        seen = onTranscript.mock.calls.length;
+      });
+    await call.start();
+    expect(seen).toBe(0); // it came before the id check, and was held
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onTranscript.mock.calls.map(([t]) => t)).toEqual([
+      { role: 'bot', text: 'I can help with pricing and plans', final: true },
+      { role: 'bot', text: 'I can help with', final: true, replaces: true },
+    ]);
+    expect(onTranscript.mock.invocationCallOrder[0]).toBeGreaterThan(onConnected.mock.invocationCallOrder[0]!);
+  });
+
+  it('a correction that arrives as a conversation other than the one minted connects is never delivered', async () => {
+    FakeConversation.nextId = 'conv_other';
+    onCreate = (c) =>
+      queueMicrotask(() => c.opts.onAgentResponseCorrection({ corrected_agent_response: 'I can help with', event_id: 7 }));
+    await call.start();
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
+  it('a correction with no text, or after the call has ended, is ignored', async () => {
+    await call.start();
+    conv().opts.onAgentResponseCorrection(undefined);
+    conv().opts.onAgentResponseCorrection({});
+    conv().opts.onAgentResponseCorrection({ corrected_agent_response: 5, event_id: 7 });
+    expect(onTranscript).not.toHaveBeenCalled();
+    await call.stop();
+    conv().opts.onAgentResponseCorrection({ corrected_agent_response: 'I can help with', event_id: 8 });
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
   it('time limit timer starts at the mint response', async () => {
     // EL.time_limit_seconds is 60; startSession resolves after 5 000 ms.
     gate = new Promise<void>((resolve) => setTimeout(resolve, 5_000));

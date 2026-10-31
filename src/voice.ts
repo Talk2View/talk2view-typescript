@@ -21,6 +21,7 @@
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
+import { stripToneCues } from './voice-fence.js';
 import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
 import type {
@@ -35,6 +36,7 @@ import type {
   VoiceSessionResponse,
   VoiceStartOptions,
   VoiceState,
+  VoiceTranscript,
 } from './types.js';
 
 // ── Voice models ──
@@ -358,6 +360,32 @@ export class T2VVoiceController {
     }
   }
 
+  /**
+   * Emit a line of the call to the `transcript` listeners: where both voice
+   * models' lines go through, so a partner's own display and the call captions
+   * read the same whichever model spoke. The agent's lines lose their tone
+   * cues first (`[sad]`, `[sighs]`), and one left with no words is not
+   * emitted, unless it replaces the agent's previous line: then the empty text
+   * is the news, that the agent was cut off before its first word and the line
+   * it was to say was never said. The end-user's words are left as they were
+   * said. A text that is not a string at all (a library breaking its own
+   * types) has no words, whoever spoke: the line is not emitted, or, replacing
+   * one, goes out empty.
+   */
+  private emitTranscript(t: VoiceTranscript): void {
+    if (typeof t.text !== 'string') {
+      if (t.replaces) this.safeEmit('transcript', { ...t, text: '' });
+      return;
+    }
+    if (t.role !== 'bot') {
+      this.safeEmit('transcript', t);
+      return;
+    }
+    const text = stripToneCues(t.text);
+    if (!text && !t.replaces) return;
+    this.safeEmit('transcript', { ...t, text });
+  }
+
   private setState(state: VoiceState): void {
     if (this._state === state) return;
     this._state = state;
@@ -617,10 +645,10 @@ export class T2VVoiceController {
           });
         },
         onUserTranscript: (d) => {
-          if (current()) this.safeEmit('transcript', { role: 'user', text: d.text, final: !!d.final });
+          if (current()) this.emitTranscript({ role: 'user', text: d.text, final: !!d.final });
         },
         onBotTranscript: (d) => {
-          if (current()) this.safeEmit('transcript', { role: 'bot', text: d.text, final: true });
+          if (current()) this.emitTranscript({ role: 'bot', text: d.text, final: true });
         },
         onTrackStarted: (track, participant) => {
           if (!current() || participant?.local || track.kind !== 'audio') return;
@@ -749,7 +777,7 @@ export class T2VVoiceController {
         this.safeEmit('callStarted', { voiceModel: 'elevenlabs', greeting: info.greeting });
       },
       onTranscript: (transcript) => {
-        if (!stale()) this.safeEmit('transcript', transcript);
+        if (!stale()) this.emitTranscript(transcript);
       },
       // The library's own words are for developers. An error about the
       // microphone ends the call with the microphone's copy, as a Gemini Live

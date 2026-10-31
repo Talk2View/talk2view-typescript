@@ -29,6 +29,7 @@ import { ApprovalCard } from '../ui/components/ApprovalCard.js';
 import { BrandWaveform } from './composer-extras.js';
 import { cn } from './lib/cn.js';
 import { useOptionalChatContext, type Talk2ViewChatFeatures } from './provider.js';
+import { appendCaption, captionText, captionsEnabled, type Caption } from './voice-captions.js';
 
 export interface VoiceButtonProps {
   /** Needed outside a chat; inside one the chat's client is used. */
@@ -43,6 +44,12 @@ export interface VoiceButtonProps {
    * Inside a chat the chat's own `systemPrompt` is used when this is not given.
    */
   systemPrompt?: string;
+  /**
+   * Call captions above the button while a call runs: what the end-user and
+   * the agent say, never stored (default true). Inside a chat, this wins over
+   * the chat's `features.callCaptions`.
+   */
+  callCaptions?: boolean;
 }
 
 /** The launcher's gate: the integrator has not turned voice off, and the partner has it on. */
@@ -125,6 +132,8 @@ const ENDED_MESSAGES: Partial<Record<VoiceEndReason, string>> = {
 const ENDED_NOTE_MS = 4000;
 /** How long the engine's note on the voice model stays up once the call is live. */
 const NOTE_MS = 6000;
+/** No captions: one list, so emptying an empty one does not re-render. */
+const NO_CAPTIONS: Caption[] = [];
 
 export const VoiceButton: FC<VoiceButtonProps> = (props) => {
   const ctx = useOptionalChatContext();
@@ -144,12 +153,14 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   label = 'Talk to Talk2View',
   earcon = true,
   systemPrompt,
+  callCaptions,
 }) => {
   const voice = client.voice;
   // Read at press time: the page the call starts on decides its instructions.
   const chat = useOptionalChatContext();
   const promptRef = useRef(systemPrompt);
   promptRef.current = systemPrompt;
+  const captionsOn = captionsEnabled(callCaptions, chat?.features);
   const [state, setState] = useState<VoiceState>(() => voice.state);
   const [error, setError] = useState<VoiceError | null>(null);
   const [approval, setApproval] = useState<VoicePendingApproval | null>(null);
@@ -161,21 +172,41 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   // What an ElevenLabs agent opens the call with; null on a Gemini Live call.
   const [greeting, setGreeting] = useState<string | null>(null);
   // Whether the end-user has spoken on this call. Until they do, the popover
-  // says "Say hello!" (or shows the agent's greeting): a Gemini Live bot does
-  // not greet, so a first-time user otherwise sits in silence not knowing the
-  // call is waiting on them.
+  // says "Say hello!" (or, with captions off, shows the agent's greeting): a
+  // Gemini Live bot does not greet, so a first-time user otherwise sits in
+  // silence not knowing the call is waiting on them.
   const [heard, setHeard] = useState(false);
+  // The call's captions, oldest first. React state only, emptied whenever the
+  // call is not live or captions are off: captions are stored nowhere.
+  const [captions, setCaptions] = useState<Caption[]>(NO_CAPTIONS);
+  // The greeting, seeded as the first caption, until the agent's first line:
+  // that line is skipped when it repeats the greeting, so it shows once.
+  const greetingEcho = useRef<string | null>(null);
+  const captionsBox = useRef<HTMLDivElement>(null);
   // Read by the listeners, so changing the prop does not re-subscribe.
   const earconRef = useRef(earcon);
   earconRef.current = earcon;
+  const captionsOnRef = useRef(captionsOn);
+  captionsOnRef.current = captionsOn;
 
   useEffect(() => {
     // A remount mid-call (StrictMode, a re-keyed parent) picks up where it is.
     setState(voice.state);
+    // A client with no live call has no captions: given one, the old call's
+    // lines and greeting go.
+    if (voice.state !== 'listening') {
+      setCaptions(NO_CAPTIONS);
+      greetingEcho.current = null;
+    }
     const offs = [
       voice.on('stateChange', (next) => {
         setState(next);
-        if (next !== 'listening') setWorking(false);
+        if (next !== 'listening') {
+          setWorking(false);
+          // No caption outlives its call, and the next call starts with none.
+          setCaptions(NO_CAPTIONS);
+          greetingEcho.current = null;
+        }
         if (next === 'connecting' || next === 'listening') {
           setError(null);
           setEndedNote(null);
@@ -194,14 +225,31 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
         setNote(null);
       }),
       voice.on('note', setNote),
-      voice.on('callStarted', (call) => setGreeting(call.greeting)),
+      voice.on('callStarted', (call) => {
+        setGreeting(call.greeting);
+        // Trimmed once, so the caption and the echo check below hold the same words.
+        const greeting = call.greeting?.trim();
+        if (captionsOnRef.current && greeting) {
+          greetingEcho.current = greeting;
+          setCaptions([{ role: 'bot', settled: greeting, live: '' }]);
+        }
+      }),
       voice.on('approvalChange', setApproval),
       voice.on('agentState', (agent) => {
         setWorking(agent === 'working');
         if (agent === 'working') setHeard(true); // it only works on something they said
       }),
       voice.on('transcript', (t) => {
-        if (t.role === 'user' && t.text.trim()) setHeard(true);
+        const words = t.text.trim();
+        if (t.role === 'user' && words) setHeard(true);
+        if (!captionsOnRef.current) return;
+        // The agent's first line with words: skipped when it is the greeting again.
+        if (t.role === 'bot' && words && greetingEcho.current !== null) {
+          const echo = words === greetingEcho.current;
+          greetingEcho.current = null;
+          if (echo) return;
+        }
+        setCaptions((list) => appendCaption(list, t));
       }),
       voice.on('ended', (reason) => setEndedNote(ENDED_MESSAGES[reason] ?? null)),
     ];
@@ -232,6 +280,20 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
     return () => clearTimeout(timer);
   }, [note, state]);
 
+  // Turned off mid-call, captions let go of what they held, so turned on again
+  // they start afresh rather than show the lines from before with a hole.
+  useEffect(() => {
+    if (captionsOn) return;
+    setCaptions(NO_CAPTIONS);
+    greetingEcho.current = null;
+  }, [captionsOn]);
+
+  // The newest caption in view.
+  useEffect(() => {
+    const box = captionsBox.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [captions, captionsOn]);
+
   const on = state === 'connecting' || state === 'listening';
   // While a voice call is on: an anonymous user has an account to make first,
   // and a signed-out visitor has none, so only a signed-in end-user is sent to
@@ -252,20 +314,24 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
 
   const preload = useCallback(() => voice.preload(), [voice]);
 
+  // With captions on, the greeting is the first caption, so the status says the
+  // call is listening instead of repeating it.
+  const greeted = captionsOn && !!greeting;
   // The call is live and waiting on the end-user to speak first.
-  const waiting = state === 'listening' && !working && !heard;
+  const waiting = state === 'listening' && !working && !heard && !greeted;
   const status =
     state === 'connecting'
       ? 'Connecting…'
       : state === 'listening'
         ? working
           ? 'Working…'
-          : heard
+          : heard || greeted
             ? 'Listening'
             : greeting || 'Say hello!'
         : state === 'ended' && !error
           ? endedNote
           : null;
+  const showCaptions = captionsOn && captions.length > 0;
 
   const icon: ReactNode =
     state === 'connecting' ? (
@@ -280,7 +346,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
 
   return (
     <div className={cn('t2v-voice', standalone && 't2v-chat', className)} data-on={on ? '' : undefined}>
-      {error || approval || status || note ? (
+      {error || approval || status || note || showCaptions ? (
         <div className="t2v-voice-popover">
           {error ? (
             <div role="alert" className="t2v-voice-error">
@@ -326,6 +392,17 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
               data-greeting={waiting && greeting ? '' : undefined}
             >
               {status}
+            </div>
+          ) : null}
+          {showCaptions ? (
+            // Neither a live region nor hidden: the call speaks each line, so
+            // a screen reader is not sent them as they come, but can read them.
+            <div ref={captionsBox} className="t2v-voice-captions">
+              {captions.map((caption, i) => (
+                <p key={i} className="t2v-voice-caption" data-role={caption.role}>
+                  {captionText(caption)}
+                </p>
+              ))}
             </div>
           ) : null}
           {showChangeVoice ? (
