@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **On a phone, the launcher's voice messages stay on the screen.** The call captions above the launcher's voice button ran off the left edge of a phone's screen, cutting off the start of every line, and so did the longer messages there: the engine's note on the voice model, an error, an approval. They were sized for a button 1rem from the screen's edge, but the launcher's sits 5.5rem in, beside the mark. They now keep a 1rem margin from the edge. Wider screens, and a standalone `<VoiceButton>`, are unchanged.
+
 ## [0.24.0] - 2026-11-01
 
 ### Added

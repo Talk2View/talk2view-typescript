@@ -376,6 +376,11 @@
 }
 .t2v-voice {
   margin-inline-end: 0.5rem;
+  /* How far the button's inline end sits from the viewport's: the anchor's 1rem
+     inset, the 4rem mark (with no label, as on a phone) and this 0.5rem gap.
+     The popover over the button sizes itself from it, and from 1rem when the
+     button stands alone. */
+  --t2v-voice-end: 5.5rem;
 }
 :root.t2v-voice {
   display: inline-flex;
@@ -441,7 +446,7 @@
   align-items: flex-end;
   gap: 0.5rem;
   width: max-content;
-  max-width: min(20rem, calc(100vw - 2rem));
+  max-width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
   font-size: 0.8125rem;
   line-height: 1.4;
 }
@@ -494,7 +499,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  width: min(20rem, calc(100vw - 2rem));
+  width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
   max-height: min(9.5rem, 30vh);
   overflow-y: auto;
   padding: 0.375rem 0.75rem;
