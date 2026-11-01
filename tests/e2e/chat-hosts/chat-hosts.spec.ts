@@ -471,6 +471,114 @@ test.describe('the launcher in the host page', () => {
   });
 });
 
+// ── The voice popover above the launcher's voice button ─────────────────────
+
+/** `t2v.voice`'s private emitter, as the page's own client holds it. */
+type VoiceEmitter = {
+  emit: (event: string, payload: unknown) => void;
+  listeners: Map<string, Set<unknown>>;
+};
+type PageWithClient = { __t2v: { voice: { emitter: VoiceEmitter } } };
+
+test.describe('the voice popover above the launcher', () => {
+  /**
+   * The launcher draws its voice button only when the partner has voice on,
+   * which the stock config mock does not say. A route registered later answers
+   * first, so this one wins over mockAllApiRoutes' own.
+   */
+  async function openWithVoice(page: Page, width: number) {
+    await page.setViewportSize({ width, height: 800 });
+    await mockAllApiRoutes(page);
+    await page.route('**/v1/config', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          default_llm_model: 'gpt-4o',
+          default_stt_model: null,
+          system_prompt: null,
+          voice_agent_enabled: true,
+        }),
+      }),
+    );
+    await page.goto('/clean--launcher.html', { waitUntil: 'load' });
+    await expect(page.locator('.aui-modal-anchor .t2v-voice-button')).toBeVisible();
+  }
+
+  /**
+   * The first seconds of a call, with no call: the events the voice controller
+   * forwards, sent on the page's own `t2v.voice` (mount.jsx puts the client on
+   * `window.__t2v`). The button renders its popover from them, so what is
+   * measured is the SDK's own markup under the SDK's own stylesheet. The
+   * emitter is private; tests/chat/tool-fallback.test.tsx reaches the client's
+   * the same way.
+   */
+  async function startACall(page: Page) {
+    // The button subscribes in an effect, a beat after it paints: wait for it
+    // rather than send into the void.
+    await page.waitForFunction(
+      () => !!(window as unknown as PageWithClient).__t2v.voice.emitter.listeners.get('transcript')?.size,
+    );
+    await page.evaluate(() => {
+      const { emitter } = (window as unknown as PageWithClient).__t2v.voice;
+      // The engine's note on the voice model is wider than a phone leaves the
+      // popover, so the popover's own width cap is what holds it.
+      emitter.emit('note', 'Using Gemini Live — this app doesn’t offer ElevenLabs.');
+      emitter.emit('stateChange', 'listening');
+      emitter.emit('transcript', { role: 'user', text: 'Can you tell me what Talk2View does?', final: true });
+      emitter.emit('transcript', {
+        role: 'bot',
+        text: 'Talk2View lets people control software by talking to it, in plain language.',
+        final: true,
+      });
+    });
+    await expect(page.locator('.t2v-voice-note')).toBeVisible();
+    await expect(page.locator('.t2v-voice-captions .t2v-voice-caption')).toHaveCount(2);
+  }
+
+  /** Where the boxes landed, in CSS pixels from the viewport's left edge. */
+  const edgesProbe = () => {
+    const box = (selector: string) => {
+      const r = document.querySelector(selector)!.getBoundingClientRect();
+      return { left: r.left, right: r.right, width: r.width };
+    };
+    return {
+      viewport: window.innerWidth,
+      button: box('.aui-modal-anchor .t2v-voice-button'),
+      popover: box('.aui-modal-anchor .t2v-voice-popover'),
+      captions: box('.aui-modal-anchor .t2v-voice-captions'),
+    };
+  };
+
+  // On a phone the launcher is a sheet, so the mark carries no label and the
+  // voice button ends 5.5rem from the screen's edge: the anchor's 1rem inset,
+  // the 4rem mark and the 0.5rem gap. A popover capped as if the button sat
+  // 1rem from the edge ran 33px off the left of a 375px screen.
+  for (const width of [375, 390]) {
+    test(`${width}px: the popover and its captions keep 1rem from both edges`, async ({ page }) => {
+      await openWithVoice(page, width);
+      await startACall(page);
+
+      const { viewport, popover, captions } = await page.evaluate(edgesProbe);
+      for (const [name, b] of [['captions box', captions], ['popover', popover]] as const) {
+        const where = `${name}: left ${b.left}, right ${b.right}, width ${b.width}, in a ${viewport}px viewport`;
+        // 1rem is 16px; the half pixel is for subpixel layout.
+        expect(b.left, where).toBeGreaterThanOrEqual(15.5);
+        expect(b.right, where).toBeLessThanOrEqual(viewport - 15.5);
+      }
+    });
+  }
+
+  test('desktop: the captions box is 320px wide and ends where the voice button does', async ({ page }) => {
+    await openWithVoice(page, 1280);
+    await startACall(page);
+
+    const { button, captions } = await page.evaluate(edgesProbe);
+    expect(captions.width).toBeCloseTo(320, 0);
+    expect(Math.abs(captions.right - button.right)).toBeLessThanOrEqual(1);
+  });
+});
+
 // ── The chat still works, not just looks right ──────────────────────────────
 
 test.describe('the chat still runs on a hostile host', () => {
