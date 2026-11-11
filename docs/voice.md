@@ -10,7 +10,8 @@ is off, `/v1/config` returns `voice_agent_enabled: false` and nothing below
 shows.
 
 A voice call runs on one of three voice models: Gemini Live, ElevenLabs or
-ElevenLabs Medical. Which one is decided for each call: see [Voice models](#voice-models).
+ElevenLabs Medical. Which one is decided for each call: see
+[Voice models](#voice-models).
 
 ## In the launcher
 
@@ -156,8 +157,8 @@ default voice model, on the Voice card of the dashboard's Settings page. Gemini
 Live is on by default. ElevenLabs and ElevenLabs Medical are off until the
 partner turns them on, and a voice model can be marked premium, so that only
 end-users on a paid tier can use it. An end-user can set a preferred voice
-model on the Voice section of their Profile page; without one, and for an anonymous user, a voice call uses the
-app's default voice model. The engine decides when each call starts, so a
+model on the Voice section of their Profile page; without one, and for an
+anonymous user, a voice call uses the app's default voice model. The engine decides when each call starts, so a
 changed preference applies from the next call.
 
 **Change voice.** `VOICE_PREFERENCE_URL` is that Profile section:
@@ -205,13 +206,15 @@ shows the same words.
 
 **Ending a call.** All three voice models end a call with the same `ended`
 reasons and report the same `error` types, so code written for one runs against
-the others. A call that reaches the 15-minute cap ends as `session_cap` on either.
+the others. A call that reaches the 15-minute cap ends as `session_cap` on any
+of them.
 When the end-user's budget runs out mid-call, the agent says so and the call
 ends as `budget_exhausted`, with an `insufficient_credit` error.
 
 **SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer, and
-ElevenLabs Medical 0.25.0 or newer. Older SDKs ask only for Gemini Live, so they always get it, whatever the preferred or the
-default voice model; where an app does not offer Gemini Live they show "Voice
+ElevenLabs Medical 0.25.0 or newer. An SDK older than 0.23.0 asks only for
+Gemini Live, so it always gets it, whatever the preferred or the default voice
+model; an SDK older than 0.25.0 never gets ElevenLabs Medical; where an app does not offer Gemini Live they show "Voice
 isn’t available right now."
 
 ## Browser requirements
