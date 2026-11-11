@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-11
+
 ### Added
 
 - **ElevenLabs Medical.** A third voice model, `elevenlabs-medical`, that understands medical terms and answers in a doctor's voice. It runs on the same connection as Gemini Live. Partners turn it on from the Voice card; `callStarted` reports `voiceModel: 'elevenlabs-medical'`. Apps on 0.24.1 and older keep their current voice models.
