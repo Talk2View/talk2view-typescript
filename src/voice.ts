@@ -42,7 +42,7 @@ import type {
 // ── Voice models ──
 
 /** The voice models this SDK can run, as it asks the engine for them. */
-export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live', 'elevenlabs'];
+export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live', 'elevenlabs', 'elevenlabs-medical'];
 
 /** What the end-user is told when no voice model this app allows can take the call. */
 export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
@@ -56,7 +56,11 @@ export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
 const MAX_LANGUAGE_LENGTH = 35;
 
 /** Each voice model's name, as the notes say it. */
-export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = { 'gemini-live': 'Gemini Live', elevenlabs: 'ElevenLabs' };
+export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = {
+  'gemini-live': 'Gemini Live',
+  elevenlabs: 'ElevenLabs',
+  'elevenlabs-medical': 'ElevenLabs Medical',
+};
 
 /** The note when a voice model couldn't connect and another took the call: the engine's text. */
 export const NOTE_COULD_NOT_CONNECT = 'Using {fallback} — {wanted} couldn’t connect.';
@@ -472,7 +476,9 @@ export class T2VVoiceController {
       // The client is built before the mint so the microphone can open while
       // (or before) the call is minted; a Gemini Live call's ICE servers come
       // with the mint.
-      const first = this.buildPipecat(libs, stale);
+      // The voice model of the call this client connects, set once the mint is known.
+      let pipecatModel: VoiceModelId = 'gemini-live';
+      const first = this.buildPipecat(libs, stale, () => pipecatModel);
       let { pipecat, transport } = first;
       client = pipecat;
       this.client = pipecat;
@@ -561,11 +567,12 @@ export class T2VVoiceController {
         const retry = await this.fallBackToGeminiLive(elevenlabs.conversation_id, options, stale);
         if (!retry || stale()) return;
         mint = retry;
-        ({ pipecat, transport } = this.buildPipecat(libs, stale));
+        ({ pipecat, transport } = this.buildPipecat(libs, stale, () => pipecatModel));
         client = pipecat;
         this.client = pipecat;
       }
-      // A Gemini Live call: the mint carries its ticket, offer URL and ICE servers.
+      // A Pipecat call (Gemini Live or ElevenLabs Medical): the mint carries its ticket, offer URL and ICE servers.
+      pipecatModel = mint.voice_model ?? 'gemini-live';
       transport.iceServers = iceServersOf(mint);
       connecting = true;
       connectCall = this.connectGemini(pipecat, mint, token);
@@ -598,7 +605,8 @@ export class T2VVoiceController {
 
   /**
    * A Pipecat client for a Gemini Live call, its callbacks bound to the
-   * start that built it (`stale`). They do nothing once the client is no
+   * start that built it (`stale`); `voiceModel` names the model it reports in
+   * `callStarted`. They do nothing once the client is no
    * longer the controller's: an ElevenLabs call took over, or the call
    * ended. A refused first offer (503 at capacity, 502) is retried by the
    * transport for several seconds; the ticket cannot succeed on a retry, so
@@ -608,6 +616,7 @@ export class T2VVoiceController {
   private buildPipecat(
     libs: VoiceLibs,
     stale: () => boolean,
+    voiceModel: () => VoiceModelId,
   ): { pipecat: PipecatClientLike; transport: { iceServers: RTCIceServer[] } } {
     const transport = new libs.SmallWebRTCTransport({ iceServers: [] });
     // `maxReconnectionAttempts` is a public field of the pinned 1.10.8
@@ -630,7 +639,7 @@ export class T2VVoiceController {
           }
           if (typeof retries === 'number') retry.maxReconnectionAttempts = retries;
           this.setState('listening');
-          this.safeEmit('callStarted', { voiceModel: 'gemini-live', greeting: null });
+          this.safeEmit('callStarted', { voiceModel: voiceModel(), greeting: null });
         },
         onDisconnected: () => {
           if (current()) void this.finish('disconnected');
@@ -830,7 +839,8 @@ export class T2VVoiceController {
     this.keepEndReport(report);
     await report;
     if (stale()) return null;
-    const mint = await this.mintVoice(options, ['elevenlabs']);
+    // Both ElevenLabs ids: the same vendor is down, so medical would likely fail too.
+    const mint = await this.mintVoice(options, ['elevenlabs', 'elevenlabs-medical']);
     if (stale()) return null;
     this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
     return mint;
