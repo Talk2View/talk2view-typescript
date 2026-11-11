@@ -212,10 +212,10 @@ When the end-user's budget runs out mid-call, the agent says so and the call
 ends as `budget_exhausted`, with an `insufficient_credit` error.
 
 **SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer, and
-ElevenLabs Medical 0.25.0 or newer. An SDK older than 0.23.0 asks only for
-Gemini Live, so it always gets it, whatever the preferred or the default voice
-model; an SDK older than 0.25.0 never gets ElevenLabs Medical; where an app does not offer Gemini Live they show "Voice
-isn’t available right now."
+ElevenLabs Medical 0.25.0 or newer. An older SDK never gets a voice model it
+doesn't know, whatever the preferred or the default voice model. An SDK older
+than 0.23.0 asks only for Gemini Live; where the app doesn't offer Gemini Live,
+it shows "Voice isn’t available right now."
 
 ## Browser requirements
 
