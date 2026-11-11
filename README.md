@@ -68,8 +68,8 @@ pass `fontFamily`. Voice is the exception; see
 **Voice.** For partners with the realtime voice agent enabled, the launcher
 shows a microphone beside the mark: press to talk, press again to hang up. The
 agent uses the same tools, permissions and approval card as the chat. A voice
-call runs on the voice model the end-user and the partner chose, Gemini Live or
-ElevenLabs. While it runs,
+call runs on the voice model the end-user and the partner chose, Gemini Live,
+ElevenLabs or ElevenLabs Medical. While it runs,
 [call captions](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/voice.md#call-captions)
 show what both sides say above the button, stored nowhere and cleared when the
 call ends; `features={{ callCaptions: false }}` turns them off. Standalone it is
@@ -223,7 +223,7 @@ you set another.
 | `/react`, `/assistant-ui` | The engine only. |
 | `/chat` | The engine only: no fonts, no CDN, no images (an image in a reply becomes a link). Previews of the files an end-user attaches are `blob:` URLs, so a strict `img-src` needs `blob:`. |
 | `/ui` (deprecated) | The engine, the IBM Plex fonts from Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) and the Talk2View logo from `db.talk2view.com`. Code highlighting compiles WebAssembly, which a strict CSP allows with `'wasm-unsafe-eval'`. |
-| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and on every call, whichever the voice model, Daily's call engine from `https://c.daily.co`, which runs through `Function()` and starts an audio worklet. Gemini Live adds nothing. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` only (with a token the engine mints, the client never contacts `api.elevenlabs.io`), and one audio worklet from a `blob:` URL that the call works without. |
+| Voice: `t2v.voice`, `<VoiceButton>`, the launcher's microphone | The engine, and on every call, whichever the voice model, Daily's call engine from `https://c.daily.co`, which runs through `Function()` and starts an audio worklet. Gemini Live adds nothing, and neither does ElevenLabs Medical, which runs over the same connection as Gemini Live and contacts no ElevenLabs host from the browser. ElevenLabs adds `wss://livekit.rtc.elevenlabs.io` and `https://livekit.rtc.elevenlabs.io` only (with a token the engine mints, the client never contacts `api.elevenlabs.io`), and one audio worklet from a `blob:` URL that the call works without. |
 
 So every voice call needs `https://c.daily.co` in `connect-src`, and
 `'unsafe-eval'` and `blob:` in `script-src`, an ElevenLabs call included: the

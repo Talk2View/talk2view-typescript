@@ -142,16 +142,17 @@ a call as `'stopped'`, with no error.
 
 ## Voice models
 
-A voice call runs on one of two voice models:
+A voice call runs on one of three voice models:
 
 | Voice model | Id | |
 |---|---|---|
 | Gemini Live | `gemini-live` | Google's realtime voice. |
 | ElevenLabs | `elevenlabs` | The most natural-sounding voice. It uses more credits per minute. |
+| ElevenLabs Medical | `elevenlabs-medical` | Understands medical terms; a doctor's voice. |
 
 **Who chooses.** The partner chooses which voice models the app offers, and its
 default voice model, on the Voice card of the dashboard's Settings page. Gemini
-Live is on by default. ElevenLabs is off until the partner turns it on, and a
+Live is on by default. ElevenLabs and ElevenLabs Medical are off until the partner turns them on, and a
 voice model can be marked premium, so that only end-users on a paid tier can use
 it. An end-user can set a preferred voice model on the Voice section of their
 Profile page; without one, and for an anonymous user, a voice call uses the
@@ -173,7 +174,7 @@ to it wherever suits you.
 
 ```ts
 t2v.voice.on('note', (text) => { /* "Using Gemini Live — ElevenLabs couldn’t connect." */ });
-t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* 'gemini-live' | 'elevenlabs' */ });
+t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* 'gemini-live' | 'elevenlabs' | 'elevenlabs-medical' */ });
 ```
 
 - `note` is the engine's word when the voice call is not running on the voice
