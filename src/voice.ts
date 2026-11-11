@@ -839,6 +839,7 @@ export class T2VVoiceController {
     this.keepEndReport(report);
     await report;
     if (stale()) return null;
+    // Both ElevenLabs ids: the same vendor is down, so medical would likely fail too.
     const mint = await this.mintVoice(options, ['elevenlabs', 'elevenlabs-medical']);
     if (stale()) return null;
     this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));

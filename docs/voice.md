@@ -9,8 +9,8 @@ Voice is off until you turn it on in the dashboard's Settings → Voice. While i
 is off, `/v1/config` returns `voice_agent_enabled: false` and nothing below
 shows.
 
-A voice call runs on one of two voice models, Gemini Live or ElevenLabs. Which
-one is decided for each call: see [Voice models](#voice-models).
+A voice call runs on one of three voice models: Gemini Live, ElevenLabs or
+ElevenLabs Medical. Which one is decided for each call: see [Voice models](#voice-models).
 
 ## In the launcher
 
@@ -33,7 +33,7 @@ right now. Try again shortly." When a tool call needs the end-user's go-ahead
 or approval, its card appears in the same place.
 
 While the call runs, call captions show what the end-user and the agent say,
-under the note and newest at the bottom, on both voice models. They are on by
+under the note and newest at the bottom, on all three voice models. They are on by
 default and are cleared when the call ends. To turn them off:
 
 ```tsx
@@ -74,8 +74,9 @@ panel above the voice button while the call runs: the agent's, and the
 end-user's in a quieter colour, newest at the bottom. Past a few lines the
 older ones scroll away, and the panel stays clear of the button.
 
-- **Both voice models.** On a Gemini Live call the end-user's words show as
-  they speak them. On an ElevenLabs call they show a line at a time, and the
+- **All three voice models.** On a Gemini Live call, and on an ElevenLabs
+  Medical call, which runs over the same connection, the end-user's words show
+  as they speak them. On an ElevenLabs call they show a line at a time, and the
   agent's greeting is the first caption, so the note above says "Listening"
   instead of repeating it. When the end-user cuts an ElevenLabs agent short,
   its caption keeps only the words the agent said.
@@ -152,10 +153,10 @@ A voice call runs on one of three voice models:
 
 **Who chooses.** The partner chooses which voice models the app offers, and its
 default voice model, on the Voice card of the dashboard's Settings page. Gemini
-Live is on by default. ElevenLabs and ElevenLabs Medical are off until the partner turns them on, and a
-voice model can be marked premium, so that only end-users on a paid tier can use
-it. An end-user can set a preferred voice model on the Voice section of their
-Profile page; without one, and for an anonymous user, a voice call uses the
+Live is on by default. ElevenLabs and ElevenLabs Medical are off until the
+partner turns them on, and a voice model can be marked premium, so that only
+end-users on a paid tier can use it. An end-user can set a preferred voice
+model on the Voice section of their Profile page; without one, and for an anonymous user, a voice call uses the
 app's default voice model. The engine decides when each call starts, so a
 changed preference applies from the next call.
 
@@ -202,14 +203,14 @@ ElevenLabs couldn’t connect." If the app offers no other voice model,
 The error's message is "Voice isn’t available right now.", and `<VoiceButton>`
 shows the same words.
 
-**Ending a call.** Both voice models end a call with the same `ended` reasons
-and report the same `error` types, so code written for one runs against the
-other. A call that reaches the 15-minute cap ends as `session_cap` on either.
+**Ending a call.** All three voice models end a call with the same `ended`
+reasons and report the same `error` types, so code written for one runs against
+the others. A call that reaches the 15-minute cap ends as `session_cap` on either.
 When the end-user's budget runs out mid-call, the agent says so and the call
 ends as `budget_exhausted`, with an `insufficient_credit` error.
 
-**SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer. Older SDKs
-ask only for Gemini Live, so they always get it, whatever the preferred or the
+**SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer, and
+ElevenLabs Medical 0.25.0 or newer. Older SDKs ask only for Gemini Live, so they always get it, whatever the preferred or the
 default voice model; where an app does not offer Gemini Live they show "Voice
 isn’t available right now."
 
