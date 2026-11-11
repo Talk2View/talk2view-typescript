@@ -1987,7 +1987,7 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.request.mock.calls.map((c) => [c[0], bodyOf(c[1])])).toEqual([
       ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }],
       ['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }],
-      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs-medical'] }],
+      ['/v1/voice/sessions', { voice_models: ['gemini-live'] }],
     ]);
     expect(w.request.mock.calls[1]![1]).toMatchObject({ method: 'POST', keepalive: true });
     expect(w.notes).toEqual(['Using Gemini Live — ElevenLabs couldn’t connect.']);
@@ -2007,17 +2007,13 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.errors).toEqual([]);
   });
 
-  it('names ElevenLabs Medical in the note when the engine answers a failed ElevenLabs call with it', async () => {
+  it('leaves ElevenLabs Medical out of the Gemini Live fallback, since the same vendor is down', async () => {
     const w = elWorld();
-    const medical = { ...MINT, voice_model: 'elevenlabs-medical' };
-    const base = w.request.getMockImplementation()!;
-    w.request.mockImplementation(async (endpoint: string, init?: RequestInit) =>
-      endpoint === '/v1/voice/sessions' && !bodyOf(init).voice_models?.includes('elevenlabs') ? medical : base(endpoint, init),
-    );
     w.el.control.failWith = new Error('could not establish signal connection');
     await w.voice.start();
-    expect(w.notes).toEqual(['Using ElevenLabs Medical — ElevenLabs couldn’t connect.']);
-    expect(w.started).toEqual([{ voiceModel: 'elevenlabs-medical', greeting: null }]);
+    const bodies = w.request.mock.calls.filter((c) => c[0] === '/v1/voice/sessions').map((c) => bodyOf(c[1]).voice_models);
+    expect(bodies).toEqual([['gemini-live', 'elevenlabs', 'elevenlabs-medical'], ['gemini-live']]);
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
   });
 
   it('falls back to Gemini Live when the ElevenLabs library cannot load', async () => {

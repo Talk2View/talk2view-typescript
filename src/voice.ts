@@ -839,7 +839,7 @@ export class T2VVoiceController {
     this.keepEndReport(report);
     await report;
     if (stale()) return null;
-    const mint = await this.mintVoice(options, ['elevenlabs']);
+    const mint = await this.mintVoice(options, ['elevenlabs', 'elevenlabs-medical']);
     if (stale()) return null;
     this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
     return mint;
