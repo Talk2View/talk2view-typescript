@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-12
+
 ### Changed
 
 - **The call panel shows its status at the bottom, with the voice model.** What the call is doing ("Listening", "Working…") moved from above the captions to a footer row under them, beside the button. The same row names the voice model the call runs on, as `callStarted` reports it, and the "Change voice" link is now "Change" beside that name. The captions and the footer are one card. Styles that targeted `.t2v-voice-status` or `.t2v-voice-change` as separate pills need a look: both now sit inside `.t2v-voice-footer`.
