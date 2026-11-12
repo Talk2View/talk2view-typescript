@@ -6,6 +6,7 @@ import {
   PARTNER_PROMPT_END,
   TONE_CUE,
   formatCapabilities,
+  stripSpeechMarkers,
   stripToneCues,
   unfence,
 } from '../../src/voice-fence.js';
@@ -125,5 +126,36 @@ describe('tone cues', () => {
       expect(stripToneCues('Hi [sighs] there [laughs]')).toBe('Hi there');
       expect(TONE_CUE.lastIndex).toBe(0);
     }
+  });
+});
+
+describe('speech markers', () => {
+  it('removes a marker a speech model writes for a sound that is not a word', () => {
+    expect(stripSpeechMarkers('<noise> open the first study')).toBe('open the first study');
+    expect(stripSpeechMarkers('open {pause} the first study')).toBe('open the first study');
+    expect(stripSpeechMarkers('Listo <no_speech>.')).toBe('Listo.');
+    expect(stripSpeechMarkers('ok <background noise> {long-pause} then')).toBe('ok then');
+  });
+
+  it('gives back nothing for a line that was only markers', () => {
+    expect(stripSpeechMarkers('<nospeech>')).toBe('');
+    expect(stripSpeechMarkers(' {pause} <noise> ')).toBe('');
+  });
+
+  it('leaves every other line exactly as it was', () => {
+    for (const line of [
+      'Bonjour ! Comment puis-je vous aider ?',
+      'window 40 < level 400 and 3 > 2',
+      'see <https://talk2view.com> or {1, 2}',
+      '[sad] me',
+    ]) {
+      expect(stripSpeechMarkers(line)).toBe(line);
+    }
+  });
+
+  it('stays fast on a long run of spaces', () => {
+    const started = performance.now();
+    stripSpeechMarkers(' '.repeat(100_000) + '<noise>');
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });

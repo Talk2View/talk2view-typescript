@@ -21,7 +21,7 @@
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
-import { stripToneCues } from './voice-fence.js';
+import { stripSpeechMarkers, stripToneCues } from './voice-fence.js';
 import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
 import type {
@@ -367,11 +367,13 @@ export class T2VVoiceController {
   /**
    * Emit a line of the call to the `transcript` listeners: where both voice
    * models' lines go through, so a partner's own display and the call captions
-   * read the same whichever model spoke. The agent's lines lose their tone
-   * cues first (`[sad]`, `[sighs]`), and one left with no words is not
-   * emitted, unless it replaces the agent's previous line: then the empty text
-   * is the news, that the agent was cut off before its first word and the line
-   * it was to say was never said. The end-user's words are left as they were
+   * read the same whichever model spoke. Either side's lines lose the markers
+   * a speech model writes for a sound that is not a word (`<noise>`,
+   * `{pause}`), and the agent's lines lose their tone cues too (`[sad]`,
+   * `[sighs]`). A line left with no words is not emitted, unless it replaces
+   * the agent's previous line: then the empty text is the news, that the agent
+   * was cut off before its first word and the line it was to say was never
+   * said. Apart from the markers, the end-user's words are left as they were
    * said. A text that is not a string at all (a library breaking its own
    * types) has no words, whoever spoke: the line is not emitted, or, replacing
    * one, goes out empty.
@@ -381,13 +383,10 @@ export class T2VVoiceController {
       if (t.replaces) this.safeEmit('transcript', { ...t, text: '' });
       return;
     }
-    if (t.role !== 'bot') {
-      this.safeEmit('transcript', t);
-      return;
-    }
-    const text = stripToneCues(t.text);
+    const spoken = stripSpeechMarkers(t.text);
+    const text = t.role === 'bot' ? stripToneCues(spoken) : spoken;
     if (!text && !t.replaces) return;
-    this.safeEmit('transcript', { ...t, text });
+    this.safeEmit('transcript', text === t.text ? t : { ...t, text });
   }
 
   private setState(state: VoiceState): void {
