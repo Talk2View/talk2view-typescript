@@ -1899,6 +1899,24 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     ]);
   });
 
+  it("hides non-speech markers on both sides of a call, and drops a line that was only a marker", async () => {
+    const gemini = world();
+    const lines: unknown[] = [];
+    gemini.voice.on('transcript', (t) => lines.push(t));
+    await gemini.voice.start();
+    const { onBotTranscript, onUserTranscript } = gemini.client().callbacks;
+    onUserTranscript!({ text: '<noise>', final: true });
+    onUserTranscript!({ text: '<noise> open the', final: false });
+    onUserTranscript!({ text: 'open the {pause} first study', final: true });
+    onBotTranscript!({ text: '[sighs] {pause}' });
+    onBotTranscript!({ text: 'Opening it <nospeech> now.' });
+    expect(lines).toEqual([
+      { role: 'user', text: 'open the', final: false },
+      { role: 'user', text: 'open the first study', final: true },
+      { role: 'bot', text: 'Opening it now.', final: true },
+    ]);
+  });
+
   it('a line cut short reaches the transcript listeners as a replacement, its tone cues stripped too', async () => {
     const w = elWorld();
     const lines: unknown[] = [];

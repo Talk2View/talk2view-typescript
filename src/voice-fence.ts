@@ -12,8 +12,8 @@
  * `format_capabilities` gives `""`, because the dynamic variable needs a
  * value and the agent's placeholder is `(none)`.
  *
- * It also holds {@link stripToneCues}, which cleans the agent's lines on
- * either voice model before the SDK emits them.
+ * It also holds {@link stripToneCues} and {@link stripSpeechMarkers}, which
+ * clean a call's lines on either voice model before the SDK emits them.
  */
 
 import type { VoiceCapability } from './types.js';
@@ -91,10 +91,39 @@ const PUNCTUATION = /[,.;:!?]/;
  * spacing survives elsewhere in a line that did hold a cue too.
  */
 export function stripToneCues(text: string): string {
-  const stripped = text.replace(CUE_RUN, (run: string, before: string, offset: number) => {
+  return stripRuns(text, CUE_RUN);
+}
+
+/**
+ * A speech marker: what a speech model writes for a sound that is not a word,
+ * such as `<noise>`, `<nospeech>`, `<no_speech>` or `{pause}`. A word or short
+ * phrase of letters (one to three words, joined by a space, a hyphen or an
+ * underscore) in angle brackets or braces, and nothing else in them:
+ * `<https://…>`, `{1, 2}` and a bare `<` or `>` stay. These are lines of
+ * speech, so a word in angle brackets is never markup.
+ *
+ * Global, so used only through `replace`, as {@link TONE_CUE} is.
+ */
+export const SPEECH_MARKER = /<[A-Za-z]+(?:[ _-][A-Za-z]+){0,2}>|\{[A-Za-z]+(?:[ _-][A-Za-z]+){0,2}\}/g;
+
+/** A run of adjacent markers with the whitespace around it, anchored as {@link CUE_RUN} is. */
+const MARKER_RUN = new RegExp(`(^|\\S)\\s*(?:(?:${SPEECH_MARKER.source})\\s*)+`, 'g');
+
+/**
+ * `text` without its speech markers ({@link SPEECH_MARKER}), cleaned up as
+ * {@link stripToneCues} cleans up after a cue. A line that was only markers
+ * comes back empty, and text with none comes back as the same string.
+ */
+export function stripSpeechMarkers(text: string): string {
+  return stripRuns(text, MARKER_RUN);
+}
+
+/** `text` without the runs `pattern` matches; group 1 of a match is the character before the run. */
+function stripRuns(text: string, pattern: RegExp): string {
+  const stripped = text.replace(pattern, (run: string, before: string, offset: number) => {
     // A space, or nothing in front of punctuation. At the ends of the line the space goes with the trim below.
     return before + (PUNCTUATION.test(text.charAt(offset + run.length)) ? '' : ' ');
   });
-  // A cue is three characters or more and what replaces it is shorter, so equal means there was none.
+  // A run is three characters or more and what replaces it is shorter, so equal means there was none.
   return stripped === text ? text : stripped.trim();
 }

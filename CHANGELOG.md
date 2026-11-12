@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Call captions no longer show speech markers.** A speech model sometimes writes a marker for a sound that is not a word, such as `<noise>`, `<nospeech>` or `{pause}`. The SDK now removes these from both sides' `transcript` lines on every voice model, and a line that was only a marker is not emitted.
+
 ## [0.25.0] - 2026-11-11
 
 ### Added
