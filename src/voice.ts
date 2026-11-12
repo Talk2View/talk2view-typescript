@@ -21,6 +21,7 @@
 
 import { TypedEventEmitter } from './event-emitter.js';
 import { VoiceStartError } from './voice-error.js';
+import { VOICE_MODEL_NAMES } from './constants.js';
 import { stripSpeechMarkers, stripToneCues } from './voice-fence.js';
 import type { T2VSession } from './sessions.js';
 import type { T2VTools } from './tools.js';
@@ -55,12 +56,7 @@ export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
  */
 const MAX_LANGUAGE_LENGTH = 35;
 
-/** Each voice model's name, as the notes say it. */
-export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = {
-  'gemini-live': 'Gemini Live',
-  elevenlabs: 'ElevenLabs',
-  'elevenlabs-medical': 'ElevenLabs Medical',
-};
+export { VOICE_MODEL_NAMES };
 
 /** The note when a voice model couldn't connect and another took the call: the engine's text. */
 export const NOTE_COULD_NOT_CONNECT = 'Using {fallback} — {wanted} couldn’t connect.';

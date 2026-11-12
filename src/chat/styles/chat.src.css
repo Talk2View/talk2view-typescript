@@ -435,8 +435,8 @@
   }
 }
 
-/* What the call is doing, any error, an approval, the engine's note on the
-   voice model and the call captions, stacked above the tile. */
+/* Any error, an approval, the engine's note on the voice model, and the call
+   panel (captions, then what the call is doing), stacked above the tile. */
 .t2v-voice-popover {
   position: absolute;
   inset-block-end: calc(100% + 0.75rem);
@@ -450,19 +450,43 @@
   font-size: 0.8125rem;
   line-height: 1.4;
 }
-.t2v-voice-status,
+.t2v-voice-panel,
 .t2v-voice-error,
-.t2v-voice-note,
-.t2v-voice-change,
-.t2v-voice-captions {
+.t2v-voice-note {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background-color: var(--popover);
   color: var(--popover-foreground);
   box-shadow: 0 6px 20px -8px rgb(2 28 37 / 0.35);
 }
-.t2v-voice-status {
+/* The call panel: one card. The captions, when there are any, then a footer
+   next to the tile: what the call is doing on one side, the voice model it
+   runs on and the link to change it on the other. */
+.t2v-voice-panel {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+/* With captions the card is one width whatever the lines, so it does not jump
+   as they come. */
+.t2v-voice-panel[data-captions] {
+  width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
+}
+.t2v-voice-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 1rem;
+  row-gap: 0.125rem;
   padding: 0.375rem 0.75rem;
+}
+.t2v-voice-captions + .t2v-voice-footer {
+  border-block-start: 1px solid var(--border);
+}
+.t2v-voice-status {
   font-weight: 500;
   white-space: nowrap;
 }
@@ -476,11 +500,19 @@
 .t2v-voice-note {
   padding: 0.375rem 0.75rem;
 }
-/* "Change voice": a quiet link to the end-user's Profile, under the status. */
-.t2v-voice-change {
-  padding: 0.25rem 0.625rem;
+/* The voice model's name and "Change": quiet, at the footer's far end. */
+.t2v-voice-voice {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-inline-start: auto;
   font-size: 0.75rem;
   color: var(--muted-foreground);
+  white-space: nowrap;
+}
+/* A link to the end-user's Profile, where the voice is chosen. */
+.t2v-voice-change {
+  color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -491,18 +523,16 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-/* Call captions: what both sides say while the call runs, under the status,
-   newest at the bottom. One width whatever the lines, so the panel does not
-   jump as they come; past its height the box scrolls, kept at its newest
-   line, so a long call never runs the panel up the page. */
+/* Call captions: what both sides say while the call runs, newest at the
+   bottom, just above the status. Past its height the box scrolls, kept at its
+   newest line, so a long call never runs the panel up the page. */
 .t2v-voice-captions {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
   max-height: min(9.5rem, 30vh);
   overflow-y: auto;
-  padding: 0.375rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   text-align: start;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -517,9 +547,8 @@
 /* "Say hello!": the call is live and waiting on the end-user. The brand colour
    and a gentle nudge draw the eye; with reduced motion it stays still. */
 .t2v-voice-status[data-hint] {
-  border-color: transparent;
-  background-color: var(--primary);
-  color: var(--primary-foreground);
+  display: inline-block;
+  color: var(--primary);
   font-size: 0.875rem;
   font-weight: 600;
   animation: t2v-voice-hint 1.6s ease-in-out infinite;

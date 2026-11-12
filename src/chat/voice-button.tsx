@@ -21,10 +21,11 @@ import type {
   PartnerConfig,
   VoiceEndReason,
   VoiceError,
+  VoiceModelId,
   VoicePendingApproval,
   VoiceState,
 } from '../types.js';
-import { VOICE_PREFERENCE_URL } from '../constants.js';
+import { VOICE_MODEL_NAMES, VOICE_PREFERENCE_URL } from '../constants.js';
 import { ApprovalCard } from '../ui/components/ApprovalCard.js';
 import { BrandWaveform } from './composer-extras.js';
 import { cn } from './lib/cn.js';
@@ -171,6 +172,9 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
   const [note, setNote] = useState<string | null>(null);
   // What an ElevenLabs agent opens the call with; null on a Gemini Live call.
   const [greeting, setGreeting] = useState<string | null>(null);
+  // The voice model this call runs on, as the call reports it: not the saved
+  // preference, which a fallback can differ from. Null until the call starts.
+  const [model, setModel] = useState<VoiceModelId | null>(null);
   // Whether the end-user has spoken on this call. Until they do, the popover
   // says "Say hello!" (or, with captions off, shows the agent's greeting): a
   // Gemini Live bot does not greet, so a first-time user otherwise sits in
@@ -215,6 +219,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           setHeard(false);
           setGreeting(null);
         }
+        if (next !== 'listening') setModel(null);
         if (next === 'ended' || next === 'error') setNote(null);
         if (next === 'listening' && earconRef.current) playListeningEarcon();
       }),
@@ -227,6 +232,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
       voice.on('note', setNote),
       voice.on('callStarted', (call) => {
         setGreeting(call.greeting);
+        setModel(call.voiceModel);
         // Trimmed once, so the caption and the echo check below hold the same words.
         const greeting = call.greeting?.trim();
         if (captionsOnRef.current && greeting) {
@@ -332,6 +338,9 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           ? endedNote
           : null;
   const showCaptions = captionsOn && captions.length > 0;
+  const showStatus = !!status && !error;
+  const modelName = on && model ? VOICE_MODEL_NAMES[model] : null;
+  const showPanel = showCaptions || showStatus || !!modelName || showChangeVoice;
 
   const icon: ReactNode =
     state === 'connecting' ? (
@@ -346,7 +355,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
 
   return (
     <div className={cn('t2v-voice', standalone && 't2v-chat', className)} data-on={on ? '' : undefined}>
-      {error || approval || status || note || showCaptions ? (
+      {error || approval || note || showPanel ? (
         <div className="t2v-voice-popover">
           {error ? (
             <div role="alert" className="t2v-voice-error">
@@ -382,38 +391,54 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
               {note}
             </div>
           ) : null}
-          {status && !error ? (
-            <div
-              aria-hidden="true"
-              className="t2v-voice-status"
-              data-hint={waiting ? '' : undefined}
-              // A greeting is any length in any language, so unlike the short
-              // statuses it may wrap.
-              data-greeting={waiting && greeting ? '' : undefined}
-            >
-              {status}
+          {showPanel ? (
+            // One card: the captions, then a footer beside the tile with what
+            // the call is doing and the voice model it runs on.
+            <div className="t2v-voice-panel" data-captions={showCaptions ? '' : undefined}>
+              {showCaptions ? (
+                // Neither a live region nor hidden: the call speaks each line, so
+                // a screen reader is not sent them as they come, but can read them.
+                <div ref={captionsBox} className="t2v-voice-captions">
+                  {captions.map((caption, i) => (
+                    <p key={i} className="t2v-voice-caption" data-role={caption.role}>
+                      {captionText(caption)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {showStatus || modelName || showChangeVoice ? (
+                <div className="t2v-voice-footer">
+                  {showStatus ? (
+                    <span
+                      aria-hidden="true"
+                      className="t2v-voice-status"
+                      data-hint={waiting ? '' : undefined}
+                      // A greeting is any length in any language, so unlike the short
+                      // statuses it may wrap.
+                      data-greeting={waiting && greeting ? '' : undefined}
+                    >
+                      {status}
+                    </span>
+                  ) : null}
+                  {modelName || showChangeVoice ? (
+                    <span className="t2v-voice-voice">
+                      {modelName ? <span className="t2v-voice-model">{modelName}</span> : null}
+                      {showChangeVoice ? (
+                        <a
+                          className="t2v-voice-change"
+                          href={VOICE_PREFERENCE_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Change voice"
+                        >
+                          Change
+                        </a>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {showCaptions ? (
-            // Neither a live region nor hidden: the call speaks each line, so
-            // a screen reader is not sent them as they come, but can read them.
-            <div ref={captionsBox} className="t2v-voice-captions">
-              {captions.map((caption, i) => (
-                <p key={i} className="t2v-voice-caption" data-role={caption.role}>
-                  {captionText(caption)}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          {showChangeVoice ? (
-            <a
-              className="t2v-voice-change"
-              href={VOICE_PREFERENCE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Change voice
-            </a>
           ) : null}
         </div>
       ) : null}
