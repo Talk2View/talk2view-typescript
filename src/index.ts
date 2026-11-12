@@ -1243,7 +1243,7 @@ export { T2VVoice } from './voice-facade.js';
 /** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
 export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
 export { VoiceStartError } from './voice-error.js';
-export { VOICE_PREFERENCE_URL } from './constants.js';
+export { VOICE_MODEL_NAMES, VOICE_PREFERENCE_URL } from './constants.js';
 // Type-only: the controller itself stays a lazy chunk.
 export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
 export type {

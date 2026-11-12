@@ -475,9 +475,12 @@ describe('<VoiceButton>', () => {
       (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     const captions = captionsBox()!;
     expect(follows(screen.getByRole('region', { name: /delete_files/ }), captions)).toBe(true);
-    // Under the status, above "Change voice".
-    expect(follows(document.querySelector('.t2v-voice-status')!, captions)).toBe(true);
-    expect(follows(captions, screen.getByRole('link', { name: 'Change voice' }))).toBe(true);
+    // The status sits under the captions, beside the tile, in one row with "Change voice".
+    const status = document.querySelector('.t2v-voice-status')!;
+    expect(follows(captions, status)).toBe(true);
+    const footer = status.closest('.t2v-voice-footer')!;
+    expect(footer.contains(screen.getByRole('link', { name: 'Change voice' }))).toBe(true);
+    expect(captions.closest('.t2v-voice-panel')).toBe(footer.closest('.t2v-voice-panel'));
     // The call speaks each line, so none is sent to a screen reader as it
     // comes, but the lines are not hidden from one either.
     expect(captions.hasAttribute('aria-live')).toBe(false);
@@ -690,6 +693,43 @@ describe('<VoiceButton>', () => {
     });
     expect(statusText()).toBe('The call dropped.');
     expect(document.querySelector('.t2v-voice-popover')).not.toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('names the voice model the call runs on, beside the status, for the length of the call', () => {
+    const { client, emitter, setState } = fakeClient();
+    render(<VoiceButton client={client} earcon={false} />);
+    const model = () => document.querySelector('.t2v-voice-model')?.textContent ?? null;
+    act(() => setState('connecting'));
+    // Not known until the call starts.
+    expect(model()).toBeNull();
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'elevenlabs-medical', greeting: null }));
+    expect(model()).toBe('ElevenLabs Medical');
+    const footer = document.querySelector('.t2v-voice-footer')!;
+    expect(footer.contains(document.querySelector('.t2v-voice-status'))).toBe(true);
+    expect(footer.contains(document.querySelector('.t2v-voice-model'))).toBe(true);
+    // The link reads "Change" beside the name, and is still named in full.
+    expect(screen.getByRole('link', { name: 'Change voice' }).textContent).toBe('Change');
+    act(() => {
+      setState('ended');
+      emitter.emit('ended', 'disconnected');
+    });
+    expect(model()).toBeNull();
+    // The next call does not show the last call's model while it connects.
+    act(() => setState('connecting'));
+    expect(model()).toBeNull();
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
+    expect(model()).toBe('Gemini Live');
+  });
+
+  it('names the voice model for a visitor who cannot change it', () => {
+    const { client, emitter, setState } = fakeClient({ isAnonymous: () => true });
+    render(<VoiceButton client={client} earcon={false} />);
+    act(() => setState('listening'));
+    act(() => emitter.emit('callStarted', { voiceModel: 'gemini-live', greeting: null }));
+    expect(document.querySelector('.t2v-voice-model')?.textContent).toBe('Gemini Live');
     expect(screen.queryByRole('link')).toBeNull();
   });
 

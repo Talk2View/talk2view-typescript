@@ -44,9 +44,13 @@ default and are cleared when the call ends. To turn them off:
 See [Call captions](#call-captions).
 
 When the call runs on a different voice model from the one the end-user wanted,
-the engine's note says so for the first few seconds. An end-user who has signed
-in (an anonymous user has not) also sees a "Change voice" link there, which
-opens their Profile page in a new tab. See [Voice models](#voice-models).
+the engine's note says so for the first few seconds.
+
+Under the captions, beside the button, one row says what the call is doing
+("Listening", "Working…") and names the voice model the call runs on, as
+`callStarted` reports it. An end-user who has signed in (an anonymous user has
+not) also sees a "Change" link there, which opens their Profile page in a new
+tab. See [Voice models](#voice-models).
 
 ## Standalone
 
@@ -168,7 +172,7 @@ import { VOICE_PREFERENCE_URL } from '@talk2view/sdk';
 // https://dashboard.talk2view.com/enduser/profile#voice
 ```
 
-`<VoiceButton>` shows a "Change voice" link to it, opening in a new tab, for a
+`<VoiceButton>` shows a "Change" link to it beside the voice model's name, opening in a new tab, for a
 signed-in end-user and not for an anonymous user. With your own voice UI, link
 to it wherever suits you.
 
