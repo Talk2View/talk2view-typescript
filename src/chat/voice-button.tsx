@@ -394,7 +394,7 @@ const VoiceControl: FC<VoiceButtonProps & { client: Talk2View; standalone: boole
           {showPanel ? (
             // One card: the captions, then a footer beside the tile with what
             // the call is doing and the voice model it runs on.
-            <div className="t2v-voice-panel">
+            <div className="t2v-voice-panel" data-captions={showCaptions ? '' : undefined}>
               {showCaptions ? (
                 // Neither a live region nor hidden: the call speaks each line, so
                 // a screen reader is not sent them as they come, but can read them.

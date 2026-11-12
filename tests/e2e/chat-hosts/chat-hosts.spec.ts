@@ -546,7 +546,8 @@ test.describe('the voice popover above the launcher', () => {
       viewport: window.innerWidth,
       button: box('.aui-modal-anchor .t2v-voice-button'),
       popover: box('.aui-modal-anchor .t2v-voice-popover'),
-      captions: box('.aui-modal-anchor .t2v-voice-captions'),
+      // The call panel: the card that holds the captions and the status under them.
+      captions: box('.aui-modal-anchor .t2v-voice-panel'),
     };
   };
 

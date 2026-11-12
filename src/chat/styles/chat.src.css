@@ -465,8 +465,14 @@
 .t2v-voice-panel {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   max-width: 100%;
   overflow: hidden;
+}
+/* With captions the card is one width whatever the lines, so it does not jump
+   as they come. */
+.t2v-voice-panel[data-captions] {
+  width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
 }
 .t2v-voice-footer {
   display: flex;
@@ -518,15 +524,12 @@
   outline-offset: 2px;
 }
 /* Call captions: what both sides say while the call runs, newest at the
-   bottom, just above the status. One width whatever the lines, so the panel
-   does not jump as they come; past its height the box scrolls, kept at its
+   bottom, just above the status. Past its height the box scrolls, kept at its
    newest line, so a long call never runs the panel up the page. */
 .t2v-voice-captions {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  width: min(20rem, calc(100vw - var(--t2v-voice-end, 1rem) - 1rem));
-  max-width: 100%;
   max-height: min(9.5rem, 30vh);
   overflow-y: auto;
   padding: 0.5rem 0.75rem;
