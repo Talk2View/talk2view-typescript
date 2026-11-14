@@ -481,3 +481,29 @@ describe('T2VSession — turn options', () => {
     expect(Object.keys(body(client, 0))).toEqual(['messages', 'stream', 'model']);
   });
 });
+
+describe('T2VSession — reasoning effort', () => {
+  it('sends reasoning_effort next to model when the turn names one', async () => {
+    const client = createMockClient([[stopChunk()]]);
+    await collectEvents(createSession(client, createMockTools()).sendMessage('hi', { model: 'gemini-4-hydrogen', reasoningEffort: 'high' }));
+    expect(body(client, 0)).toEqual({ messages: [{ role: 'user', content: 'hi' }], stream: true, model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+  });
+
+  it('falls back to the client config pair, and never pairs a turn model with the config effort', async () => {
+    const config = { partnerKey: 'pk', model: 'gemini-4-hydrogen', reasoningEffort: 'medium' };
+    const make = (client: T2VClient) => new T2VSession({ session_id: 's', thread_id: 't', model: 'm' }, client, createMockTools(), config);
+    const fromConfig = createMockClient([[stopChunk()]]);
+    await collectEvents(make(fromConfig).sendMessage('hi'));
+    expect(body(fromConfig, 0)).toMatchObject({ model: 'gemini-4-hydrogen', reasoning_effort: 'medium' });
+    const turnModel = createMockClient([[stopChunk()]]);
+    await collectEvents(make(turnModel).sendMessage('hi', { model: 'gpt-6-sol' }));
+    expect(body(turnModel, 0).model).toBe('gpt-6-sol');
+    expect('reasoning_effort' in body(turnModel, 0)).toBe(false);
+  });
+
+  it('exposes the effort the engine reports for the session', () => {
+    const client = createMockClient([]);
+    expect(new T2VSession({ session_id: 's', thread_id: 't', model: 'm', reasoning_effort: 'high' }, client, createMockTools()).reasoningEffort).toBe('high');
+    expect(createSession(client, createMockTools()).reasoningEffort).toBeNull();
+  });
+});

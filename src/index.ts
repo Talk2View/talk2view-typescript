@@ -40,12 +40,13 @@ import { T2VClient } from './client.js';
 import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
 import { SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
 import { TypedEventEmitter } from './event-emitter.js';
+import { turnChoice } from './model-choice.js';
 import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
 import { T2VVoice } from './voice-facade.js';
-import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
+import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, CreateSessionResponse, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, ReasoningEffort, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
  * Refusals from POST /v1/auth/anonymous that only signing in — or Talk2View
@@ -149,6 +150,9 @@ export class Talk2View {
   private _alwaysAllowedTools = new Set<string>();
   private _lastUserMessage: string | null = null;
   private _lastUserAttachments: Attachment[] | null = null;
+  /** The model and effort the caller gave for the last turn (not the config fallback); Retry resends them. */
+  private _lastUserModel: string | undefined = undefined;
+  private _lastUserReasoningEffort: ReasoningEffort | undefined = undefined;
   private _messageCounter = 0;
   /**
    * Bumped whenever the conversation on screen is replaced — a switch to
@@ -260,13 +264,13 @@ export class Talk2View {
    * Create a new chat session.
    */
   async createSession(): Promise<T2VSession> {
-    const response = await this.client.request<{
-      session_id: string;
-      thread_id: string;
-      model: string;
-    }>('/v1/sessions', {
+    const reasoningEffort = this.config.reasoningEffort;
+    const response = await this.client.request<CreateSessionResponse>('/v1/sessions', {
       method: 'POST',
-      body: JSON.stringify({ model: this.config.model }),
+      body: JSON.stringify({
+        model: this.config.model,
+        ...(typeof reasoningEffort === 'string' && reasoningEffort !== '' ? { reasoning_effort: reasoningEffort } : {}),
+      }),
     });
 
     const session = new T2VSession(response, this.client, this.tools, this.config);
@@ -424,6 +428,12 @@ export class Talk2View {
     options?: {
       systemPrompt?: string;
       model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
@@ -453,6 +463,12 @@ export class Talk2View {
     options?: {
       systemPrompt?: string;
       model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
@@ -616,6 +632,12 @@ export class Talk2View {
   async completions(
     body: {
       model: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoning_effort?: ReasoningEffort;
       messages: Array<{ role: string; content: unknown }>;
       max_tokens?: number;
       temperature?: number;
@@ -752,6 +774,8 @@ export class Talk2View {
     const lastUser = [...snapshot.messages].reverse().find((m) => m.role === 'user');
     this._lastUserMessage = lastUser?.content ?? null;
     this._lastUserAttachments = lastUser?.attachments ?? null;
+    this._lastUserModel = undefined;
+    this._lastUserReasoningEffort = undefined;
     this.setAlwaysAllowed(new Set());
   }
 
@@ -823,6 +847,8 @@ export class Talk2View {
     this.setAgentStatus(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
+    this._lastUserModel = undefined;
+    this._lastUserReasoningEffort = undefined;
     this.setAlwaysAllowed(new Set());
   }
 
@@ -1102,7 +1128,17 @@ export class Talk2View {
    */
   async sendMessage(
     content: string,
-    options?: { systemPrompt?: string; model?: string; attachments?: Attachment[] },
+    options?: {
+      systemPrompt?: string;
+      model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
+      attachments?: Attachment[];
+    },
   ): Promise<void> {
     const attachments = options?.attachments;
     const userMsg: DisplayMessage = {
@@ -1114,6 +1150,8 @@ export class Talk2View {
     this.emitter.emit('messagesChange', this._messages);
     this._lastUserMessage = content;
     this._lastUserAttachments = attachments ?? null;
+    this._lastUserModel = options?.model;
+    this._lastUserReasoningEffort = options?.reasoningEffort;
     this.setLoading(true);
     this.setError(null);
 
@@ -1127,10 +1165,10 @@ export class Talk2View {
     this.debug('history →', JSON.stringify(this._conversationHistory.map((m) => ({ role: m.role, content: previewContent(m.content) }))));
 
     const systemPrompt = options?.systemPrompt;
-    const model = options?.model ?? this.config.model;
+    const { model, reasoningEffort } = turnChoice(options, this.config);
     this._streamAbort = new AbortController();
     this._stopped = false;
-    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal, attachments });
+    const stream = this.chat(content, { systemPrompt, model, reasoningEffort, history: historySnapshot, signal: this._streamAbort.signal, attachments });
     await this.drainStream(stream, assistantMsg.id, this._conversationEpoch);
   }
 
@@ -1177,7 +1215,14 @@ export class Talk2View {
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'assistant') this._conversationHistory.pop();
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'user') this._conversationHistory.pop();
     this.setError(null);
-    await this.sendMessage(content, attachments?.length ? { attachments } : undefined);
+    const model = this._lastUserModel;
+    const reasoningEffort = this._lastUserReasoningEffort;
+    const options = {
+      ...(attachments?.length ? { attachments } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    };
+    await this.sendMessage(content, Object.keys(options).length ? options : undefined);
   }
 
   /**
@@ -1194,6 +1239,8 @@ export class Talk2View {
     this.setThreadId(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
+    this._lastUserModel = undefined;
+    this._lastUserReasoningEffort = undefined;
     this._alwaysAllowedTools = new Set();
     this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
     this.clearSession();
