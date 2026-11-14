@@ -172,7 +172,20 @@ export class T2VClient {
       header('X-Request-Id') ??
       undefined;
     const retryAfter = parseRetryAfter(header('Retry-After'));
-    return errorForType(safeMessage, type, response.status, code, detail, { requestId, retryAfter });
+    // A refused model or reasoning effort names them (model_gated,
+    // reasoning_effort_not_supported); take only well-formed values.
+    const model = typeof err.model === 'string' ? err.model : undefined;
+    const reasoningEffort = typeof err.reasoning_effort === 'string' ? err.reasoning_effort : undefined;
+    const supportedReasoningEfforts = Array.isArray(err.supported)
+      ? (err.supported as unknown[]).filter((e): e is string => typeof e === 'string')
+      : undefined;
+    return errorForType(safeMessage, type, response.status, code, detail, {
+      requestId,
+      retryAfter,
+      model,
+      reasoningEffort,
+      supportedReasoningEfforts,
+    });
   }
 
   /**

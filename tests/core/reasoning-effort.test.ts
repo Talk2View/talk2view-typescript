@@ -1,8 +1,10 @@
 /**
  * The client sends `reasoning_effort` next to `model` only when a caller or the
  * config names one, keeps it for Retry, and forgets it with the conversation.
+ * A refused effort is reported, never silently rerun at another effort.
  */
 import { beforeEach, expect, it, vi } from 'vitest';
+import { REASONING_EFFORT_RESET_MESSAGE, T2VError } from '../../src/errors';
 import type { ChatCompletionChunk } from '../../src/types';
 
 const request = vi.fn();
@@ -41,6 +43,14 @@ function stopChunk(): ChatCompletionChunk {
   return {
     id: 't', object: 'chat.completion.chunk', created: 0, model: 'm',
     choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], thread_id: 'th',
+  };
+}
+
+/** A stream that throws before yielding anything — a refused request. */
+function throwingStream(error: unknown) {
+  return async function* () {
+    throw error;
+    yield undefined as never;
   };
 }
 
@@ -109,4 +119,55 @@ it('passes reasoning_effort through completions()', async () => {
   await t2v.completions({ model: 'gemini-4-hydrogen', reasoning_effort: 'medium', messages: [{ role: 'user', content: 'x' }] });
   const call = request.mock.calls.find((c) => c[0] === '/v1/completions')!;
   expect(JSON.parse(call[1].body).reasoning_effort).toBe('medium');
+});
+
+const unsupported = () => new T2VError("Model gemini-4-hydrogen does not support reasoning effort 'high'", 'reasoning_effort_not_supported', 400, undefined, undefined,
+  { model: 'gemini-4-hydrogen', reasoningEffort: 'high', supportedReasoningEfforts: ['low'] });
+const gated = (reasoningEffort?: string) => new T2VError('Model gemini-4-hydrogen requires a paid subscription', 'model_gated', 403, undefined, undefined,
+  { model: 'gemini-4-hydrogen', reasoningEffort });
+
+it('an unsupported effort shows the reset message, fires the event, and Retry runs without the effort', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(unsupported())).mockImplementation(yieldingStream(stopChunk()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false });
+  const seen: unknown[] = [];
+  t2v.on('reasoningEffortUnsupported', (e) => { seen.push(e); });
+  await t2v.sendMessage('hi', { model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+  expect(t2v.error).toBe(REASONING_EFFORT_RESET_MESSAGE);
+  expect(seen).toEqual([{ model: 'gemini-4-hydrogen', reasoningEffort: 'high', supported: ['low'] }]);
+  await t2v.retryLastMessage();
+  expect(turnBody(1).model).toBe('gemini-4-hydrogen');
+  expect('reasoning_effort' in turnBody(1)).toBe(false);
+  expect(t2v.error).toBeNull();
+});
+
+it('a gated effort keeps the engine message, fires modelGated, and Retry runs without the effort', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(gated('high'))).mockImplementation(yieldingStream(stopChunk()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false });
+  const seen: unknown[] = [];
+  t2v.on('modelGated', (e) => { seen.push(e); });
+  await t2v.sendMessage('hi', { model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+  expect(t2v.error).toBe('Model gemini-4-hydrogen requires a paid subscription');
+  expect(seen).toEqual([{ model: 'gemini-4-hydrogen', reasoningEffort: 'high' }]);
+  await t2v.retryLastMessage();
+  expect('reasoning_effort' in turnBody(1)).toBe(false);
+});
+
+it('a gated model with no effort fires modelGated with a null effort', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(gated()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false });
+  const seen: unknown[] = [];
+  t2v.on('modelGated', (e) => { seen.push(e); });
+  await t2v.sendMessage('hi', { model: 'gemini-4-hydrogen' });
+  expect(seen).toEqual([{ model: 'gemini-4-hydrogen', reasoningEffort: null }]);
+});
+
+it('any other failure fires neither event', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(new T2VError('Boom', 'server_error', 500)));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false });
+  const seen: string[] = [];
+  t2v.on('modelGated', () => { seen.push('gated'); });
+  t2v.on('reasoningEffortUnsupported', () => { seen.push('unsupported'); });
+  await t2v.sendMessage('hi');
+  expect(seen).toEqual([]);
+  expect(t2v.error).toBe('Boom');
 });

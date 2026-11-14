@@ -13,6 +13,12 @@
  * t2v.on('anonymousUnavailable', () => showSignIn());
  * // After the guest limit, listen for the prompt to sign up:
  * t2v.on('demoLimitReached', () => showSignupPrompt());
+ * // A model, or a model at a reasoning effort, that needs a paid plan
+ * // (403 model_gated): the thread shows the engine's message; open your upgrade.
+ * t2v.on('modelGated', ({ model, reasoningEffort }) => showUpgrade(model, reasoningEffort));
+ * // A reasoning effort the model does not offer (400 reasoning_effort_not_supported):
+ * // the thread says so, and Retry sends the model at its default effort.
+ * t2v.on('reasoningEffortUnsupported', ({ supported }) => console.log(supported));
  * // Convert the guest into a real account (history is preserved). The
  * // anonymous session stays live until the emailed confirmation link is
  * // clicked — check `confirmationRequired` to prompt the user to check email:
@@ -38,7 +44,7 @@
 import { T2VAuth } from './auth.js';
 import { T2VClient } from './client.js';
 import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
-import { SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
+import { REASONING_EFFORT_RESET_MESSAGE, SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
 import { TypedEventEmitter } from './event-emitter.js';
 import { turnChoice } from './model-choice.js';
 import { getIsAnonymous, hasValidTokens } from './storage.js';
@@ -1048,10 +1054,32 @@ export class Talk2View {
       // Nor does switching conversations, which aborts it the same way — the
       // error belongs to a chat that is no longer on screen.
       if (!this._stopped && epoch === this._conversationEpoch) {
-        this.setError(err instanceof Error ? err.message : String(err));
+        this.setError(this.reportRefusal(err) ?? (err instanceof Error ? err.message : String(err)));
       }
     }
     return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
+  }
+
+  /**
+   * A refused model or reasoning effort: emit its event, and drop the
+   * remembered effort so Retry sends the model at its default. A refused
+   * effort is reported, never silently rerun at another one. Returns the
+   * message to show instead of the engine's, if any.
+   */
+  private reportRefusal(err: unknown): string | undefined {
+    if (!(err instanceof T2VError)) return undefined;
+    const model = err.model ?? null;
+    const reasoningEffort = err.reasoningEffort ?? null;
+    if (err.type === 'reasoning_effort_not_supported') {
+      this._lastUserReasoningEffort = undefined;
+      this.emitter.emit('reasoningEffortUnsupported', { model, reasoningEffort, supported: err.supportedReasoningEfforts ?? [] });
+      return REASONING_EFFORT_RESET_MESSAGE;
+    }
+    if (err.type === 'model_gated') {
+      if (reasoningEffort !== null) this._lastUserReasoningEffort = undefined;
+      this.emitter.emit('modelGated', { model, reasoningEffort });
+    }
+    return undefined;
   }
 
   /**
@@ -1285,7 +1313,7 @@ export { T2VSkills } from './skills.js';
 export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
-export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
+export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError, REASONING_EFFORT_RESET_MESSAGE } from './errors.js';
 export { T2VVoice } from './voice-facade.js';
 /** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
 export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
