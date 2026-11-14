@@ -1246,9 +1246,19 @@ export { VoiceStartError } from './voice-error.js';
 export { VOICE_MODEL_NAMES, VOICE_PREFERENCE_URL } from './constants.js';
 // Type-only: the controller itself stays a lazy chunk.
 export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
+export {
+  reasoningEffortLabel,
+  splitLegacyModelId,
+  partnerDefaultChoice,
+  resolveModelChoice,
+  modelPickerState,
+  preferencesAfterEffortRefusal,
+} from './model-choice.js';
+export type { ModelChoice, ModelPickerState } from './model-choice.js';
 export type {
   T2VEventMap,
   T2VConfig,
+  ReasoningEffort,
   User,
   Attachment,
   AttachmentContentPart,
