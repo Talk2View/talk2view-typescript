@@ -165,6 +165,8 @@ export class Talk2View {
    * so the model's default applies. Holds the model the refusal named.
    */
   private _retryWithoutEffort: { model: string | null } | null = null;
+  /** True while that Retry runs: a session it creates leaves the configured effort out too. */
+  private _createSessionWithoutEffort = false;
   private _messageCounter = 0;
   /**
    * Bumped whenever the conversation on screen is replaced — a switch to
@@ -276,7 +278,7 @@ export class Talk2View {
    * Create a new chat session.
    */
   async createSession(): Promise<T2VSession> {
-    const reasoningEffort = this.config.reasoningEffort;
+    const reasoningEffort = this._createSessionWithoutEffort ? undefined : this.config.reasoningEffort;
     const response = await this.client.request<CreateSessionResponse>('/v1/sessions', {
       method: 'POST',
       body: JSON.stringify({
@@ -1270,11 +1272,19 @@ export class Talk2View {
     // The host's config is left as it is; later turns use it as before.
     const refused = this._retryWithoutEffort;
     const model = this._lastUserModel || (refused ? this.config.model || refused.model || undefined : undefined);
-    await this.sendMessage(content, {
-      ...(attachments?.length ? { attachments } : {}),
-      ...(model ? { model } : {}),
-      ...(reasoningEffort ? { reasoningEffort } : {}),
-    });
+    // The refusal may have come from creating the session (POST /v1/sessions
+    // sends the configured effort), and a lost session is replaced mid-turn:
+    // any session this retry creates leaves the refused effort out as well.
+    this._createSessionWithoutEffort = refused !== null;
+    try {
+      await this.sendMessage(content, {
+        ...(attachments?.length ? { attachments } : {}),
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+      });
+    } finally {
+      this._createSessionWithoutEffort = false;
+    }
   }
 
   /**

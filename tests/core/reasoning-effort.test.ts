@@ -3,7 +3,7 @@
  * config names one, keeps it for Retry, and forgets it with the conversation.
  * A refused effort is reported, never silently rerun at another effort.
  */
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REASONING_EFFORT_RESET_MESSAGE, T2VError } from '../../src/errors';
 import type { ChatCompletionChunk } from '../../src/types';
 
@@ -212,4 +212,71 @@ it('a retry after a successful turn still sends the configured effort', async ()
   await t2v.sendMessage('hi');
   await t2v.retryLastMessage();
   expect(turnBody(1)).toMatchObject({ model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+});
+
+describe('a refusal from session creation', () => {
+  const sessionBodies = () => request.mock.calls.filter((c) => c[0] === '/v1/sessions').map((c) => JSON.parse(c[1].body));
+  const refuseFirstSession = (error: T2VError) => {
+    let refused = false;
+    request.mockImplementation(async (endpoint: string) => {
+      if (endpoint !== '/v1/sessions') return {};
+      if (!refused) { refused = true; throw error; }
+      return { session_id: 's1', thread_id: 'th1', model: 'gemini-4-hydrogen' };
+    });
+  };
+  const configured = () => new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false, model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+
+  it('an unsupported configured effort: Retry creates the session and sends the turn without it', async () => {
+    refuseFirstSession(unsupported());
+    streamRequest.mockImplementation(yieldingStream(stopChunk()));
+    const t2v = configured();
+    const seen: unknown[] = [];
+    t2v.on('reasoningEffortUnsupported', (e) => { seen.push(e); });
+    await t2v.sendMessage('hi');
+    expect(t2v.error).toBe(REASONING_EFFORT_RESET_MESSAGE);
+    expect(seen).toEqual([{ model: 'gemini-4-hydrogen', reasoningEffort: 'high', supported: ['low'] }]);
+    expect(streamRequest).not.toHaveBeenCalled();
+    await t2v.retryLastMessage();
+    expect(sessionBodies()).toEqual([{ model: 'gemini-4-hydrogen', reasoning_effort: 'high' }, { model: 'gemini-4-hydrogen' }]);
+    expect(turnBody(0).model).toBe('gemini-4-hydrogen');
+    expect('reasoning_effort' in turnBody(0)).toBe(false);
+    expect(t2v.error).toBeNull();
+  });
+
+  it('a gated configured effort: Retry creates the session and sends the turn without it', async () => {
+    refuseFirstSession(gated('high'));
+    streamRequest.mockImplementation(yieldingStream(stopChunk()));
+    const t2v = configured();
+    const seen: unknown[] = [];
+    t2v.on('modelGated', (e) => { seen.push(e); });
+    await t2v.sendMessage('hi');
+    expect(seen).toEqual([{ model: 'gemini-4-hydrogen', reasoningEffort: 'high' }]);
+    await t2v.retryLastMessage();
+    expect(sessionBodies()[1]).toEqual({ model: 'gemini-4-hydrogen' });
+    expect('reasoning_effort' in turnBody(0)).toBe(false);
+  });
+
+  it('a session created later, outside the retry, carries the configured effort again', async () => {
+    refuseFirstSession(unsupported());
+    streamRequest.mockImplementation(yieldingStream(stopChunk()));
+    const t2v = configured();
+    await t2v.sendMessage('hi');
+    await t2v.retryLastMessage();
+    t2v.clearMessages();
+    await t2v.sendMessage('again');
+    expect(sessionBodies()[2]).toEqual({ model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+  });
+
+  it('a session replaced during the retry is created without the refused effort', async () => {
+    streamRequest
+      .mockImplementationOnce(throwingStream(unsupported()))
+      .mockImplementationOnce(throwingStream(new T2VError('Session not found', 'not_found', 404)))
+      .mockImplementation(yieldingStream(stopChunk()));
+    const t2v = configured();
+    await t2v.sendMessage('hi');
+    await t2v.retryLastMessage();
+    expect(sessionBodies()).toEqual([{ model: 'gemini-4-hydrogen', reasoning_effort: 'high' }, { model: 'gemini-4-hydrogen' }]);
+    expect('reasoning_effort' in turnBody(2)).toBe(false);
+    expect(t2v.error).toBeNull();
+  });
 });

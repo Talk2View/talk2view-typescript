@@ -20,7 +20,7 @@
  *
  * The size assertions are REGRESSION FENCES, not budgets. Each was set at the
  * measured size plus roughly ten per cent, and what is left of that headroom is
- * what the code has not grown into (core's is 0.12 KB: see its test). They exist
+ * what the code has not grown into (core's is 0.03 KB: see its test). They exist
  * so that a change which doubles the bundle fails here instead of in a partner's
  * app. When a fence trips, measure first and decide whether the growth is
  * wanted — do not widen it reflexively.
@@ -35,13 +35,13 @@ import { afterAll, describe, expect, it } from 'vitest';
 // 2026-10-25 for 0.24.0, with call captions, at 1201.1 / 374.53 KB (0.21.4:
 // 37.1 / 11.51 and 1197.8 / 373.32; 0.22.0: core 11.73 gzip; 0.23.0: chat
 // 1199.5 / 373.91). `core` re-based on 2026-11-14 for reasoning effort (the
-// effort option and the refusal events), at 39.9 / 12.38 KB.
+// effort option and the refusal events), at 40.2 / 12.47 KB.
 // These are the numbers the README and docs/chat.md quote; change them together.
 // Previously 11.14 / 40.25 / 372.38 KB gzip (2026-09-24, after the voice agent
 // landed behind a lazy facade), and before that 9.35 / 39.93 / 361.77
 // (2026-09-18, no splitting).
 const MEASURED = {
-  core: { raw: 39.9, gzip: 12.38 },
+  core: { raw: 40.2, gzip: 12.47 },
   ui: { raw: 124.4, gzip: 40.94 },
   chat: { raw: 1201.1, gzip: 374.53 },
 };
@@ -191,14 +191,17 @@ describe('what a consumer pays for the entry points they use', () => {
       expect(core.modules.has('dist/voice-elevenlabs.js')).toBe(false);
       expect(core.lazyModules.has('dist/voice-elevenlabs.js')).toBe(true);
 
-      expect(core.rawKB).toBeLessThan(40);
-      // Fence, not a budget: 12.5 KB gzip against the 12.38 KB measured on
-      // 2026-11-14, which leaves 0.12 KB. Re-based that day from 12 KB
+      // Raw fence: 40.5 KB against the 40.15 KB measured on 2026-11-14.
+      // Re-based that day from 40 KB for reasoning effort (the effort option
+      // and the refusal events), on the same rule as the gzip fence below.
+      expect(core.rawKB).toBeLessThan(40.5);
+      // Fence, not a budget: 12.5 KB gzip against the 12.47 KB measured on
+      // 2026-11-14, which leaves 0.03 KB. Re-based that day from 12 KB
       // (11.85 measured on 2026-10-22) for reasoning effort: the effort
-      // option on every send path, the error body's refusal fields, and the
-      // `modelGated` / `reasoningEffortUnsupported` events. The next change to
-      // core may trip this: re-base the fence then, with a date, rather than
-      // widening it by reflex. The `t2v.voice` facade (~1.6 KB gzip) is in
+      // option on every send path, the error body's refusal fields, the
+      // `modelGated` / `reasoningEffortUnsupported` events, and Retry leaving
+      // a refused effort out. The next change to core will trip this: re-base
+      // the fence then, with a date, rather than widening it by reflex. The `t2v.voice` facade (~1.6 KB gzip) is in
       // core; the voice controller and the voice libraries stay lazy chunks
       // (asserted above).
       expect(core.gzipKB).toBeLessThan(12.5);
