@@ -62,7 +62,7 @@ your Talk2View engine — no fonts, no CDN — and uses your page's font unless 
 pass `fontFamily`. Voice is the exception; see
 [What loads at runtime](#what-loads-at-runtime).
 
-**It is large: 374.5 KB gzip, excluding React.** A consumer who never imports
+**It is large: 376.3 KB gzip, excluding React.** A consumer who never imports
 `/chat` pays none of it.
 
 **Voice.** For partners with the realtime voice agent enabled, the launcher
@@ -130,7 +130,7 @@ function App() {
 
 That's it. `<Talk2View>` registers your tools and holds the chat state; `<ChatPanel>` is the UI — sign-in, streaming replies, tool calls and approvals. Both come from `@talk2view/sdk/ui`, and `<ChatPanel>` must be inside `<Talk2View>`.
 
-> `/ui` is smaller than the packaged chat (40.9 KB gzip against 374.5, plus
+> `/ui` is smaller than the packaged chat (41.7 KB gzip against 376.3, plus
 > syntax highlighting loaded on demand) and has no assistant-ui in it, which is
 > why it is still here.
 
@@ -288,7 +288,7 @@ Tools with `return_direct: true` skip the AI's post-processing step. The tool re
 There are four React entry points, and they do different jobs:
 
 - **`@talk2view/sdk/chat`** — the branded Talk2View chat, packaged: `<Talk2ViewChat>` and `<Talk2ViewChatLauncher>`, one stylesheet, nothing to configure. Start here. See [Chat UI](#chat-ui) above and [`docs/chat.md`](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md).
-- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 40.9 KB gzip against the packaged chat's 374.5, and no assistant-ui.
+- **`@talk2view/sdk/ui`** — the previous chat panel, still supported: `<Talk2View>`, `<ChatPanel>`, `<ChatWidget>` and the components they are built from. 41.7 KB gzip against the packaged chat's 376.3, and no assistant-ui.
 - **`@talk2view/sdk/react`** — headless: `<T2VProvider>` and hooks, for building your own UI.
 - **`@talk2view/sdk/assistant-ui`** — a runtime for [assistant-ui](https://www.assistant-ui.com): render the stock `<Thread />` on Talk2View. See [assistant-ui](#assistant-ui) below.
 
@@ -484,7 +484,7 @@ function Chat() {
 }
 ```
 
-`useTalk2ViewRuntime(options)` takes the same connection options as `<T2VProvider>` (`partnerKey`, `baseUrl`, `model`, `debug`, `anonymousAutoStart`) plus `tools` and `systemPrompt`, and creates its own `Talk2View` client — a new one only when `partnerKey`, `baseUrl`, `debug` or `anonymousAutoStart` changes (`requestTimeout` is read once, at creation). `model` is sent with each message rather than baked into the client, so an end-user can switch models from a settings screen without losing the chat. `tools` are registered with the engine when their schemas change, compared by value, so an inline array is fine.
+`useTalk2ViewRuntime(options)` takes the same connection options as `<T2VProvider>` (`partnerKey`, `baseUrl`, `model`, `debug`, `anonymousAutoStart`) plus `tools`, `systemPrompt` and `reasoningEffort`, and creates its own `Talk2View` client — a new one only when `partnerKey`, `baseUrl`, `debug` or `anonymousAutoStart` changes (`requestTimeout` is read once, at creation). `model` and `reasoningEffort` are sent with each message rather than baked into the client, so an end-user can switch models from a settings screen without losing the chat. `tools` are registered with the engine when their schemas change, compared by value, so an inline array is fine.
 
 ### `useTalk2ViewRuntimeForClient`
 
@@ -690,6 +690,24 @@ const models = await t2v.listModels();         // Chat/completion models
 const audioModels = await t2v.listAudioModels(); // Speech-to-text models
 ```
 
+#### Reasoning effort
+
+Each `listModels()` entry may carry `reasoning_efforts`, `default_reasoning_effort` and `gated_reasoning_efforts`. When they are absent or `null`, the model has no effort control.
+
+Pass `reasoningEffort` (`'low'`, `'medium'` or `'high'`) in `T2VConfig`, in `sendMessage` or `chat` options, to `useT2VChat`, or to `useTalk2ViewRuntime`, and only for a model that lists it. It is sent as `reasoning_effort` beside `model`; when it is not set, nothing is sent and the model's default applies.
+
+`t2v.on('modelGated', ...)` fires when the engine refuses a model, or one effort of it, because it needs a paid plan: that is where an app opens its upgrade screen. `t2v.on('reasoningEffortUnsupported', ...)` fires when the engine refuses an effort the model does not offer.
+
+Old ids ending in `-thinking` or `-thinking-high` keep working as `model` values.
+
+```typescript
+const { data } = await t2v.listModels();
+const hydrogen = data.find((m) => m.id === 'gemini-4-hydrogen');
+if (hydrogen?.reasoning_efforts?.includes('high')) {
+  await t2v.sendMessage('Plan the migration.', { model: hydrogen.id, reasoningEffort: 'high' });
+}
+```
+
 #### `t2v.transcribe()`
 
 Transcribe an audio file using the server's speech-to-text service:
@@ -838,7 +856,7 @@ On logout, all of these are cleared and a `talk2view_auth_cleared` event is disp
 
 Logging out leaves the rest of what the SDK keeps in `localStorage`:
 
-- `talk2view_preferences` — Settings choices: model, dictation (speech-to-text) model and language, font size.
+- `talk2view_preferences` — Settings choices: model, reasoning effort, dictation (speech-to-text) model and language, font size.
 - `t2v_chat_conversations_v1:<partner key>` — the packaged chat's earlier conversations, one bucket per end-user. See [where conversations are kept](https://github.com/Talk2View/talk2view-typescript/blob/main/docs/chat.md#conversations-are-kept-in-this-browser).
 - `t2v_user_skills` and `t2v_disabled_skills` — skills saved in the chat's Skills view or with `t2v.skills.save()`. They are not divided by end-user: in the packaged chat, whoever signs in next on that browser sees them and sends them with their chats.
 - `t2v-launcher-size`, `t2v-launcher-opened` and `t2v-launcher-colourway` — the launcher's size, whether it has been opened, and the colourway a visitor picked.
@@ -957,6 +975,7 @@ const { error: chatError } = useT2VChat({ systemPrompt: '...' });
 | `partnerKey` | `string` | Yes | — | Your partner API key |
 | `baseUrl` | `string` | No | `'https://engine.talk2view.com'` | Talk2View engine URL |
 | `model` | `string` | No | Server default | LLM model to use |
+| `reasoningEffort` | `'low' \| 'medium' \| 'high'` | No | The model's default | Reasoning effort sent with `model`. Set it only for a model whose `listModels()` entry lists it. |
 | `requestTimeout` | `number` | No | `30000` | HTTP request timeout in ms. Does not apply to SSE streams after connection. |
 | `anonymousAutoStart` | `boolean` | No | `true` | When nobody is signed in, try to start a guest session the first time a call needs one (sending, uploading, transcribing, listing models, `warmUp()`, voice). It succeeds only where your key allows guests; a refusal emits `anonymousUnavailable`. Set `false` to require sign-in. |
 | `debug` | `boolean` | No | `false` | Log streaming events, tool calls, history and state changes to the console. |

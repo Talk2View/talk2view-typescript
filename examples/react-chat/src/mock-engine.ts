@@ -95,13 +95,31 @@ export function installMockEngine(): void {
     }
     if (path.endsWith('/auth/logout')) return json({});
     if (path.endsWith('/config')) {
-      return json({ default_llm_model: 'mock-model', default_stt_model: null, system_prompt: null });
+      return json({
+        default_llm_model: 'mock-model',
+        default_llm_base_model: null,
+        default_llm_reasoning_effort: null,
+        default_stt_model: null,
+        system_prompt: null,
+      });
     }
     if (path.endsWith('/audio/models')) return json({ object: 'list', data: [] });
     if (path.endsWith('/models')) {
       return json({
         object: 'list',
-        data: [{ id: 'mock-model', object: 'model', created: 0, owned_by: 'talk2view' }],
+        data: [
+          { id: 'mock-model', object: 'model', created: 0, owned_by: 'talk2view' },
+          {
+            id: 'mock-thinker',
+            object: 'model',
+            created: 0,
+            owned_by: 'talk2view',
+            name: 'Mock Thinker',
+            reasoning_efforts: ['low', 'medium', 'high'],
+            default_reasoning_effort: 'low',
+            gated_reasoning_efforts: ['high'],
+          },
+        ],
       });
     }
     if (path.endsWith('/tools/register')) return json({ registered: ['highlight_finding'], count: 1 });
