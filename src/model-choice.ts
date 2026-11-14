@@ -40,7 +40,7 @@ function choiceOf(model: string, effort: ReasoningEffort | null | undefined): Mo
   return reasoningEffort ? { model, reasoningEffort } : { model };
 }
 
-/** The pair /v1/config names as the partner default (wire contract rule). */
+/** The partner default as a (model, effort) pair, as the engine's /v1/config defines it. */
 export function partnerDefaultChoice(config: PartnerConfig | null | undefined): ModelChoice {
   if (!config) return {};
   const baseModel = present(config.default_llm_base_model);

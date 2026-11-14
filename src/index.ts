@@ -786,7 +786,7 @@ export class Talk2View {
     const lastUser = [...snapshot.messages].reverse().find((m) => m.role === 'user');
     this._lastUserMessage = lastUser?.content ?? null;
     this._lastUserAttachments = lastUser?.attachments ?? null;
-    this.rememberTurnChoice();
+    this.clearTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -858,7 +858,7 @@ export class Talk2View {
     this.setAgentStatus(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
-    this.rememberTurnChoice();
+    this.clearTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -1086,11 +1086,16 @@ export class Talk2View {
     return undefined;
   }
 
-  /** What Retry resends: the model and effort the caller gave for the last turn (none after a reset). */
-  private rememberTurnChoice(model?: string, reasoningEffort?: ReasoningEffort): void {
+  /** What Retry resends: the model and effort the caller gave for the last turn. */
+  private setTurnChoice(model?: string, reasoningEffort?: ReasoningEffort): void {
     this._lastUserModel = model;
     this._lastUserReasoningEffort = reasoningEffort;
     this._retryWithoutEffort = null;
+  }
+
+  /** Forget the last turn's model and effort, with the conversation they belonged to. */
+  private clearTurnChoice(): void {
+    this.setTurnChoice();
   }
 
   /** Retry sends the refused turn's model without the effort the engine refused. */
@@ -1195,7 +1200,7 @@ export class Talk2View {
     this.emitter.emit('messagesChange', this._messages);
     this._lastUserMessage = content;
     this._lastUserAttachments = attachments ?? null;
-    this.rememberTurnChoice(options?.model, options?.reasoningEffort);
+    this.setTurnChoice(options?.model, options?.reasoningEffort);
     this.setLoading(true);
     this.setError(null);
 
@@ -1286,7 +1291,7 @@ export class Talk2View {
     this.setThreadId(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
-    this.rememberTurnChoice();
+    this.clearTurnChoice();
     this._alwaysAllowedTools = new Set();
     this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
     this.clearSession();
