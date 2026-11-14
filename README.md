@@ -698,6 +698,8 @@ Pass `reasoningEffort` (`'low'`, `'medium'` or `'high'`) in `T2VConfig`, in `sen
 
 `t2v.on('modelGated', ...)` fires when the engine refuses a model, or one effort of it, because it needs a paid plan: that is where an app opens its upgrade screen. `t2v.on('reasoningEffortUnsupported', ...)` fires when the engine refuses an effort the model does not offer.
 
+An effort set in `T2VConfig.reasoningEffort` is sent with every new chat, and with every message that names no model of its own. A retry after a refusal leaves it out once, but the SDK never changes your config: on `modelGated` or `reasoningEffortUnsupported`, change or clear `reasoningEffort` yourself, or the next chat is refused again.
+
 Old ids ending in `-thinking` or `-thinking-high` keep working as `model` values.
 
 ```typescript
