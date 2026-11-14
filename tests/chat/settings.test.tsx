@@ -172,3 +172,129 @@ describe('the packaged chat sends the stored model choice', () => {
     await waitFor(() => expect(stored()).toEqual({ model: 'gemini-4-hydrogen' }));
   });
 });
+
+describe('Settings — reasoning effort', () => {
+  /** Opens the chat's Settings view; by default waits for the model list to load. */
+  async function openSettings({ waitForModels = true } = {}) {
+    render(<Talk2ViewChat partnerKey="pk_test_x" />);
+    const settings = await screen.findByRole('button', { name: 'Settings' });
+    await act(async () => {
+      fireEvent.click(settings);
+    });
+    if (waitForModels) await waitFor(() => expect(modelSelect().disabled).toBe(false));
+  }
+  const modelSelect = () => screen.getByLabelText('AI model') as HTMLSelectElement;
+  const effortSelect = () => screen.queryByLabelText('Thinking level') as HTMLSelectElement | null;
+
+  it('shows no effort control when the engine sends no efforts', async () => {
+    engine.models = [oldEngineRow, { ...oldEngineRow, id: 'gemini-4-hydrogen' }];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen-thinking' }));
+    await openSettings();
+    expect(modelSelect().value).toBe('gemini-4-hydrogen-thinking');
+    expect(effortSelect()).toBeNull();
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen-thinking' });
+  });
+
+  it('shows no effort control for Default or for a model without efforts', async () => {
+    engine.models = [hydrogen, sol];
+    await openSettings();
+    expect(effortSelect()).toBeNull(); // Default
+    fireEvent.change(modelSelect(), { target: { value: 'gpt-6-sol' } });
+    expect(effortSelect()).toBeNull();
+  });
+
+  it('offers the model\'s efforts with its default selected, and stores a pick as (base id, effort)', async () => {
+    engine.models = [hydrogen, sol];
+    await openSettings();
+    fireEvent.change(modelSelect(), { target: { value: 'gemini-4-hydrogen' } });
+    const effort = effortSelect()!;
+    expect(Array.from(effort.options).map((o) => [o.value, o.textContent])).toEqual([
+      ['low', 'Low'], ['medium', 'Medium (paid plan)'], ['high', 'High (paid plan)'],
+    ]);
+    expect(effort.value).toBe('low');
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen' });
+    fireEvent.change(effort, { target: { value: 'high' } });
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+    expect(screen.getByText('High needs a paid plan.')).toBeTruthy();
+  });
+
+  it('keeps gated efforts selectable', async () => {
+    engine.models = [hydrogen];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen' }));
+    await openSettings();
+    expect(Array.from(effortSelect()!.options).every((o) => !o.disabled)).toBe(true);
+  });
+
+  it('shows a stored old id as its base row and effort without rewriting it', async () => {
+    engine.models = [hydrogen, hydrogenPrivate];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen-thinking-high' }));
+    await openSettings();
+    expect(modelSelect().value).toBe('gemini-4-hydrogen');
+    expect(effortSelect()!.value).toBe('high');
+    expect(screen.queryByText(/no longer offered/)).toBeNull();
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen-thinking-high' });
+    fireEvent.change(effortSelect()!, { target: { value: 'medium' } });
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen', reasoningEffort: 'medium' });
+  });
+
+  it('still marks an id the catalogue cannot place as no longer offered', async () => {
+    engine.models = [hydrogen];
+    setUserPreferences(JSON.stringify({ model: 'retired-model' }));
+    await openSettings();
+    expect(screen.getByText('retired-model (no longer offered)')).toBeTruthy();
+    expect(effortSelect()).toBeNull();
+  });
+
+  it('clears the stored effort when the model changes', async () => {
+    engine.models = [hydrogen, sol];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen', reasoningEffort: 'high', sttLanguage: 'vi' }));
+    await openSettings();
+    fireEvent.change(modelSelect(), { target: { value: 'gpt-6-sol' } });
+    expect(stored()).toEqual({ model: 'gpt-6-sol', sttLanguage: 'vi' });
+  });
+
+  it('clears a stored effort the partner no longer allows', async () => {
+    engine.models = [{ ...hydrogen, reasoning_efforts: ['low'], gated_reasoning_efforts: [] }];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen', reasoningEffort: 'high' }));
+    await openSettings();
+    await waitFor(() => expect(stored()).toEqual({ model: 'gemini-4-hydrogen' }));
+    expect(effortSelect()!.value).toBe('low');
+  });
+
+  it('offers and stores an effort it has no label for', async () => {
+    engine.models = [{ ...hydrogen, reasoning_efforts: ['low', 'xhigh'], gated_reasoning_efforts: [] }];
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen' }));
+    await openSettings();
+    expect(Array.from(effortSelect()!.options).map((o) => o.textContent)).toEqual(['Low', 'Xhigh']);
+    fireEvent.change(effortSelect()!, { target: { value: 'xhigh' } });
+    expect(stored().reasoningEffort).toBe('xhigh');
+  });
+
+  it('names the partner default with its effort', async () => {
+    engine.models = [hydrogen];
+    engine.config = {
+      ...engine.config,
+      default_llm_model: 'gemini-4-hydrogen-thinking',
+      default_llm_base_model: 'gemini-4-hydrogen',
+      default_llm_reasoning_effort: 'medium',
+    };
+    await openSettings();
+    await waitFor(() => expect(modelSelect().options[0]!.textContent).toBe('Default — Google: Gemini 4 Hydrogen (Medium)'));
+  });
+
+  it('names the partner default as before when /v1/config has no base model', async () => {
+    engine.models = [sol];
+    engine.config = { ...engine.config, default_llm_model: 'gpt-6-sol' };
+    await openSettings();
+    await waitFor(() => expect(modelSelect().options[0]!.textContent).toBe('Default — gpt-6-sol'));
+  });
+
+  it('leaves stored preferences alone when the model list fails to load', async () => {
+    engine.failModels = true;
+    setUserPreferences(JSON.stringify({ model: 'gemini-4-hydrogen', reasoningEffort: 'high' }));
+    await openSettings({ waitForModels: false });
+    await screen.findByText('Couldn’t load the list — the default will be used.');
+    expect(effortSelect()).toBeNull();
+    expect(stored()).toEqual({ model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+  });
+});
