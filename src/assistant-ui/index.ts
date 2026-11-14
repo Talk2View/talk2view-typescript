@@ -48,6 +48,7 @@ import type {
   ClientToolSchema,
   DisplayMessage,
   PendingApproval,
+  ReasoningEffort,
   T2VConfig,
 } from '../types.js';
 import { toHumanDecision, toThreadMessage } from './convert.js';
@@ -74,6 +75,11 @@ export interface Talk2ViewRuntimeOptions {
    * settings screen. Unlike the client's `model`, changing it keeps the chat.
    */
   model?: string;
+  /**
+   * Reasoning effort for the next message, sent with `model`. Like `model`,
+   * changing it keeps the chat.
+   */
+  reasoningEffort?: ReasoningEffort;
   /**
    * Turn on assistant-ui's mic button, transcribed by Talk2View. `true` uses
    * the default speech-to-text model; pass `{ model, language }` to choose.
@@ -105,10 +111,19 @@ const CANCELLED_APPROVAL_FEEDBACK = 'Cancelled by the user';
 
 /** Create a Talk2View client and expose it as an assistant-ui runtime. */
 export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): AssistantRuntime {
-  const { systemPrompt, tools, model: messageModel, dictation, threadList, ...config } = options;
-  // A new client only when the connection details change. `model` is not one
-  // of them here: it travels with each message, so an end-user can switch
-  // models from a settings screen without losing the chat.
+  const {
+    systemPrompt,
+    tools,
+    model: messageModel,
+    reasoningEffort: messageEffort,
+    dictation,
+    threadList,
+    ...config
+  } = options;
+  // A new client only when the connection details change. `model` and
+  // `reasoningEffort` are not among them here: they travel with each message,
+  // so an end-user can switch models from a settings screen without losing
+  // the chat.
   // Built asleep: React invokes this factory twice per mount under StrictMode
   // and keeps one client, and the one it discards is unreachable from the effect
   // below — it could never take its window listeners off again. The effect wakes
@@ -122,7 +137,14 @@ export function useTalk2ViewRuntime(options: UseTalk2ViewRuntimeOptions): Assist
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.partnerKey, config.baseUrl, config.debug, config.anonymousAutoStart],
   );
-  const runtime = useTalk2ViewRuntimeForClient(t2v, { systemPrompt, tools, model: messageModel, dictation, threadList });
+  const runtime = useTalk2ViewRuntimeForClient(t2v, {
+    systemPrompt,
+    tools,
+    model: messageModel,
+    reasoningEffort: messageEffort,
+    dictation,
+    threadList,
+  });
   // Declared after the subscriptions above so, on a client swap or unmount,
   // React runs their cleanup first and destroys the client last. Setup and
   // cleanup are exact inverses because StrictMode runs this as setup → cleanup →
@@ -142,6 +164,7 @@ export function useTalk2ViewRuntimeForClient(
     systemPrompt,
     tools,
     model,
+    reasoningEffort,
     dictation,
     attachments: attachmentsEnabled = true,
     threadList,
@@ -279,10 +302,11 @@ export function useTalk2ViewRuntimeForClient(
       await t2v.sendMessage(text, {
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(files.length ? { attachments: files } : {}),
       });
     },
-    [t2v, systemPrompt, model],
+    [t2v, systemPrompt, model, reasoningEffort],
   );
 
   // assistant-ui puts a reload action on every assistant message; the SDK

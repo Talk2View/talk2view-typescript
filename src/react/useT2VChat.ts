@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useT2V } from './T2VProvider.js';
-import type { Attachment, DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus } from '../types.js';
+import type { Attachment, DisplayMessage, ToolStep, PendingApproval, HumanDecision, AgentStatus, ReasoningEffort } from '../types.js';
 
 export type { PendingApproval } from '../types.js';
 export type { DisplayMessage, ToolStep } from '../types.js';
@@ -38,7 +38,16 @@ function toHookStatus(s: AgentStatus | null): { status: string; message: string 
   return { status: s.type, message: s.message };
 }
 
-export function useT2VChat(options?: { systemPrompt?: string; model?: string }): UseT2VChatResult {
+export function useT2VChat(options?: {
+  systemPrompt?: string;
+  model?: string;
+  /**
+   * Only for a model whose `reasoning_efforts` lists it. The engine ignores it
+   * for a model with no effort control and answers 400
+   * `reasoning_effort_not_supported` for a value the model does not list.
+   */
+  reasoningEffort?: ReasoningEffort;
+}): UseT2VChatResult {
   const { t2v } = useT2V();
 
   const [messages, setMessages] = useState<DisplayMessage[]>(t2v.messages);
@@ -68,7 +77,7 @@ export function useT2VChat(options?: { systemPrompt?: string; model?: string }):
     (content: string, sendOptions?: { attachments?: Attachment[] }) =>
       t2v.sendMessage(content, { ...options, ...sendOptions }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t2v, options?.systemPrompt, options?.model],
+    [t2v, options?.systemPrompt, options?.model, options?.reasoningEffort],
   );
 
   const approveToolCall = useCallback(

@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * The Settings view: which AI model answers, which dictation model transcribes
+ * The Settings view: which AI model answers (and, for a model that offers a
+ * choice, how long it thinks first), which dictation model transcribes
  * what the end-user says, and which language it should expect. (A voice call's
  * voice model, Gemini Live or ElevenLabs, is not chosen here: the end-user sets
  * it on their Profile page.) Choices are stored with the SDK's own preferences,
@@ -10,6 +11,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import type { AudioModel, Model, PartnerConfig } from '../../types.js';
 import { useUserPreferences } from '../../react/useUserPreferences.js';
+import { modelPickerState, partnerDefaultChoice, reasoningEffortLabel } from '../../model-choice.js';
 import { useChatContext } from '../provider.js';
 import {
   LAUNCHER_COLOURWAYS,
@@ -51,6 +53,14 @@ const languagesFor = (model: AudioModel | undefined) =>
 
 const label = (m: Model) => m.name ?? m.id;
 
+/** "Default — <model>", with the default's effort when it has one; "Default" when the model is not listed. */
+const defaultModelLabel = (models: Model[], partnerConfig: PartnerConfig | null) => {
+  const state = modelPickerState(models, partnerDefaultChoice(partnerConfig));
+  const row = state.orphan ? undefined : models.find((m) => m.id === state.modelId);
+  if (!row) return 'Default';
+  return `Default — ${label(row)}${state.effort ? ` (${reasoningEffortLabel(state.effort)})` : ''}`;
+};
+
 export function SettingsView() {
   const { client, config: mountConfig } = useChatContext();
   const launcher = useLauncherOptions();
@@ -86,21 +96,71 @@ export function SettingsView() {
   const voiceItems = voices.state === 'ready' ? voices.items : [];
   const defaultSttId = partnerConfig?.default_stt_model || FALLBACK_STT_MODEL;
   const activeVoice = voiceItems.find((m) => m.id === (preferences.sttModel || defaultSttId));
+  const defaultVoice = voiceItems.find((m) => m.id === partnerConfig?.default_stt_model);
   const languages = languagesFor(activeVoice);
   const language = preferences.sttLanguage ?? '';
   const languageOrphan = language !== '' && !languages.some(([code]) => code === language);
   const voiceName = activeVoice ? label(activeVoice) : 'the dictation model';
+
+  // The stored pick against the catalogue: an old id such as "X-thinking-high"
+  // shows as its base row with that effort. Until the list loads (or if it
+  // fails), the stored id is shown as it is and no effort is offered.
+  const modelsReady = models.state === 'ready';
+  const modelItems = modelsReady ? models.items : [];
+  const modelState = modelPickerState(modelItems, {
+    model: preferences.model,
+    reasoningEffort: preferences.reasoningEffort,
+  });
+  const effort = modelsReady ? modelState.effort : undefined;
+
+  // A stored effort the model no longer offers is never sent, so it is not
+  // kept either. Nothing else is written just by opening Settings.
+  const staleEffort = modelsReady && modelState.staleEffort;
+  useEffect(() => {
+    if (staleEffort) updatePreferences({ reasoningEffort: undefined });
+  }, [staleEffort, updatePreferences]);
 
   return (
     <div className="t2v-chat-settings aui-modal-settings bg-popover absolute inset-0 flex flex-col gap-6 overflow-y-auto p-4 text-sm">
       <Picker
         title="AI model"
         help="Answers your next message. Switching keeps this conversation."
-        value={preferences.model ?? ''}
-        onChange={(model) => updatePreferences({ model: model || undefined })}
+        value={modelsReady ? modelState.modelId : (preferences.model ?? '')}
+        // The effort belonged to the model being replaced.
+        onChange={(model) => updatePreferences({ model: model || undefined, reasoningEffort: undefined })}
         load={models}
-        defaultId={partnerConfig?.default_llm_model}
+        defaultLabel={defaultModelLabel(modelItems, partnerConfig)}
+        orphan={modelsReady && modelState.orphan}
       />
+      {effort !== undefined ? (
+        <Field
+          title="Thinking level"
+          help={
+            modelState.gated.includes(effort)
+              ? `${reasoningEffortLabel(effort)} needs a paid plan.`
+              : 'How long the model thinks before it answers. Higher is slower.'
+          }
+        >
+          {(id) => (
+            <select
+              id={id}
+              className={selectClass}
+              value={effort}
+              // Stored with the catalogue's id: an old id becomes (base id, effort) here.
+              onChange={(e) => updatePreferences({ model: modelState.modelId, reasoningEffort: e.target.value })}
+            >
+              {/* Efforts that need a paid plan stay selectable: the SDK does not
+                  know the end-user's plan, and the engine decides. */}
+              {modelState.efforts.map((option) => (
+                <option key={option} value={option}>
+                  {reasoningEffortLabel(option)}
+                  {modelState.gated.includes(option) ? ' (paid plan)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      ) : null}
       <Picker
         title="Dictation model"
         help="Transcribes what you say when you use the mic."
@@ -115,7 +175,10 @@ export function SettingsView() {
           });
         }}
         load={voices}
-        defaultId={partnerConfig?.default_stt_model}
+        defaultLabel={defaultVoice ? `Default — ${label(defaultVoice)}` : 'Default'}
+        orphan={
+          !!preferences.sttModel && voices.state === 'ready' && !voiceItems.some((m) => m.id === preferences.sttModel)
+        }
       />
       <Field
         title="Spoken language"
@@ -208,21 +271,23 @@ function Picker({
   value,
   onChange,
   load,
-  defaultId,
+  defaultLabel,
+  orphan,
 }: {
   title: string;
   help: string;
   value: string;
   onChange: (id: string) => void;
   load: Load<Model[]>;
-  defaultId?: string | null;
+  /** The empty option's text once the list has loaded. */
+  defaultLabel: string;
+  /**
+   * The saved choice is one the partner no longer offers. It still has to be
+   * shown, or the select would silently display something else.
+   */
+  orphan: boolean;
 }) {
   const items = load.state === 'ready' ? load.items : [];
-  const defaultModel = items.find((m) => m.id === defaultId);
-  const defaultLabel = defaultModel ? `Default — ${label(defaultModel)}` : 'Default';
-  // A saved choice the partner no longer offers still has to be shown, or the
-  // select would silently display something else.
-  const orphan = value && load.state === 'ready' && !items.some((m) => m.id === value);
 
   return (
     <Field

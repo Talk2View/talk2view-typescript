@@ -22,6 +22,7 @@ import { Talk2View } from '../index.js';
 import type { ClientTool, ClientToolSchema, PartnerConfig, T2VConfig } from '../types.js';
 import { useTalk2ViewRuntimeForClient } from '../assistant-ui/index.js';
 import { useUserPreferences } from '../react/useUserPreferences.js';
+import { preferencesAfterEffortRefusal } from '../model-choice.js';
 import { assertOneAssistantUi } from './lib/guard.js';
 import { useGuestLimits, type GuestLimits } from './auth-gate.js';
 import { PortalHostContext, useCreatePortalHost } from './lib/portal-host.js';
@@ -307,7 +308,28 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
   }, [client]);
 
   const dictation = useMemo(() => createDictationPhaseStore(), []);
-  const { preferences } = useUserPreferences();
+  const { preferences, updatePreferences } = useUserPreferences();
+
+  // When the engine refuses the stored effort (or gates it), store what it will
+  // accept, so the next message does not repeat the refusal. A gated model with
+  // no effort named has nothing here to change. Read through a ref so a
+  // preference change does not re-subscribe.
+  const currentPreferences = useRef(preferences);
+  currentPreferences.current = preferences;
+  useEffect(() => {
+    const apply = (refusal: { model: string | null; reasoningEffort: string | null }) => {
+      const next = preferencesAfterEffortRefusal(currentPreferences.current, refusal);
+      if (next) updatePreferences(next);
+    };
+    const offGated = client.on('modelGated', (refusal) => {
+      if (refusal.reasoningEffort !== null) apply(refusal);
+    });
+    const offUnsupported = client.on('reasoningEffortUnsupported', apply);
+    return () => {
+      offGated();
+      offUnsupported();
+    };
+  }, [client, updatePreferences]);
 
   // Before the runtime, and it has to stay there: this may put the conversation
   // this device left off on back into the client, and the runtime reads the
@@ -320,6 +342,8 @@ export function ChatProvider({ children, ...props }: ChatProviderProps): ReactNo
     tools,
     // The end-user's choice from Settings; empty means the partner's default.
     model: preferences.model || undefined,
+    // A stored effort goes only with the stored model it was chosen for.
+    reasoningEffort: preferences.model ? preferences.reasoningEffort || undefined : undefined,
     attachments: features.attachments,
     threadList,
     dictation: features.dictation && {

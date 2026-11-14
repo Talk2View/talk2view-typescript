@@ -9,6 +9,7 @@ import { useTalk2View } from '../context.js';
 import { useUserPreferences } from '../../react/useUserPreferences.js';
 import { usePartnerConfig } from '../../react/usePartnerConfig.js';
 import { groupModelsByProvider } from '../utils.js';
+import { modelPickerState, reasoningEffortLabel, resolveModelChoice } from '../../model-choice.js';
 
 export interface SettingsPanelProps {
   onBack?: () => void;
@@ -121,7 +122,19 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
 
   const modelGroups = useMemo(() => groupModelsByProvider(models), [models]);
 
-  const currentModel = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
+  // The model and effort the next message is sent with, shown against the
+  // catalogue: an old id such as "X-thinking-high" shows as its base row with
+  // that effort.
+  const modelState = modelPickerState(models, resolveModelChoice(preferences, t2v.config, partnerConfig));
+  const currentModel = modelState.modelId;
+  const currentEffort = modelsLoading ? undefined : modelState.effort;
+
+  // A stored effort the stored model no longer offers is never sent, so it is
+  // not kept either.
+  const staleStoredEffort = !modelsLoading && !!preferences.model && modelState.staleEffort;
+  useEffect(() => {
+    if (staleStoredEffort) updatePreferences({ reasoningEffort: undefined });
+  }, [staleStoredEffort, updatePreferences]);
   const currentSttModel = preferences.sttModel || partnerConfig?.default_stt_model || '';
   const currentSttLanguage = preferences.sttLanguage ?? '';
   const currentFontSize = preferences.fontSize || 'medium';
@@ -208,7 +221,8 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
             <select
               value={currentModel}
               onChange={(e) => {
-                updatePreferences({ model: e.target.value });
+                // The effort belonged to the model being replaced.
+                updatePreferences({ model: e.target.value, reasoningEffort: undefined });
                 onModelChange?.(e.target.value);
               }}
               style={selectStyle}
@@ -224,6 +238,26 @@ export function SettingsPanel({ onBack, onModelChange, hideHeader }: SettingsPan
             </select>
           )}
         </div>
+
+        {/* Thinking Level: only for a model that offers a choice. Efforts that
+            need a paid plan stay selectable; the engine decides. */}
+        {currentEffort !== undefined && (
+          <div style={sectionStyle}>
+            <div style={labelStyle}>Thinking Level</div>
+            <select
+              value={currentEffort}
+              onChange={(e) => updatePreferences({ model: modelState.modelId, reasoningEffort: e.target.value })}
+              style={selectStyle}
+            >
+              {modelState.efforts.map((effort) => (
+                <option key={effort} value={effort}>
+                  {reasoningEffortLabel(effort)}
+                  {modelState.gated.includes(effort) ? ' (paid plan)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Speech-to-Text Model */}
         <div style={sectionStyle}>

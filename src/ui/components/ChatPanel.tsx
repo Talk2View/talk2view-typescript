@@ -10,6 +10,7 @@ import { WelcomeScreen } from './WelcomeScreen.js';
 import { SettingsPanel } from './SettingsPanel.js';
 import { useUserPreferences } from '../../react/useUserPreferences.js';
 import { usePartnerConfig } from '../../react/usePartnerConfig.js';
+import { reasoningEffortLabel, resolveModelChoice } from '../../model-choice.js';
 
 const FONT_SCALE: Record<string, number> = { small: 0.75, medium: 0.875, large: 1 };
 
@@ -63,8 +64,12 @@ export function ChatPanel({
   const [view, setView] = useState<'chat' | 'settings' | 'login'>('chat');
   const fontSize = FONT_SCALE[preferences.fontSize ?? 'medium'] ?? 0.875;
   // Show the model id verbatim (no `openrouter/` stripping) so direct-API models
-  // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`.
-  const modelDisplay = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || '';
+  // like `anthropic/...` stay unambiguous next to `openrouter/anthropic/...`,
+  // and the reasoning effort sent with it, if any.
+  const choice = resolveModelChoice(preferences, t2v.config, partnerConfig);
+  const modelDisplay = choice.model
+    ? `${choice.model}${choice.reasoningEffort ? ` · ${reasoningEffortLabel(choice.reasoningEffort)}` : ''}`
+    : '';
 
   // Show the login gate when a logged-out visitor can't use anonymous access
   // (the app disallows it, or the partner refused anonymous sign-in), or once an

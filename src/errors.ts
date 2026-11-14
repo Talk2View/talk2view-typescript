@@ -18,6 +18,12 @@ export class T2VError extends Error {
    * header. Set on rate limits and on some temporary outages.
    */
   public readonly retryAfter?: number;
+  /** The model the engine refused (`model_gated`, `reasoning_effort_not_supported`). */
+  public readonly model?: string;
+  /** The reasoning effort the engine refused, when the refusal names one. */
+  public readonly reasoningEffort?: string;
+  /** The efforts the model does offer (`reasoning_effort_not_supported`). */
+  public readonly supportedReasoningEfforts?: string[];
 
   constructor(
     message: string,
@@ -31,6 +37,9 @@ export class T2VError extends Error {
     this.name = 'T2VError';
     this.requestId = details.requestId;
     this.retryAfter = details.retryAfter;
+    this.model = details.model;
+    this.reasoningEffort = details.reasoningEffort;
+    this.supportedReasoningEfforts = details.supportedReasoningEfforts;
   }
 }
 
@@ -38,6 +47,12 @@ export class T2VError extends Error {
 export interface T2VErrorDetails {
   requestId?: string;
   retryAfter?: number;
+  /** The error body's `model`. */
+  model?: string;
+  /** The error body's `reasoning_effort`. */
+  reasoningEffort?: string;
+  /** The error body's `supported`. */
+  supportedReasoningEfforts?: string[];
 }
 
 export class AuthenticationError extends T2VError {
@@ -75,6 +90,9 @@ export class NetworkError extends T2VError {
  * emptied the conversation does (see the auth handler in `index.ts`).
  */
 export const SESSION_EXPIRED_MESSAGE = 'Session expired. Please log in again.';
+
+/** Shown in the thread when the engine refuses the chosen reasoning effort (400 `reasoning_effort_not_supported`). */
+export const REASONING_EFFORT_RESET_MESSAGE = 'This model does not offer the thinking level you chose. Try again to use its default.';
 
 /**
  * The engine's error type for each class we publish. A failed request is thrown

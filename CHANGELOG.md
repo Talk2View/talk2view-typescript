@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-14
+
+### Added
+
+- **Reasoning effort is a setting on a model.** Each `listModels()` entry can list `reasoning_efforts`, with `default_reasoning_effort` and `gated_reasoning_efforts`. `reasoningEffort` (`'low'`, `'medium'` or `'high'`) is accepted in `T2VConfig`, in `sendMessage` and `chat` options, by `useT2VChat`, and by `useTalk2ViewRuntime`, and is sent to the engine as `reasoning_effort` beside `model`. Nothing is sent when it is not set, so apps that do not use it behave as in 0.26.0.
+- **Settings has a Thinking level choice.** `<Talk2ViewChat>`, the launcher and the deprecated `<SettingsPanel>` show it for a model that has efforts. The engine's model list now has one entry per model, with its efforts, where it used to list one per effort, so each model appears once and its effort is chosen under it. Efforts that need a paid plan are marked. A saved choice of an old id such as `gemini-4-hydrogen-thinking` keeps working and is shown as the model with its effort.
+- **`modelGated` and `reasoningEffortUnsupported` events.** `modelGated` fires when the engine refuses a model, or one effort of it, because it needs a paid plan: open your upgrade screen there. `reasoningEffortUnsupported` fires when a model does not offer the effort sent. `T2VError` carries `model`, `reasoningEffort` and `supportedReasoningEfforts` for both.
+- `PartnerConfig` has `default_llm_base_model` and `default_llm_reasoning_effort`. `partnerDefaultChoice()`, `resolveModelChoice()`, `modelPickerState()`, `splitLegacyModelId()`, `preferencesAfterEffortRefusal()` and `reasoningEffortLabel()` are exported for apps that build their own model picker.
+
+### Changed
+
+- **Retry keeps the model and the effort.** `retryLastMessage()` resends the last message with the model and reasoning effort it was first sent with. After the engine refuses an effort, the retry leaves the effort out and the model's default is used.
+- An empty `model` option (`model: ''`) in `sendMessage` or `chat` now falls back to `config.model`, as a missing one does. 0.26.0 sent the empty string.
+
 ## [0.26.0] - 2026-11-12
 
 ### Changed

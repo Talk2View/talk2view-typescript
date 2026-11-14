@@ -89,6 +89,13 @@ switched off without deleting it, and a `.md` file can be imported, taking its
 with `features={{ skills: false }}`; the underlying `client.skills` API stays
 available either way.
 
+**Settings** chooses the AI model that answers, the dictation model and the
+spoken language. For a model that has one, it also shows a **Thinking level**
+choice (Low, Medium or High): how long the model thinks before it answers.
+Levels that need a paid plan are marked "(paid plan)". The choices are kept in
+this browser with the SDK's other preferences, and a model and level picked
+here go with every message after it.
+
 ### `<Talk2ViewChatLauncher>`
 
 The same chat in a floating panel: a mark in the corner of the page, a popover
@@ -123,8 +130,8 @@ function SignOut() {
 ## Props
 
 Both components also accept everything `T2VConfig` accepts (`baseUrl`, `model`,
-`debug`, `requestTimeout`, `anonymousAutoStart`) except `partnerKey`, which they
-take directly.
+`reasoningEffort`, `debug`, `requestTimeout`, `anonymousAutoStart`) except
+`partnerKey`, which they take directly.
 
 | Prop | Default | What it does |
 |---|---|---|
@@ -480,9 +487,9 @@ Stated plainly, because it is large.
 
 | | gzip |
 |---|---|
-| `@talk2view/sdk` (the core client) | 11.8 KB |
-| `@talk2view/sdk/ui` (the previous chat panel) | 40.9 KB |
-| **`@talk2view/sdk/chat`** | **374.5 KB** |
+| `@talk2view/sdk` (the core client) | 12.5 KB |
+| `@talk2view/sdk/ui` (the previous chat panel) | 41.7 KB |
+| **`@talk2view/sdk/chat`** | **376.3 KB** |
 | A whole page containing the chat and React | ~437 KB |
 
 The first three exclude React and React DOM, which your app already has. The

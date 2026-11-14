@@ -34,7 +34,7 @@ export function T2VProvider({ children, ...config }: T2VProviderProps) {
     made.auth.destroy();
     return made;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.partnerKey, config.baseUrl, config.model, config.debug]);
+  }, [config.partnerKey, config.baseUrl, config.model, config.reasoningEffort, config.debug]);
   const [user, setUser] = useState<User | null>(() => t2v.auth.getUser());
 
   useEffect(() => {

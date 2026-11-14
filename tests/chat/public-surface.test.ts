@@ -68,6 +68,7 @@ const CONFIG_PROPS = [
   'baseUrl',
   'voiceApiUrl',
   'model',
+  'reasoningEffort',
   'requestTimeout',
   'debug',
   'anonymousAutoStart',

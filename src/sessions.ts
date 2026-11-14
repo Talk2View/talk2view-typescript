@@ -3,6 +3,7 @@
  */
 
 import type { T2VClient } from './client.js';
+import { turnChoice } from './model-choice.js';
 import type { T2VTools } from './tools.js';
 import type {
   Attachment,
@@ -12,6 +13,7 @@ import type {
   HumanDecision,
   MessageContentPart,
   PendingApproval,
+  ReasoningEffort,
   T2VConfig,
 } from './types.js';
 
@@ -62,6 +64,8 @@ export class T2VSession {
   readonly id: string;
   readonly threadId: string;
   readonly model: string;
+  /** The session's reasoning effort as the engine reported it; null when absent. */
+  readonly reasoningEffort: string | null;
 
   constructor(
     data: CreateSessionResponse,
@@ -72,6 +76,7 @@ export class T2VSession {
     this.id = data.session_id;
     this.threadId = data.thread_id;
     this.model = data.model;
+    this.reasoningEffort = data.reasoning_effort ?? null;
   }
 
   /**
@@ -86,6 +91,12 @@ export class T2VSession {
     options?: {
       systemPrompt?: string;
       model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
@@ -101,9 +112,18 @@ export class T2VSession {
     }
     messages.push({ role: 'user', content: buildUserContent(content, options?.attachments) });
 
+    // The turn's model and effort; the config's only for what the turn leaves
+    // out. `reasoning_effort` is a key only when there is one to send.
+    const choice = turnChoice(options, this.config);
     yield* this.processStream(
       `/v1/sessions/${this.id}/messages`,
-      { messages, stream: true, model: options?.model ?? this.config?.model, ...turnFields(options) },
+      {
+        messages,
+        stream: true,
+        model: choice.model,
+        ...(choice.reasoningEffort ? { reasoning_effort: choice.reasoningEffort } : {}),
+        ...turnFields(options),
+      },
       options?.signal,
       options,
     );

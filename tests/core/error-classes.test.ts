@@ -107,3 +107,25 @@ describe('engine error types map to the exported error classes', () => {
     expect(err.constructor).toBe(T2VError);
   });
 });
+
+describe('refused reasoning efforts and gated models', () => {
+  it('keeps the model, effort and supported list of a refused reasoning effort', async () => {
+    const err = await thrownFor(400, { type: 'reasoning_effort_not_supported',
+      message: "Model gemini-4-hydrogen does not support reasoning effort 'xhigh'",
+      model: 'gemini-4-hydrogen', reasoning_effort: 'xhigh', supported: ['low', 'medium', 'high'] });
+    expect(err.type).toBe('reasoning_effort_not_supported');
+    expect([err.model, err.reasoningEffort, err.supportedReasoningEfforts]).toEqual(['gemini-4-hydrogen', 'xhigh', ['low', 'medium', 'high']]);
+  });
+
+  it('keeps the effort of a gated (model, effort) pair, and leaves it undefined for a gated model', async () => {
+    const pair = await thrownFor(403, { type: 'model_gated', message: 'Model gemini-4-hydrogen requires a paid subscription', model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+    expect([pair.model, pair.reasoningEffort]).toEqual(['gemini-4-hydrogen', 'high']);
+    const whole = await thrownFor(403, { type: 'model_gated', message: 'Model gpt-6-sol requires a paid subscription', model: 'gpt-6-sol' });
+    expect([whole.model, whole.reasoningEffort, whole.supportedReasoningEfforts]).toEqual(['gpt-6-sol', undefined, undefined]);
+  });
+
+  it('ignores malformed extras on an error body', async () => {
+    const err = await thrownFor(400, { type: 'reasoning_effort_not_supported', message: 'x', model: 7, reasoning_effort: null, supported: 'low' });
+    expect([err.model, err.reasoningEffort, err.supportedReasoningEfforts]).toEqual([undefined, undefined, undefined]);
+  });
+});

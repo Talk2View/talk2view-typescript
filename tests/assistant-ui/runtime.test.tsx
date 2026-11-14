@@ -378,6 +378,30 @@ describe('the Talk2View runtime under assistant-ui primitives', () => {
     expect(runtime.thread.getState().messages.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('sends the chosen reasoning effort with the model, and drops it when it is cleared', async () => {
+    scripted(t2v, [[text('a'), done()], [text('b'), done()]]);
+    const sendSpy = vi.spyOn(t2v, 'sendMessage');
+    let runtime!: AssistantRuntime;
+    function WithChoice({ model, reasoningEffort }: { model?: string; reasoningEffort?: string }) {
+      const r = useTalk2ViewRuntimeForClient(t2v, { model, reasoningEffort });
+      useEffect(() => { runtime = r; }, [r]);
+      return (
+        <AssistantRuntimeProvider runtime={r}>
+          <ThreadPrimitive.Root><ThreadPrimitive.Messages components={{ Message }} /></ThreadPrimitive.Root>
+        </AssistantRuntimeProvider>
+      );
+    }
+    const view = render(<WithChoice model="gemini-4-hydrogen" reasoningEffort="high" />);
+    await send(runtime, 'one');
+    await waitFor(() => expect(sendSpy).toHaveBeenLastCalledWith('one', { model: 'gemini-4-hydrogen', reasoningEffort: 'high' }));
+    await waitFor(() => expect(runtime.thread.getState().isRunning).toBe(false));
+
+    // The end-user picks a model with no efforts: the effort goes with the old pick.
+    view.rerender(<WithChoice model="gpt-6-sol" />);
+    await send(runtime, 'two');
+    await waitFor(() => expect(sendSpy).toHaveBeenLastCalledWith('two', { model: 'gpt-6-sol' }));
+  });
+
   it('offers dictation to assistant-ui only when asked to', async () => {
     let runtime!: AssistantRuntime;
     function WithDictation({ on }: { on: boolean }) {

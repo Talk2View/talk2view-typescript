@@ -13,6 +13,12 @@
  * t2v.on('anonymousUnavailable', () => showSignIn());
  * // After the guest limit, listen for the prompt to sign up:
  * t2v.on('demoLimitReached', () => showSignupPrompt());
+ * // A model, or a model at a reasoning effort, that needs a paid plan
+ * // (403 model_gated): the thread shows the engine's message; open your upgrade.
+ * t2v.on('modelGated', ({ model, reasoningEffort }) => showUpgrade(model, reasoningEffort));
+ * // A reasoning effort the model does not offer (400 reasoning_effort_not_supported):
+ * // the thread says so, and Retry sends the model at its default effort.
+ * t2v.on('reasoningEffortUnsupported', ({ supported }) => console.log(supported));
  * // Convert the guest into a real account (history is preserved). The
  * // anonymous session stays live until the emailed confirmation link is
  * // clicked — check `confirmationRequired` to prompt the user to check email:
@@ -38,14 +44,15 @@
 import { T2VAuth } from './auth.js';
 import { T2VClient } from './client.js';
 import { ATTACHMENT_TYPES_LABEL, isAllowedAttachmentType } from './constants.js';
-import { SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
+import { REASONING_EFFORT_RESET_MESSAGE, SESSION_EXPIRED_MESSAGE, T2VError } from './errors.js';
 import { TypedEventEmitter } from './event-emitter.js';
+import { turnChoice } from './model-choice.js';
 import { getIsAnonymous, hasValidTokens } from './storage.js';
 import { T2VSession, buildUserContent } from './sessions.js';
 import { T2VSkills } from './skills.js';
 import { T2VTools, stripNullArgs } from './tools.js';
 import { T2VVoice } from './voice-facade.js';
-import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
+import type { AgentStatus, Attachment, AudioModelsResponse, ChatEvent, ChatMessage, ConversationSnapshot, CreateSessionResponse, DisplayMessage, HumanDecision, PartnerConfig, PendingApproval, Model, ModelsResponse, ReasoningEffort, T2VConfig, T2VEventMap, TranscriptionResponse } from './types.js';
 
 /**
  * Refusals from POST /v1/auth/anonymous that only signing in — or Talk2View
@@ -149,6 +156,17 @@ export class Talk2View {
   private _alwaysAllowedTools = new Set<string>();
   private _lastUserMessage: string | null = null;
   private _lastUserAttachments: Attachment[] | null = null;
+  /** The model and effort the caller gave for the last turn (not the config fallback); Retry resends them. */
+  private _lastUserModel?: string;
+  private _lastUserReasoningEffort?: ReasoningEffort;
+  /**
+   * Set when the engine refused the last turn's effort: Retry then sends the
+   * model alone, whether the effort came from the turn or from the config,
+   * so the model's default applies. Holds the model the refusal named.
+   */
+  private _retryWithoutEffort: { model: string | null } | null = null;
+  /** True while that Retry runs: a session it creates leaves the configured effort out too. */
+  private _createSessionWithoutEffort = false;
   private _messageCounter = 0;
   /**
    * Bumped whenever the conversation on screen is replaced — a switch to
@@ -260,13 +278,13 @@ export class Talk2View {
    * Create a new chat session.
    */
   async createSession(): Promise<T2VSession> {
-    const response = await this.client.request<{
-      session_id: string;
-      thread_id: string;
-      model: string;
-    }>('/v1/sessions', {
+    const reasoningEffort = this._createSessionWithoutEffort ? undefined : this.config.reasoningEffort;
+    const response = await this.client.request<CreateSessionResponse>('/v1/sessions', {
       method: 'POST',
-      body: JSON.stringify({ model: this.config.model }),
+      body: JSON.stringify({
+        model: this.config.model,
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      }),
     });
 
     const session = new T2VSession(response, this.client, this.tools, this.config);
@@ -424,6 +442,12 @@ export class Talk2View {
     options?: {
       systemPrompt?: string;
       model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
@@ -453,6 +477,12 @@ export class Talk2View {
     options?: {
       systemPrompt?: string;
       model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
       history?: ChatMessage[];
       signal?: AbortSignal;
       attachments?: Attachment[];
@@ -616,6 +646,12 @@ export class Talk2View {
   async completions(
     body: {
       model: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoning_effort?: ReasoningEffort;
       messages: Array<{ role: string; content: unknown }>;
       max_tokens?: number;
       temperature?: number;
@@ -752,6 +788,7 @@ export class Talk2View {
     const lastUser = [...snapshot.messages].reverse().find((m) => m.role === 'user');
     this._lastUserMessage = lastUser?.content ?? null;
     this._lastUserAttachments = lastUser?.attachments ?? null;
+    this.clearTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -823,6 +860,7 @@ export class Talk2View {
     this.setAgentStatus(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
+    this.clearTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -1022,10 +1060,50 @@ export class Talk2View {
       // Nor does switching conversations, which aborts it the same way — the
       // error belongs to a chat that is no longer on screen.
       if (!this._stopped && epoch === this._conversationEpoch) {
-        this.setError(err instanceof Error ? err.message : String(err));
+        this.setError(this.reportRefusal(err) ?? (err instanceof Error ? err.message : String(err)));
       }
     }
     return { paused: false, pendingAutoApproval: null, currentAssistantId: currentId };
+  }
+
+  /**
+   * A refused model or reasoning effort: emit its event, and drop the
+   * remembered effort so Retry sends the model at its default. A refused
+   * effort is reported, never silently rerun at another one. Returns the
+   * message to show instead of the engine's, if any.
+   */
+  private reportRefusal(err: unknown): string | undefined {
+    if (!(err instanceof T2VError)) return undefined;
+    const model = err.model ?? null;
+    const reasoningEffort = err.reasoningEffort ?? null;
+    if (err.type === 'reasoning_effort_not_supported') {
+      this.dropRefusedEffort(model);
+      this.emitter.emit('reasoningEffortUnsupported', { model, reasoningEffort, supported: err.supportedReasoningEfforts ?? [] });
+      return REASONING_EFFORT_RESET_MESSAGE;
+    }
+    if (err.type === 'model_gated') {
+      if (reasoningEffort !== null) this.dropRefusedEffort(model);
+      this.emitter.emit('modelGated', { model, reasoningEffort });
+    }
+    return undefined;
+  }
+
+  /** What Retry resends: the model and effort the caller gave for the last turn. */
+  private setTurnChoice(model?: string, reasoningEffort?: ReasoningEffort): void {
+    this._lastUserModel = model;
+    this._lastUserReasoningEffort = reasoningEffort;
+    this._retryWithoutEffort = null;
+  }
+
+  /** Forget the last turn's model and effort, with the conversation they belonged to. */
+  private clearTurnChoice(): void {
+    this.setTurnChoice();
+  }
+
+  /** Retry sends the refused turn's model without the effort the engine refused. */
+  private dropRefusedEffort(model: string | null): void {
+    this._lastUserReasoningEffort = undefined;
+    this._retryWithoutEffort = { model };
   }
 
   /**
@@ -1102,7 +1180,17 @@ export class Talk2View {
    */
   async sendMessage(
     content: string,
-    options?: { systemPrompt?: string; model?: string; attachments?: Attachment[] },
+    options?: {
+      systemPrompt?: string;
+      model?: string;
+      /**
+       * Only for a model whose `reasoning_efforts` lists it. The engine ignores
+       * it for a model with no effort control and answers 400
+       * `reasoning_effort_not_supported` for a value the model does not list.
+       */
+      reasoningEffort?: ReasoningEffort;
+      attachments?: Attachment[];
+    },
   ): Promise<void> {
     const attachments = options?.attachments;
     const userMsg: DisplayMessage = {
@@ -1114,6 +1202,7 @@ export class Talk2View {
     this.emitter.emit('messagesChange', this._messages);
     this._lastUserMessage = content;
     this._lastUserAttachments = attachments ?? null;
+    this.setTurnChoice(options?.model, options?.reasoningEffort);
     this.setLoading(true);
     this.setError(null);
 
@@ -1127,10 +1216,10 @@ export class Talk2View {
     this.debug('history →', JSON.stringify(this._conversationHistory.map((m) => ({ role: m.role, content: previewContent(m.content) }))));
 
     const systemPrompt = options?.systemPrompt;
-    const model = options?.model ?? this.config.model;
+    const { model, reasoningEffort } = turnChoice(options, this.config);
     this._streamAbort = new AbortController();
     this._stopped = false;
-    const stream = this.chat(content, { systemPrompt, model, history: historySnapshot, signal: this._streamAbort.signal, attachments });
+    const stream = this.chat(content, { systemPrompt, model, reasoningEffort, history: historySnapshot, signal: this._streamAbort.signal, attachments });
     await this.drainStream(stream, assistantMsg.id, this._conversationEpoch);
   }
 
@@ -1177,7 +1266,25 @@ export class Talk2View {
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'assistant') this._conversationHistory.pop();
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'user') this._conversationHistory.pop();
     this.setError(null);
-    await this.sendMessage(content, attachments?.length ? { attachments } : undefined);
+    const reasoningEffort = this._lastUserReasoningEffort;
+    // After a refused effort, name the model so the configured effort is not
+    // paired with it again (a turn that names a model takes no config effort).
+    // The host's config is left as it is; later turns use it as before.
+    const refused = this._retryWithoutEffort;
+    const model = this._lastUserModel || (refused ? this.config.model || refused.model || undefined : undefined);
+    // The refusal may have come from creating the session (POST /v1/sessions
+    // sends the configured effort), and a lost session is replaced mid-turn:
+    // any session this retry creates leaves the refused effort out as well.
+    this._createSessionWithoutEffort = refused !== null;
+    try {
+      await this.sendMessage(content, {
+        ...(attachments?.length ? { attachments } : {}),
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+      });
+    } finally {
+      this._createSessionWithoutEffort = false;
+    }
   }
 
   /**
@@ -1194,6 +1301,7 @@ export class Talk2View {
     this.setThreadId(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
+    this.clearTurnChoice();
     this._alwaysAllowedTools = new Set();
     this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
     this.clearSession();
@@ -1238,7 +1346,7 @@ export { T2VSkills } from './skills.js';
 export { T2VTools } from './tools.js';
 /** @internal Exported for typing `t2v.on(...)`. Not part of the supported surface. */
 export { TypedEventEmitter } from './event-emitter.js';
-export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError } from './errors.js';
+export { T2VError, AuthenticationError, PartnerKeyError, SessionError, NetworkError, REASONING_EFFORT_RESET_MESSAGE } from './errors.js';
 export { T2VVoice } from './voice-facade.js';
 /** @internal Exported for typing `t2v.voice`. Not part of the supported surface. */
 export type { T2VVoiceOptions, VoiceControllerLoader } from './voice-facade.js';
@@ -1246,9 +1354,19 @@ export { VoiceStartError } from './voice-error.js';
 export { VOICE_MODEL_NAMES, VOICE_PREFERENCE_URL } from './constants.js';
 // Type-only: the controller itself stays a lazy chunk.
 export type { T2VVoiceController, T2VVoiceDeps, VoiceLibs, VoiceLibLoader } from './voice.js';
+export {
+  reasoningEffortLabel,
+  splitLegacyModelId,
+  partnerDefaultChoice,
+  resolveModelChoice,
+  modelPickerState,
+  preferencesAfterEffortRefusal,
+} from './model-choice.js';
+export type { ModelChoice, ModelPickerState } from './model-choice.js';
 export type {
   T2VEventMap,
   T2VConfig,
+  ReasoningEffort,
   User,
   Attachment,
   AttachmentContentPart,

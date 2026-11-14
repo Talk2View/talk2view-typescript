@@ -1,7 +1,7 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
-import type { DisplayMessage, PendingApproval } from '../../src/types';
+import type { DisplayMessage, PendingApproval, UserPreferences } from '../../src/types';
 
 const runningMessage: DisplayMessage = {
   id: 'a1',
@@ -19,6 +19,7 @@ const pendingApproval: PendingApproval = {
 };
 
 let chatState: Record<string, unknown>;
+let PREFS: UserPreferences;
 
 vi.mock('../../src/ui/context', () => ({
   useTalk2View: () => ({
@@ -31,7 +32,7 @@ vi.mock('../../src/ui/context', () => ({
 }));
 
 vi.mock('../../src/react/useUserPreferences', () => ({
-  useUserPreferences: () => ({ preferences: { fontSize: 'medium' } }),
+  useUserPreferences: () => ({ preferences: PREFS }),
 }));
 vi.mock('../../src/react/usePartnerConfig', () => ({
   usePartnerConfig: () => ({ config: { default_llm_model: '' } }),
@@ -50,6 +51,7 @@ vi.mock('../../src/ui/components/MessageList', () => ({
 import { ChatPanel } from '../../src/ui/components/ChatPanel';
 
 beforeEach(() => {
+  PREFS = { fontSize: 'medium' };
   chatState = {
     messages: [runningMessage],
     isLoading: true,
@@ -99,5 +101,19 @@ describe('ChatPanel customization hooks', () => {
       }),
     );
     expect(queryByText('Danger: delete_content')).toBeNull();
+  });
+});
+
+describe('ChatPanel model footer', () => {
+  it('shows the effort beside the model in the footer', () => {
+    PREFS = { fontSize: 'medium', model: 'gemini-4-hydrogen', reasoningEffort: 'high' };
+    render(React.createElement(ChatPanel, {}));
+    expect(screen.getByText('gemini-4-hydrogen · High')).toBeTruthy();
+  });
+
+  it('shows the model alone when no effort is chosen', () => {
+    PREFS = { fontSize: 'medium', model: 'gpt-5.5' };
+    render(React.createElement(ChatPanel, {}));
+    expect(screen.getByText('gpt-5.5')).toBeTruthy();
   });
 });
