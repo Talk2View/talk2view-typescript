@@ -171,3 +171,45 @@ it('any other failure fires neither event', async () => {
   expect(seen).toEqual([]);
   expect(t2v.error).toBe('Boom');
 });
+
+it('after a refused configured effort, Retry sends the model alone and leaves the config untouched', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(unsupported())).mockImplementation(yieldingStream(stopChunk()));
+  const config = { partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false, model: 'gemini-4-hydrogen', reasoningEffort: 'high' };
+  const t2v = new Talk2View(config);
+  await t2v.sendMessage('hi');
+  expect(turnBody(0)).toMatchObject({ model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+  await t2v.retryLastMessage();
+  expect(turnBody(1).model).toBe('gemini-4-hydrogen');
+  expect('reasoning_effort' in turnBody(1)).toBe(false);
+  expect(config.reasoningEffort).toBe('high');
+  // Only the retry skips it: a new turn uses the config as before, like a
+  // remembered effort, which only Retry ever reads.
+  await t2v.sendMessage('next');
+  expect(turnBody(2)).toMatchObject({ model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+});
+
+it('after a refused configured effort with no configured model, Retry names the refused model', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(unsupported())).mockImplementation(yieldingStream(stopChunk()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false, reasoningEffort: 'high' });
+  await t2v.sendMessage('hi');
+  await t2v.retryLastMessage();
+  expect(turnBody(1).model).toBe('gemini-4-hydrogen');
+  expect('reasoning_effort' in turnBody(1)).toBe(false);
+});
+
+it('after a gated configured effort, Retry sends the model alone', async () => {
+  streamRequest.mockImplementationOnce(throwingStream(gated('high'))).mockImplementation(yieldingStream(stopChunk()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false, model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+  await t2v.sendMessage('hi');
+  await t2v.retryLastMessage();
+  expect(turnBody(1).model).toBe('gemini-4-hydrogen');
+  expect('reasoning_effort' in turnBody(1)).toBe(false);
+});
+
+it('a retry after a successful turn still sends the configured effort', async () => {
+  streamRequest.mockImplementation(yieldingStream(stopChunk()));
+  const t2v = new Talk2View({ partnerKey: 'pk', baseUrl: 'http://localhost', anonymousAutoStart: false, model: 'gemini-4-hydrogen', reasoningEffort: 'high' });
+  await t2v.sendMessage('hi');
+  await t2v.retryLastMessage();
+  expect(turnBody(1)).toMatchObject({ model: 'gemini-4-hydrogen', reasoning_effort: 'high' });
+});

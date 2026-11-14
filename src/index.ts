@@ -157,8 +157,14 @@ export class Talk2View {
   private _lastUserMessage: string | null = null;
   private _lastUserAttachments: Attachment[] | null = null;
   /** The model and effort the caller gave for the last turn (not the config fallback); Retry resends them. */
-  private _lastUserModel: string | undefined = undefined;
-  private _lastUserReasoningEffort: ReasoningEffort | undefined = undefined;
+  private _lastUserModel?: string;
+  private _lastUserReasoningEffort?: ReasoningEffort;
+  /**
+   * Set when the engine refused the last turn's effort: Retry then sends the
+   * model alone, whether the effort came from the turn or from the config,
+   * so the model's default applies. Holds the model the refusal named.
+   */
+  private _retryWithoutEffort: { model: string | null } | null = null;
   private _messageCounter = 0;
   /**
    * Bumped whenever the conversation on screen is replaced — a switch to
@@ -275,7 +281,7 @@ export class Talk2View {
       method: 'POST',
       body: JSON.stringify({
         model: this.config.model,
-        ...(typeof reasoningEffort === 'string' && reasoningEffort !== '' ? { reasoning_effort: reasoningEffort } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       }),
     });
 
@@ -780,8 +786,7 @@ export class Talk2View {
     const lastUser = [...snapshot.messages].reverse().find((m) => m.role === 'user');
     this._lastUserMessage = lastUser?.content ?? null;
     this._lastUserAttachments = lastUser?.attachments ?? null;
-    this._lastUserModel = undefined;
-    this._lastUserReasoningEffort = undefined;
+    this.rememberTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -853,8 +858,7 @@ export class Talk2View {
     this.setAgentStatus(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
-    this._lastUserModel = undefined;
-    this._lastUserReasoningEffort = undefined;
+    this.rememberTurnChoice();
     this.setAlwaysAllowed(new Set());
   }
 
@@ -1071,15 +1075,28 @@ export class Talk2View {
     const model = err.model ?? null;
     const reasoningEffort = err.reasoningEffort ?? null;
     if (err.type === 'reasoning_effort_not_supported') {
-      this._lastUserReasoningEffort = undefined;
+      this.dropRefusedEffort(model);
       this.emitter.emit('reasoningEffortUnsupported', { model, reasoningEffort, supported: err.supportedReasoningEfforts ?? [] });
       return REASONING_EFFORT_RESET_MESSAGE;
     }
     if (err.type === 'model_gated') {
-      if (reasoningEffort !== null) this._lastUserReasoningEffort = undefined;
+      if (reasoningEffort !== null) this.dropRefusedEffort(model);
       this.emitter.emit('modelGated', { model, reasoningEffort });
     }
     return undefined;
+  }
+
+  /** What Retry resends: the model and effort the caller gave for the last turn (none after a reset). */
+  private rememberTurnChoice(model?: string, reasoningEffort?: ReasoningEffort): void {
+    this._lastUserModel = model;
+    this._lastUserReasoningEffort = reasoningEffort;
+    this._retryWithoutEffort = null;
+  }
+
+  /** Retry sends the refused turn's model without the effort the engine refused. */
+  private dropRefusedEffort(model: string | null): void {
+    this._lastUserReasoningEffort = undefined;
+    this._retryWithoutEffort = { model };
   }
 
   /**
@@ -1178,8 +1195,7 @@ export class Talk2View {
     this.emitter.emit('messagesChange', this._messages);
     this._lastUserMessage = content;
     this._lastUserAttachments = attachments ?? null;
-    this._lastUserModel = options?.model;
-    this._lastUserReasoningEffort = options?.reasoningEffort;
+    this.rememberTurnChoice(options?.model, options?.reasoningEffort);
     this.setLoading(true);
     this.setError(null);
 
@@ -1243,14 +1259,17 @@ export class Talk2View {
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'assistant') this._conversationHistory.pop();
     while (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1]!.role === 'user') this._conversationHistory.pop();
     this.setError(null);
-    const model = this._lastUserModel;
     const reasoningEffort = this._lastUserReasoningEffort;
-    const options = {
+    // After a refused effort, name the model so the configured effort is not
+    // paired with it again (a turn that names a model takes no config effort).
+    // The host's config is left as it is; later turns use it as before.
+    const refused = this._retryWithoutEffort;
+    const model = this._lastUserModel || (refused ? this.config.model || refused.model || undefined : undefined);
+    await this.sendMessage(content, {
       ...(attachments?.length ? { attachments } : {}),
-      ...(model !== undefined ? { model } : {}),
-      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
-    };
-    await this.sendMessage(content, Object.keys(options).length ? options : undefined);
+      ...(model ? { model } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    });
   }
 
   /**
@@ -1267,8 +1286,7 @@ export class Talk2View {
     this.setThreadId(null);
     this._lastUserMessage = null;
     this._lastUserAttachments = null;
-    this._lastUserModel = undefined;
-    this._lastUserReasoningEffort = undefined;
+    this.rememberTurnChoice();
     this._alwaysAllowedTools = new Set();
     this.emitter.emit('alwaysAllowedChange', this._alwaysAllowedTools);
     this.clearSession();
