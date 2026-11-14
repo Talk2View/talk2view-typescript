@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { T2VProvider, useT2V } from '../../react/T2VProvider.js';
 import { useUserPreferences } from '../../react/useUserPreferences.js';
 import { usePartnerConfig } from '../../react/usePartnerConfig.js';
+import { preferencesAfterEffortRefusal, resolveModelChoice } from '../../model-choice.js';
 import { Talk2ViewContext, ChatContext } from '../context.js';
 import { injectTheme, injectFonts } from '../theme.js';
 import { injectComponentStyles } from '../styles.js';
@@ -48,11 +49,19 @@ function InnerProvider({
 }) {
   // Get the t2v instance from T2VProvider (single source of truth)
   const { t2v, user, isAuthenticated } = useT2V();
-  const { preferences } = useUserPreferences();
+  const { preferences, updatePreferences } = useUserPreferences();
   const { config: partnerConfig } = usePartnerConfig();
 
-  // Resolve model: user preference > Talk2View prop > partner config default
-  const resolvedModel = preferences.model || t2v.config.model || partnerConfig?.default_llm_model || undefined;
+  // Resolve model and effort: user preference > Talk2View prop > partner config
+  // default. Each source supplies both halves of the pair.
+  const { model: resolvedModel, reasoningEffort: resolvedEffort } = resolveModelChoice(
+    preferences,
+    t2v.config,
+    partnerConfig,
+  );
+  // Read by the refusal listeners below without re-subscribing on every change.
+  const currentPreferences = useRef(preferences);
+  currentPreferences.current = preferences;
 
   // Inject theme + fonts + component styles
   useEffect(() => {
@@ -89,6 +98,12 @@ function InnerProvider({
   const [anonymousUnavailable, setAnonymousUnavailable] = useState(false);
 
   useEffect(() => {
+    // The engine refused the stored effort (or gated it): store what it will
+    // accept so the next message does not repeat the refusal.
+    const applyRefusal = (refusal: { model: string | null; reasoningEffort: string | null }) => {
+      const next = preferencesAfterEffortRefusal(currentPreferences.current, refusal);
+      if (next) updatePreferences(next);
+    };
     const unsubs = [
       t2v.on('messagesChange', setMessages),
       t2v.on('loadingChange', setIsLoading),
@@ -99,9 +114,13 @@ function InnerProvider({
       t2v.on('alwaysAllowedChange', setAlwaysAllowedTools),
       t2v.on('demoLimitReached', () => setDemoLimitReached(true)),
       t2v.on('anonymousUnavailable', () => setAnonymousUnavailable(true)),
+      t2v.on('modelGated', (refusal) => {
+        if (refusal.reasoningEffort !== null) applyRefusal(refusal);
+      }),
+      t2v.on('reasoningEffortUnsupported', applyRefusal),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [t2v]);
+  }, [t2v, updatePreferences]);
 
   // Recompute anonymity whenever auth changes. When the user signs in after the
   // demo limit was hit or anonymous sign-in was refused, close the gate AND
@@ -120,8 +139,13 @@ function InnerProvider({
 
   const sendMessage = useCallback(
     (content: string, options?: { attachments?: Attachment[] }) =>
-      t2v.sendMessage(content, { systemPrompt, model: resolvedModel, ...options }),
-    [t2v, systemPrompt, resolvedModel],
+      t2v.sendMessage(content, {
+        systemPrompt,
+        model: resolvedModel,
+        ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+        ...options,
+      }),
+    [t2v, systemPrompt, resolvedModel, resolvedEffort],
   );
   const approveToolCall = useCallback((d: HumanDecision) => t2v.approveToolCall(d), [t2v]);
   const retryLastMessage = useCallback(() => t2v.retryLastMessage(), [t2v]);
