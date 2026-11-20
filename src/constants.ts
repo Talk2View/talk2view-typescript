@@ -33,4 +33,5 @@ export const VOICE_MODEL_NAMES: Record<VoiceModelId, string> = {
   'gemini-live': 'Gemini Live',
   elevenlabs: 'ElevenLabs',
   'elevenlabs-medical': 'ElevenLabs Medical',
+  'elevenlabs-medical-live': 'ElevenLabs Medical Live',
 };

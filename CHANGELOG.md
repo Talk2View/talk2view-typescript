@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **ElevenLabs Medical Live voice model (`elevenlabs-medical-live`).** A fourth voice model: the ElevenLabs voice with a speech recogniser that understands medical terms and transcribes while the caller speaks. It runs as an ElevenLabs call does: the same connection, time limit and events. `VoiceModelId` and `VOICE_MODEL_NAMES` include it, and `callStarted` reports it. It is off until the partner turns it on in the dashboard; apps on an older SDK keep their current voice models.
+
+### Changed
+
+- When an ElevenLabs or ElevenLabs Medical Live call can't connect, the one retry on Gemini Live leaves out every ElevenLabs voice model, and its note names the voice model that failed.
+
 ## [0.27.0] - 2026-11-14
 
 ### Added
