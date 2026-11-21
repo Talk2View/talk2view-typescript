@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { T2VVoiceController as T2VVoice, couldNotConnectNote, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
+import { T2VVoiceController as T2VVoice, VOICE_MODEL_NAMES, couldNotConnectNote, type T2VVoiceDeps, type VoiceLibs } from '../../src/voice.js';
 import { T2VSession } from '../../src/sessions.js';
 import type { T2VClient } from '../../src/client.js';
 import type { T2VTools } from '../../src/tools.js';
@@ -11,6 +11,7 @@ import type {
   ElevenLabsCallInfo,
   HumanDecision,
   PermissionCheckResult,
+  VoiceModelId,
   VoiceState,
 } from '../../src/types.js';
 
@@ -186,7 +187,7 @@ describe('T2VVoice.start', () => {
     await w.voice.start({ systemPrompt: 'Update the study list table.' });
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ system_prompt: 'Update the study list table.', voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }),
+      body: JSON.stringify({ system_prompt: 'Update the study list table.', voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }),
     });
   });
 
@@ -195,7 +196,7 @@ describe('T2VVoice.start', () => {
     await w.voice.start({ systemPrompt: '   ' });
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }),
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }),
     });
   });
 
@@ -205,7 +206,7 @@ describe('T2VVoice.start', () => {
     expect(w.deps.ensureSession).toHaveBeenCalledOnce();
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }),
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }),
     });
     const c = w.client();
     expect((c.opts.transport as FakeTransport).iceServers).toEqual([
@@ -284,12 +285,12 @@ describe('T2VVoice.start', () => {
 });
 
 describe('T2VVoice.start: the voice model', () => {
-  it('mint sends all three voice models and the browser language', async () => {
+  it('mint sends every voice model and the browser language', async () => {
     const w = world({ language: () => 'fr-CA' });
     await w.voice.start({ systemPrompt: 'Page' });
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ system_prompt: 'Page', voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'], language: 'fr-CA' }),
+      body: JSON.stringify({ system_prompt: 'Page', voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'], language: 'fr-CA' }),
     });
   });
 
@@ -298,7 +299,7 @@ describe('T2VVoice.start: the voice model', () => {
     await w.voice.start();
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }),
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }),
     });
     expect(w.voice.state).toBe('listening');
   });
@@ -309,15 +310,15 @@ describe('T2VVoice.start: the voice model', () => {
     await w.voice.start();
     expect(w.deps.request).toHaveBeenCalledWith('/v1/voice/sessions', {
       method: 'POST',
-      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'], language }),
+      body: JSON.stringify({ voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'], language }),
     });
   });
 
-  it('asks the engine for all three voice models', async () => {
+  it('asks the engine for every voice model', async () => {
     const w = world();
     await w.voice.start();
     const body = JSON.parse((w.deps.request as any).mock.calls[0][1].body);
-    expect(body.voice_models).toEqual(['gemini-live', 'elevenlabs', 'elevenlabs-medical']);
+    expect(body.voice_models).toEqual(['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live']);
   });
 
   it('an elevenlabs-medical mint takes the Pipecat path and reports its voice model', async () => {
@@ -417,6 +418,8 @@ describe('T2VVoice.start: the voice model', () => {
 
   it("names both voice models in the could-not-connect note, in the engine's words", () => {
     expect(couldNotConnectNote('gemini-live', 'elevenlabs')).toBe('Using Gemini Live — ElevenLabs couldn’t connect.');
+    expect(couldNotConnectNote('gemini-live', 'elevenlabs-medical-live')).toBe('Using Gemini Live — ElevenLabs Medical Live couldn’t connect.');
+    expect(VOICE_MODEL_NAMES['elevenlabs-medical-live']).toBe('ElevenLabs Medical Live');
   });
 });
 
@@ -1755,15 +1758,16 @@ const elWorlds: Array<{ voice: T2VVoice }> = [];
 
 /**
  * A world whose engine picks ElevenLabs while the mint allows it, and Gemini
- * Live once ElevenLabs is left out. `engine.elevenlabs` changes the mint's
+ * Live once ElevenLabs is left out. `engine.voiceModel` is the hosted mint's
+ * voice model (default `elevenlabs`); `engine.elevenlabs` changes its
  * ElevenLabs half. An end report answers `engine.endReport()`, or `{}`.
  */
 function elWorld(
   overrides: Partial<T2VVoiceDeps> = {},
-  engine: { elevenlabs?: Partial<ElevenLabsCallInfo>; endReport?: () => Promise<unknown> } = {},
+  engine: { voiceModel?: VoiceModelId; elevenlabs?: Partial<ElevenLabsCallInfo>; endReport?: () => Promise<unknown> } = {},
 ) {
   const el = fakeElevenLabs();
-  const mintEl = { ...MINT_EL, elevenlabs: { ...EL, ...engine.elevenlabs } };
+  const mintEl = { ...MINT_EL, voice_model: engine.voiceModel ?? 'elevenlabs', elevenlabs: { ...EL, ...engine.elevenlabs } };
   const request = vi.fn(async (endpoint: string, init?: RequestInit): Promise<unknown> => {
     if (endpoint !== '/v1/voice/sessions') return engine.endReport ? engine.endReport() : {};
     return bodyOf(init).voice_models?.includes('elevenlabs') ? mintEl : MINT;
@@ -1806,6 +1810,43 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     expect(w.loadElevenLabs).toHaveBeenCalledOnce();
     expect(w.el.startSession).toHaveBeenCalledOnce();
     expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined)).toBe(true); // no Pipecat connect
+  });
+
+  it('an elevenlabs-medical-live mint runs on the ElevenLabs connection and reports its voice model', async () => {
+    const w = elWorld({}, { voiceModel: 'elevenlabs-medical-live' });
+    await w.voice.start();
+    expect(w.loadElevenLabs).toHaveBeenCalledOnce();
+    expect(w.el.startSession).toHaveBeenCalledOnce();
+    expect(FakePipecatClient.instances.every((c) => c.connectParams === undefined)).toBe(true);
+    expect(w.started).toEqual([{ voiceModel: 'elevenlabs-medical-live', greeting: EL.greeting }]);
+    expect(w.voice.state).toBe('listening');
+  });
+
+  it('an elevenlabs mint still reports elevenlabs', async () => {
+    const w = elWorld();
+    await w.voice.start();
+    expect(w.started).toEqual([{ voiceModel: 'elevenlabs', greeting: EL.greeting }]);
+  });
+
+  it('a medical live call that cannot connect falls back to Gemini Live, leaving out every ElevenLabs voice model', async () => {
+    const w = elWorld({}, { voiceModel: 'elevenlabs-medical-live' });
+    w.el.control.failWith = new Error('could not establish signal connection');
+    await w.voice.start();
+    expect(w.request.mock.calls.map((c) => [c[0], bodyOf(c[1])])).toEqual([
+      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }],
+      ['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }],
+      ['/v1/voice/sessions', { voice_models: ['gemini-live'] }],
+    ]);
+    expect(w.notes).toEqual([couldNotConnectNote('gemini-live', 'elevenlabs-medical-live')]);
+    expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
+    expect(w.errors).toEqual([]);
+  });
+
+  it('an elevenlabs call that cannot connect still names ElevenLabs in its note', async () => {
+    const w = elWorld();
+    w.el.control.failWith = new Error('could not establish signal connection');
+    await w.voice.start();
+    expect(w.notes).toEqual([couldNotConnectNote('gemini-live', 'elevenlabs')]);
   });
 
   it('an elevenlabs mint releases the pipecat microphone before the call starts', async () => {
@@ -2003,7 +2044,7 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     w.el.control.failWith = new Error('could not establish signal connection');
     await w.voice.start();
     expect(w.request.mock.calls.map((c) => [c[0], bodyOf(c[1])])).toEqual([
-      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical'] }],
+      ['/v1/voice/sessions', { voice_models: ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'] }],
       ['/v1/voice/calls/conv_1/end', { reason: 'connect_failed' }],
       ['/v1/voice/sessions', { voice_models: ['gemini-live'] }],
     ]);
@@ -2030,7 +2071,7 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     w.el.control.failWith = new Error('could not establish signal connection');
     await w.voice.start();
     const bodies = w.request.mock.calls.filter((c) => c[0] === '/v1/voice/sessions').map((c) => bodyOf(c[1]).voice_models);
-    expect(bodies).toEqual([['gemini-live', 'elevenlabs', 'elevenlabs-medical'], ['gemini-live']]);
+    expect(bodies).toEqual([['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'], ['gemini-live']]);
     expect(w.started).toEqual([{ voiceModel: 'gemini-live', greeting: null }]);
   });
 
@@ -2240,6 +2281,26 @@ describe('T2VVoice.start: an ElevenLabs call', () => {
     await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
     await w.voice.stop();
     mint.resolve(MINT_EL);
+    await starting;
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1]).toEqual([
+      '/v1/voice/calls/conv_1/end',
+      { method: 'POST', body: JSON.stringify({ reason: 'stopped' }), keepalive: true },
+    ]);
+    expect(w.loadElevenLabs).not.toHaveBeenCalled();
+    expect(w.ended).toEqual(['stopped']);
+  });
+
+  it('a hang-up during a medical live mint reports the end of the call it minted', async () => {
+    const mint = deferred<typeof MINT_EL>();
+    const request = vi.fn((endpoint: string, _init?: RequestInit) =>
+      endpoint === '/v1/voice/sessions' ? mint.promise : Promise.resolve({}),
+    );
+    const w = elWorld({ request: request as unknown as T2VVoiceDeps['request'] });
+    const starting = w.voice.start();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await w.voice.stop();
+    mint.resolve({ ...MINT_EL, voice_model: 'elevenlabs-medical-live' });
     await starting;
     await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(request.mock.calls[1]).toEqual([

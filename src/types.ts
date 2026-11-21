@@ -595,7 +595,7 @@ export interface VoiceIceServer {
 }
 
 /** What runs a voice call. */
-export type VoiceModelId = 'gemini-live' | 'elevenlabs' | 'elevenlabs-medical';
+export type VoiceModelId = 'gemini-live' | 'elevenlabs' | 'elevenlabs-medical' | 'elevenlabs-medical-live';
 
 /** Body of `POST /v1/voice/sessions`. Every field is optional. */
 export interface VoiceSessionRequest {

@@ -10,11 +10,12 @@
  * ticket: the Pipecat client libraries, loaded on every `start()` because the
  * microphone opens through them before the mint, carry its WebRTC audio to
  * the voice agent service, and the client tools the agent calls arrive here
- * over the RTVI data channel. An ElevenLabs call gets a conversation token:
- * it runs in `voice-elevenlabs.ts` on the `@elevenlabs/client` library, and
- * the agent's requests become engine turns on the end-user's chat session
- * (`voice-turn.ts`), all three loaded with `import()` only for such a call. An
- * ElevenLabs call that can't connect is tried once more, on Gemini Live.
+ * over the RTVI data channel. An ElevenLabs or ElevenLabs Medical Live call
+ * gets a conversation token: it runs in `voice-elevenlabs.ts` on the
+ * `@elevenlabs/client` library, and the agent's requests become engine turns
+ * on the end-user's chat session (`voice-turn.ts`), all three loaded with
+ * `import()` only for such a call. Such a call that can't connect is tried
+ * once more, on Gemini Live.
  * Either way, client tools run through the SAME tool registry and permission
  * check as chat, so partners write no new code.
  */
@@ -43,7 +44,26 @@ import type {
 // ── Voice models ──
 
 /** The voice models this SDK can run, as it asks the engine for them. */
-export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live', 'elevenlabs', 'elevenlabs-medical'];
+export const VOICE_MODELS_THIS_SDK_RUNS: readonly VoiceModelId[] = ['gemini-live', 'elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'];
+
+/**
+ * The voice models whose mint carries the `elevenlabs` object: each runs on
+ * the ElevenLabs connection (`voice-elevenlabs.ts`), not on Pipecat.
+ */
+export const HOSTED_AGENT_VOICE_MODELS: readonly VoiceModelId[] = ['elevenlabs', 'elevenlabs-medical-live'];
+
+/** Every ElevenLabs voice model: a retry after one can't connect leaves them all out. */
+const ELEVENLABS_VOICE_MODELS: readonly VoiceModelId[] = ['elevenlabs', 'elevenlabs-medical', 'elevenlabs-medical-live'];
+
+/**
+ * The ElevenLabs call a mint carries, when its voice model runs on the
+ * ElevenLabs connection; otherwise `null`. An old engine's mint, with no
+ * `voice_model`, takes the Pipecat path.
+ */
+function hostedAgentCallOf(mint: VoiceSessionResponse | null | undefined): ElevenLabsCallInfo | null {
+  if (!mint?.voice_model || !HOSTED_AGENT_VOICE_MODELS.includes(mint.voice_model)) return null;
+  return mint.elevenlabs ?? null;
+}
 
 /** What the end-user is told when no voice model this app allows can take the call. */
 export const NO_VOICE_MESSAGE = 'Voice isn’t available right now.';
@@ -523,7 +543,9 @@ export class T2VVoiceController {
       // An ElevenLabs call's time limit counts from here, however long its library takes to load.
       const mintedAt = Date.now();
       timings.mark('mint');
-      const elevenlabs = mint.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
+      // ElevenLabs or ElevenLabs Medical Live: the mint carries a conversation token.
+      const elevenlabsModel = mint.voice_model;
+      const elevenlabs = hostedAgentCallOf(mint);
       // Hung up during the mint: the ending took the mint over, and reports its end.
       if (stale()) {
         releaseMicWhenOpen();
@@ -554,12 +576,22 @@ export class T2VVoiceController {
         releaseMic(first.pipecat);
         this.client = null;
         client = null;
-        if (await this.startElevenLabs(elevenlabs, mintedAt, mint.session_id, options, elevenlabsLoad, stale, aborted)) {
+        const started = await this.startElevenLabs(
+          elevenlabs,
+          elevenlabsModel,
+          mintedAt,
+          mint.session_id,
+          options,
+          elevenlabsLoad,
+          stale,
+          aborted,
+        );
+        if (started) {
           if (!stale()) timings.done('connected');
           return;
         }
         // It couldn't connect: tried once more, on Gemini Live, with a fresh client.
-        const retry = await this.fallBackToGeminiLive(elevenlabs.conversation_id, options, stale);
+        const retry = await this.fallBackToGeminiLive(elevenlabs.conversation_id, elevenlabsModel, options, stale);
         if (!retry || stale()) return;
         mint = retry;
         ({ pipecat, transport } = this.buildPipecat(libs, stale, () => pipecatModel));
@@ -723,9 +755,10 @@ export class T2VVoiceController {
   }
 
   /**
-   * Start the ElevenLabs call the engine minted, once its module and library
-   * have loaded. Its time limit counts from `mintedAt`, when the mint
-   * answered. Its requests run as engine turns on the chat session the
+   * Start the ElevenLabs call the engine minted on `voiceModel` (ElevenLabs
+   * or ElevenLabs Medical Live), once its module and library have loaded;
+   * `callStarted` reports that voice model. Its time limit counts from
+   * `mintedAt`, when the mint answered. Its requests run as engine turns on the chat session the
    * mint names, with the page prompt as their system message; the agent gets
    * the page prompt unfenced (`voice-elevenlabs.ts`). Resolves `true` when
    * the call started, or the start was hung up (that ending reported the
@@ -734,6 +767,7 @@ export class T2VVoiceController {
    */
   private async startElevenLabs(
     info: ElevenLabsCallInfo,
+    voiceModel: VoiceModelId,
     mintedAt: number,
     sessionId: string,
     options: VoiceStartOptions,
@@ -778,7 +812,7 @@ export class T2VVoiceController {
       onConnected: () => {
         if (stale()) return;
         this.setState('listening');
-        this.safeEmit('callStarted', { voiceModel: 'elevenlabs', greeting: info.greeting });
+        this.safeEmit('callStarted', { voiceModel, greeting: info.greeting });
       },
       onTranscript: (transcript) => {
         if (!stale()) this.emitTranscript(transcript);
@@ -814,13 +848,16 @@ export class T2VVoiceController {
   }
 
   /**
-   * The ElevenLabs call couldn't connect, and nothing has reported its end.
-   * The engine is told (it releases the credit it holds for the call), then
-   * asked for the call once more, without ElevenLabs, and its note shown.
-   * Resolves that mint, or `null` once the start is hung up.
+   * The ElevenLabs call on `failed` (ElevenLabs or ElevenLabs Medical Live)
+   * couldn't connect, and nothing has reported its end. The engine is told
+   * (it releases the credit it holds for the call), then asked for the call
+   * once more, without any ElevenLabs voice model, and its note shown: the
+   * engine's, or one that names `failed`. Resolves that mint, or `null` once
+   * the start is hung up.
    */
   private async fallBackToGeminiLive(
     conversationId: string,
+    failed: VoiceModelId,
     options: VoiceStartOptions,
     stale: () => boolean,
   ): Promise<VoiceSessionResponse | null> {
@@ -834,10 +871,10 @@ export class T2VVoiceController {
     this.keepEndReport(report);
     await report;
     if (stale()) return null;
-    // Both ElevenLabs ids: the same vendor is down, so medical would likely fail too.
-    const mint = await this.mintVoice(options, ['elevenlabs', 'elevenlabs-medical']);
+    // Every ElevenLabs id: the same vendor is down, so the others would likely fail too.
+    const mint = await this.mintVoice(options, ELEVENLABS_VOICE_MODELS);
     if (stale()) return null;
-    this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, 'elevenlabs'));
+    this.safeEmit('note', mint.note ?? couldNotConnectNote(mint.voice_model, failed));
     return mint;
   }
 
@@ -858,13 +895,14 @@ export class T2VVoiceController {
 
   /**
    * The end report for a mint that was in flight as the call ended. Once the
-   * mint returns, the end of the ElevenLabs call it made is reported, with
-   * the ending's reason. Settles once the engine answers that report, or as
-   * soon as the mint fails or returns a Gemini Live call. Never rejects.
+   * mint returns, the end of the ElevenLabs or ElevenLabs Medical Live call
+   * it made is reported, with the ending's reason. Settles once the engine
+   * answers that report, or as soon as the mint fails or returns a Pipecat
+   * call. Never rejects.
    */
   private async reportEndAfterMint(minting: Promise<VoiceSessionResponse>, reason: VoiceEndReason): Promise<void> {
     const mint = await minting.catch(() => null);
-    const elevenlabs = mint?.voice_model === 'elevenlabs' ? (mint.elevenlabs ?? null) : null;
+    const elevenlabs = hostedAgentCallOf(mint);
     if (elevenlabs) await this.reportEnd(elevenlabs.conversation_id, reason);
   }
 

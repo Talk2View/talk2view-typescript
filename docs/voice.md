@@ -9,8 +9,8 @@ Voice is off until you turn it on in the dashboard's Settings → Voice. While i
 is off, `/v1/config` returns `voice_agent_enabled: false` and nothing below
 shows.
 
-A voice call runs on one of three voice models: Gemini Live, ElevenLabs or
-ElevenLabs Medical. Which one is decided for each call: see
+A voice call runs on one of four voice models: Gemini Live, ElevenLabs,
+ElevenLabs Medical or ElevenLabs Medical Live. Which one is decided for each call: see
 [Voice models](#voice-models).
 
 ## In the launcher
@@ -34,7 +34,7 @@ right now. Try again shortly." When a tool call needs the end-user's go-ahead
 or approval, its card appears in the same place.
 
 While the call runs, call captions show what the end-user and the agent say,
-under the note and newest at the bottom, on all three voice models. They are on by
+under the note and newest at the bottom, on all four voice models. They are on by
 default and are cleared when the call ends. To turn them off:
 
 ```tsx
@@ -79,9 +79,10 @@ panel above the voice button while the call runs: the agent's, and the
 end-user's in a quieter colour, newest at the bottom. Past a few lines the
 older ones scroll away, and the panel stays clear of the button.
 
-- **All three voice models.** On a Gemini Live call, and on an ElevenLabs
+- **All four voice models.** On a Gemini Live call, and on an ElevenLabs
   Medical call, which runs over the same connection, the end-user's words show
-  as they speak them. On an ElevenLabs call they show a line at a time, and the
+  as they speak them. On an ElevenLabs call, and on an ElevenLabs Medical Live
+  call, which runs over the ElevenLabs connection, they show a line at a time, and the
   agent's greeting is the first caption, so the note above says "Listening"
   instead of repeating it. When the end-user cuts an ElevenLabs agent short,
   its caption keeps only the words the agent said.
@@ -148,18 +149,19 @@ a call as `'stopped'`, with no error.
 
 ## Voice models
 
-A voice call runs on one of three voice models:
+A voice call runs on one of four voice models:
 
 | Voice model | Id | |
 |---|---|---|
 | Gemini Live | `gemini-live` | Google's realtime voice. |
 | ElevenLabs | `elevenlabs` | The most natural-sounding voice. It uses more credits per minute. |
 | ElevenLabs Medical | `elevenlabs-medical` | Understands medical terms; a doctor's voice. |
+| ElevenLabs Medical Live | `elevenlabs-medical-live` | Understands medical terms; the most natural-sounding voice. It uses more credits per minute. |
 
 **Who chooses.** The partner chooses which voice models the app offers, and its
 default voice model, on the Voice card of the dashboard's Settings page. Gemini
-Live is on by default. ElevenLabs and ElevenLabs Medical are off until the
-partner turns them on, and a voice model can be marked premium, so that only
+Live is on by default. ElevenLabs, ElevenLabs Medical and ElevenLabs Medical
+Live are off until the partner turns them on, and a voice model can be marked premium, so that only
 end-users on a paid tier can use it. An end-user can set a preferred voice
 model on the Voice section of their Profile page; without one, and for an
 anonymous user, a voice call uses the app's default voice model. The engine decides when each call starts, so a
@@ -180,7 +182,7 @@ to it wherever suits you.
 
 ```ts
 t2v.voice.on('note', (text) => { /* "Using Gemini Live — ElevenLabs couldn’t connect." */ });
-t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* 'gemini-live' | 'elevenlabs' | 'elevenlabs-medical' */ });
+t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* 'gemini-live' | 'elevenlabs' | 'elevenlabs-medical' | 'elevenlabs-medical-live' */ });
 ```
 
 - `note` is the engine's word when the voice call is not running on the voice
@@ -196,11 +198,12 @@ t2v.voice.on('callStarted', ({ voiceModel, greeting }) => { /* 'gemini-live' | '
   (English where the engine has no greeting for it), and `null` for Gemini Live,
   which waits for the end-user to speak first.
 
-**When ElevenLabs cannot connect.** If an ElevenLabs call fails to connect (a
-Content-Security-Policy that blocks one of its hosts, a network that blocks
-WebRTC, ElevenLabs being down), the SDK tells the engine, so the call's credit
-hold is released, and asks for the call again without ElevenLabs. It retries
-once. The call then runs on Gemini Live, with the note "Using Gemini Live —
+**When ElevenLabs cannot connect.** If an ElevenLabs or ElevenLabs Medical
+Live call fails to connect (a Content-Security-Policy that blocks one of its
+hosts, a network that blocks WebRTC, ElevenLabs being down), the SDK tells the
+engine, so the call's credit hold is released, and asks for the call again
+without any ElevenLabs voice model. It retries once. The call then runs on
+Gemini Live, with a note that names the voice model that failed, such as "Using Gemini Live —
 ElevenLabs couldn’t connect." If the app offers no other voice model,
 `start()` rejects with `voice_model_unavailable`.
 
@@ -208,15 +211,16 @@ ElevenLabs couldn’t connect." If the app offers no other voice model,
 The error's message is "Voice isn’t available right now.", and `<VoiceButton>`
 shows the same words.
 
-**Ending a call.** All three voice models end a call with the same `ended`
+**Ending a call.** All four voice models end a call with the same `ended`
 reasons and report the same `error` types, so code written for one runs against
 the others. A call that reaches the 15-minute cap ends as `session_cap` on any
 of them.
 When the end-user's budget runs out mid-call, the agent says so and the call
 ends as `budget_exhausted`, with an `insufficient_credit` error.
 
-**SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer, and
-ElevenLabs Medical 0.25.0 or newer. An older SDK never gets a voice model it
+**SDK version.** ElevenLabs needs `@talk2view/sdk` 0.23.0 or newer,
+ElevenLabs Medical 0.25.0 or newer, and ElevenLabs Medical Live 0.28.0 or
+newer. An older SDK never gets a voice model it
 doesn't know, whatever the preferred or the default voice model. An SDK older
 than 0.23.0 asks only for Gemini Live; where the app doesn't offer Gemini Live,
 it shows "Voice isn’t available right now."
@@ -230,7 +234,7 @@ it shows "Voice isn’t available right now."
   `<iframe>` from another origin, the iframe needs `allow="microphone"`.
 - **WebRTC.** The call is a WebRTC connection. Gemini Live's goes to
   Talk2View's voice service, through the ICE servers the engine hands out for
-  each call. ElevenLabs' goes to its own LiveKit service. A network that blocks
+  each call. ElevenLabs' (ElevenLabs Medical Live's too) goes to its own LiveKit service. A network that blocks
   WebRTC fails the call with `transport_error`.
 - **Content-Security-Policy.** Allow what every voice call needs, and what
   each voice model your app offers adds. Your bundler puts the voice libraries
@@ -241,7 +245,7 @@ it shows "Voice isn’t available right now."
   |---|---|---|
   | Every voice call | `https://c.daily.co` | `'unsafe-eval'`, `blob:` |
   | Gemini Live adds | nothing | nothing |
-  | ElevenLabs adds | `wss://livekit.rtc.elevenlabs.io`, `https://livekit.rtc.elevenlabs.io` | nothing |
+  | ElevenLabs and ElevenLabs Medical Live add | `wss://livekit.rtc.elevenlabs.io`, `https://livekit.rtc.elevenlabs.io` | nothing |
 
   Every voice call needs Daily's sources, ElevenLabs included, because the SDK
   opens the microphone before the engine has chosen the voice model. Audio
@@ -260,7 +264,8 @@ it shows "Voice isn’t available right now."
   **Gemini Live** adds nothing: the call's offer goes to the voice URL the
   engine returns, which on Talk2View's hosted engine is the engine itself.
 
-  **ElevenLabs.** With the token the engine mints, the client connects to
+  **ElevenLabs** (and ElevenLabs Medical Live, which runs on the same
+  connection). With the token the engine mints, the client connects to
   ElevenLabs' LiveKit service at `wss://livekit.rtc.elevenlabs.io`. It also
   makes plain HTTPS requests to `https://livekit.rtc.elevenlabs.io`, to find out
   what went wrong when a connection fails and to check the connection when the
@@ -282,4 +287,4 @@ it shows "Voice isn’t available right now."
 A chat-only integration never loads the voice libraries. The Pipecat libraries
 and Daily's call engine load on the first voice call, whichever the voice model,
 since the microphone opens through them, and ElevenLabs' client on the first
-ElevenLabs call only.
+ElevenLabs or ElevenLabs Medical Live call only.
